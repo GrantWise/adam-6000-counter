@@ -1,40 +1,48 @@
-# ADAM-6051 InfluxDB Logger
+# Industrial Counter Data Acquisition Platform
 
-A comprehensive data acquisition and logging solution for ADAM-6051 industrial I/O modules. This repository provides both Python and C# implementations with identical functionality for reading Modbus counter values and logging them to InfluxDB.
+A comprehensive, extensible platform for industrial counter data acquisition and monitoring. Built for manufacturing, production lines, and industrial IoT applications. This repository provides enterprise-grade implementations supporting ADAM-6051 devices with extensibility for additional counter device types.
 
 ## Overview
 
-The ADAM-6051 InfluxDB Logger connects to ADAM-6051 devices via Modbus TCP, reads counter values from configured channels, and logs the data to InfluxDB with comprehensive error handling, data validation, and monitoring capabilities.
+The Industrial Counter Data Acquisition Platform connects to industrial counter devices via Modbus TCP, collects counter values from configured channels, and provides comprehensive data processing with industrial-grade reliability. Currently supporting ADAM-6051 devices with an extensible architecture for additional counter device types.
 
 ### Key Features
 
-- **Dual Language Support**: Complete implementations in both Python and C#
+- **Industrial Counter Focus**: Specialized for production counters, quality gates, and manufacturing metrics
+- **Extensible Architecture**: Plugin-based design supporting multiple counter device types
+- **Enterprise-Grade Reliability**: Designed for 24/7 industrial operation with comprehensive error handling
+- **Real-time Processing**: Live counter data with rate calculations and trend analysis
+- **Production Monitoring**: Built-in OEE calculations, production line monitoring, and quality tracking
 - **Modbus TCP Communication**: Robust connection handling with automatic retry and recovery
-- **Data Validation**: Comprehensive validation including range checks, rate limiting, and overflow detection
-- **InfluxDB Integration**: Optimized data storage with configurable batching and retention
-- **Health Monitoring**: Built-in health checks and performance metrics
-- **Industrial Grade**: Designed for 24/7 operation with comprehensive error handling
-- **Configurable**: JSON-based configuration for devices, channels, and operational parameters
+- **Data Validation**: Counter-specific validation including overflow detection and rate limiting
+- **Time-Series Storage**: Optimized InfluxDB integration with configurable batching and retention
+- **Health Monitoring**: Comprehensive system health checks and production metrics
+- **Multi-Language Support**: Complete implementations in both Python and C#
+- **Testing Framework**: Production test mode with `--test` flag for validation
+- **Configuration Management**: JSON-based configuration for devices, channels, and industrial parameters
 
 ## Repository Structure
 
 ```
-adam-6051-influxdb-logger/
-├── README.md                    # This file - overview and getting started
+industrial-counter-platform/
+├── README.md                    # This file - platform overview and getting started
 ├── CLAUDE.md                    # AI assistant development guidelines
-├── EXAMPLES.md                  # Comprehensive C# usage examples
+├── EXAMPLES.md                  # Comprehensive C# usage examples and counter scenarios
 ├── Industrial.Adam.Logger.sln   # Main C# solution
-├── src/                         # C# implementation (main)
-│   ├── Industrial.Adam.Logger/           # Core library with InfluxDB integration
+├── src/                         # C# implementation (primary platform)
+│   ├── Industrial.Adam.Logger/           # Core counter platform library
 │   ├── Industrial.Adam.Logger.Tests/     # Unit tests (183 tests)
 │   ├── Industrial.Adam.Logger.IntegrationTests/  # Integration tests
-│   └── Industrial.Adam.Logger.Examples/  # Usage examples
-├── docs/                        # Documentation
-│   ├── adam-6051-influxdb-logger.md      # Technical documentation
-│   └── TESTING_PLAN.md                   # Testing strategy
-├── docker/                      # Docker deployment (InfluxDB + Grafana)
-└── python/                      # Python implementation (alternative)
-    ├── adam_counter_logger.py   # Lightweight Python version
+│   └── Industrial.Adam.Logger.Examples/  # Usage examples and counter applications
+├── docs/                        # Comprehensive documentation
+│   ├── Industrial Data Acquisition Platform Architecture.md  # Platform architecture
+│   ├── Industrial-Software-Development-Standards.md         # Development standards
+│   ├── counter-device-integration-guide.md  # Device integration guide
+│   ├── counter-application-patterns.md      # Application patterns
+│   └── TESTING_PLAN.md                      # Testing strategy
+├── docker/                      # Docker deployment (InfluxDB + Grafana monitoring)
+└── python/                      # Python implementation (lightweight alternative)
+    ├── adam_counter_logger.py   # Python counter logger
     └── adam_config_json.json    # Configuration example
 ```
 
@@ -42,12 +50,12 @@ adam-6051-influxdb-logger/
 
 ### 🐳 Docker Deployment (Recommended)
 
-**Complete monitoring stack with InfluxDB + Grafana:**
+**Complete industrial monitoring stack with InfluxDB + Grafana:**
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/GrantWise/adam-6051-counter-logger.git
-cd adam-6051-counter-logger
+git clone https://github.com/GrantWise/industrial-counter-platform.git
+cd industrial-counter-platform
 
 # 2. Start the monitoring infrastructure
 cd docker
@@ -61,36 +69,36 @@ docker-compose ps
 # - InfluxDB: http://localhost:8086 (admin/admin123)
 ```
 
-**The C# logger runs automatically in Docker! 🎉**
+**The industrial counter platform runs automatically in Docker! 🎉**
 
 ### 🎮 **Demo Mode (No Hardware Required)**
 ```bash
-# Start with mock data generation for testing/demo
+# Start with mock production counter data for testing/demo
 echo "DEMO_MODE=true" > docker/.env
 docker-compose up -d
 
-# View logs to see mock counter data being generated
+# View logs to see mock production line counter data being generated
 docker-compose logs -f adam-logger
 ```
 
-### 🏭 **Production Mode (Real ADAM Device)**
+### 🏭 **Production Mode (Real Counter Devices)**
 ```bash
-# Configure for your actual ADAM-6051 device
+# Configure for your actual production line counters
 echo "DEMO_MODE=false" > docker/.env
 echo "ADAM_HOST=192.168.1.100" >> docker/.env
 echo "ADAM_UNIT_ID=1" >> docker/.env
 echo "POLL_INTERVAL=2000" >> docker/.env
 
-# Restart with real device configuration
+# Restart with production counter configuration
 docker-compose restart adam-logger
 
-# View logs to see real device data
+# View logs to see real production counter data
 docker-compose logs -f adam-logger
 ```
 
 ### 💻 Local Development
 
-#### Python Implementation
+#### Python Implementation (Lightweight)
 
 ```bash
 cd python/
@@ -98,35 +106,41 @@ pip install pymodbus influxdb-client
 python adam_counter_logger.py
 ```
 
-#### C# Implementation (Primary)
+#### C# Implementation (Enterprise Platform)
 
 ```bash
 dotnet build
 dotnet run --project src/Industrial.Adam.Logger.Examples
+
+# Test production readiness
+dotnet run --project src/Industrial.Adam.Logger.Examples -- --test
 ```
 
-## Language-Specific Features
+## Implementation Comparison
 
 ### Python Implementation
-- **Lightweight**: Single-file implementation with minimal dependencies
-- **Rapid Deployment**: Quick setup for smaller installations
+- **Lightweight**: Single-file implementation for smaller counter installations
+- **Rapid Deployment**: Quick setup for pilot projects and simple counter monitoring
 - **Cross-Platform**: Runs on Windows, Linux, and macOS
 - **Dependencies**: PyModbus, InfluxDB Client
+- **Use Cases**: Small-scale production lines, pilot implementations, development
 
-### C# Implementation (Primary)
-- **Enterprise-Ready**: Full solution architecture with comprehensive testing
-- **InfluxDB Integration**: Native InfluxDB client with batching and retry logic
-- **Performance**: Optimized for high-throughput industrial environments
-- **Testing**: 183 unit and integration tests providing 100% coverage
-- **Architecture**: Clean Architecture with SOLID principles
-- **Scalability**: Designed for large-scale industrial deployments
-- **Health Monitoring**: ASP.NET Core health checks integration
-- **Dependency Injection**: Full DI container support
-- **Observability**: Structured logging and metrics
+### C# Implementation (Enterprise Platform)
+- **Industrial-Grade**: Full platform architecture for enterprise manufacturing
+- **Production Testing**: Built-in `--test` mode for production validation
+- **Health Monitoring**: Comprehensive system health checks and diagnostics
+- **Performance**: Optimized for high-throughput multi-line manufacturing environments
+- **Testing**: 183+ unit and integration tests providing comprehensive coverage
+- **Architecture**: Clean Architecture with SOLID principles and extensible patterns
+- **Scalability**: Designed for large-scale multi-device industrial deployments
+- **Monitoring Integration**: Native InfluxDB, Grafana, and Prometheus support
+- **Dependency Injection**: Full IoC container support for enterprise integration
+- **Observability**: Structured logging, metrics, and industrial error handling
+- **Use Cases**: Enterprise manufacturing, multi-line production, OEE systems, MES integration
 
 ## Configuration
 
-Both implementations use JSON configuration files with identical schema:
+Industrial counter platform configuration supports comprehensive production line monitoring:
 
 ```json
 {
@@ -137,17 +151,45 @@ Both implementations use JSON configuration files with identical schema:
   "channels": [
     {
       "channel_number": 0,
-      "name": "ProductionCounter",
+      "name": "ProductionLineCounter",
+      "description": "Main production line piece count",
       "register_address": 0,
       "register_count": 2,
-      "enabled": true
+      "enabled": true,
+      "counter_type": "production",
+      "oee_calculation": true
+    },
+    {
+      "channel_number": 1,
+      "name": "QualityGateCounter", 
+      "description": "Quality inspection passed count",
+      "register_address": 2,
+      "register_count": 2,
+      "enabled": true,
+      "counter_type": "quality",
+      "oee_calculation": true
+    },
+    {
+      "channel_number": 2,
+      "name": "RejectCounter",
+      "description": "Rejected parts counter",
+      "register_address": 4,
+      "register_count": 1,
+      "enabled": true,
+      "counter_type": "reject"
     }
   ],
   "influxdb": {
     "url": "http://localhost:8086",
     "token": "your-token",
-    "org": "your-org", 
-    "bucket": "adam-data"
+    "org": "manufacturing-org", 
+    "bucket": "production-data",
+    "measurement": "counter_data"
+  },
+  "oee_settings": {
+    "enabled": true,
+    "shift_duration_hours": 8,
+    "target_rate_per_hour": 1000
   }
 }
 ```
@@ -209,19 +251,22 @@ The Docker stack includes:
      - Organization: `adam_org`
      - Bucket: `adam_counters`
 
-### Data Flow
+### Industrial Data Flow
 
 ```
-ADAM-6051 Device → C# Logger (Docker) → InfluxDB → Grafana Dashboard
-                       ↓                    ↓
-              Modbus TCP/502        Time-series DB
-                                   adam_counters
+Production Line Counters → Industrial Platform (Docker) → InfluxDB → Manufacturing Dashboards
+     (ADAM-6051)                      ↓                      ↓
+                            Modbus TCP/502              Time-series DB
+                         Real-time Processing        production_data
                       
-              Real-time monitoring with:
-              • Counter values & rates
-              • Device health status  
-              • System performance metrics
-              • Data quality indicators
+              Enterprise monitoring with:
+              • Production rates & OEE calculations
+              • Quality metrics & reject rates
+              • Multi-line production tracking
+              • Device health & connectivity status  
+              • System performance & diagnostics
+              • Predictive maintenance indicators
+              • Shift reports & trend analysis
 ```
 
 ### Configuration
@@ -306,25 +351,29 @@ Data is automatically persisted in Docker volumes:
 - `influxdb_data`: Time-series data storage
 - `grafana_data`: Dashboard configurations and user settings
 
-## Key Capabilities
+## Industrial Counter Platform Capabilities
 
-### Data Acquisition
-- **Multi-Channel Support**: Configure multiple counters per device
-- **Register Flexibility**: Support for 16-bit, 32-bit, and 64-bit counters
-- **Rate Calculation**: Automatic rate-of-change calculation with configurable windows
-- **Data Validation**: Range validation, overflow detection, and rate limiting
+### Production Line Data Acquisition
+- **Multi-Counter Support**: Configure production, quality, and reject counters per line
+- **Register Flexibility**: Support for 16-bit, 32-bit, and 64-bit industrial counters
+- **Real-time Rate Calculation**: Automatic production rate calculation with configurable windows
+- **Counter Validation**: Industrial-grade validation including overflow detection and rate limiting
+- **OEE Integration**: Built-in Overall Equipment Effectiveness calculations
 
-### Reliability
-- **Connection Management**: Automatic reconnection with exponential backoff
-- **Error Handling**: Comprehensive error handling with detailed logging
-- **Data Integrity**: Validation and quality tracking for all readings
-- **Recovery**: Automatic recovery from communication failures
+### Manufacturing Reliability
+- **Industrial-Grade Connectivity**: Automatic reconnection with exponential backoff for 24/7 operation
+- **Comprehensive Error Handling**: Detailed error handling with troubleshooting guidance
+- **Data Integrity**: Validation and quality tracking for all production readings
+- **Fault Recovery**: Automatic recovery from communication failures and device issues
+- **Production Continuity**: Designed for continuous manufacturing environments
 
-### Monitoring
-- **Health Checks**: Built-in health monitoring for devices and services
-- **Performance Metrics**: Connection statistics, read rates, and error tracking
-- **Alerting**: Configurable alerting for device failures and data quality issues
-- **Diagnostics**: Detailed diagnostic information for troubleshooting
+### Enterprise Monitoring
+- **Production Health Checks**: Built-in monitoring for production lines and counter devices
+- **Manufacturing Metrics**: Production rates, OEE, quality metrics, and trend analysis
+- **Predictive Alerting**: Configurable alerting for device failures and production anomalies
+- **Industrial Diagnostics**: Detailed diagnostic information for production troubleshooting
+- **Shift Reporting**: Automated shift reports and production summaries
+- **Integration Ready**: APIs for MES, ERP, and other manufacturing systems
 
 ## Testing (C# Implementation)
 

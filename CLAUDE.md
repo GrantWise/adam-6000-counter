@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide
 
-This document provides guidance for the Claude AI assistant when working with the ServiceBridge repository. Its purpose is to ensure all contributions align with the project's architectural principles and quality standards.
+This document provides guidance for the Claude AI assistant when working with the Industrial Counter repository. Its purpose is to ensure all contributions align with the project's architectural principles and quality standards.
 
 ## 1. Core Philosophy: Pragmatic Over Dogmatic
 

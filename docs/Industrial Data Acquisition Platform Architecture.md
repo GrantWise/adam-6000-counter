@@ -1,5 +1,5 @@
-# Industrial Data Acquisition Platform Architecture
-## Extensible C# Framework for Universal Device Integration
+# Industrial Counter Data Acquisition Platform Architecture
+## Extensible C# Framework for Industrial Counter Device Integration
 
 **Version:** 1.0  
 **Date:** July 2025  
@@ -10,30 +10,34 @@
 ## 1. Executive Summary
 
 ### 1.1 Purpose
-Define a **focused, extensible** C# architecture for **Industrial IoT Data Ingestion Platform** that starts with ADAM devices but enables future growth:
+Define a **focused, extensible** C# architecture for **Industrial Counter Data Acquisition Platform** that starts with ADAM counter devices but enables future growth:
 
 **Current Implementation (Phase 1):**
-- **ADAM-6051** - Modbus TCP counter data collection
-- **ADAM-4571** - TCP socket weight scale data with protocol discovery
-- **Dual Database Strategy** - InfluxDB for time-series, SQL Server for discrete data
-- **Basic API Gateway** - REST/WebSocket access to device data
+- **ADAM-6050/6051** - Modbus TCP counter data collection for production lines
+- **ADAM-6066** - High-density digital I/O for complex production monitoring
+- **Time-Series Storage** - InfluxDB optimized for counter data and production metrics
+- **Industrial APIs** - REST/WebSocket access to production counter data
+- **OEE Integration** - Built-in Overall Equipment Effectiveness calculations
 
 **Extensible Foundation (Future Phases):**
-- **Interface-Driven Design** - Easy addition of new device types and protocols
-- **Plugin Architecture** - No core changes needed for new capabilities
-- **Data-Agnostic Processing** - Support any measurement type or data format
+- **Interface-Driven Design** - Easy addition of new ADAM series devices (6050, 6066, etc.) and protocols
+- **Plugin Architecture** - No core changes needed for new ADAM device capabilities
+- **Counter-Focused Processing** - Specialized support for production counters, quality gates, and manufacturing metrics
+- **Multi-Device Coordination** - Orchestration across multiple ADAM devices on production lines
 
 ### 1.2 Design Principles
-- **Start Simple, Build Smart** - Implement only what's needed today
-- **Interfaces Over Implementations** - Abstract away concrete implementations
-- **Composition Over Inheritance** - Flexible, testable component design
-- **Data-Driven Decisions** - Let data characteristics guide architecture choices
-- **Future-Proof Foundations** - Design for extensibility without over-engineering
+- **Start Simple, Build Smart** - Implement only what's needed for production counter monitoring today
+- **Interfaces Over Implementations** - Abstract away concrete counter device implementations
+- **Composition Over Inheritance** - Flexible, testable component design for manufacturing systems
+- **Data-Driven Decisions** - Let counter data characteristics guide architecture choices
+- **Future-Proof Foundations** - Design for extensibility to additional counter device types
+- **Industrial-Grade Reliability** - 24/7 operation with comprehensive error handling
+- **Manufacturing Focus** - Optimized for production lines, OEE, and quality tracking
 
 ### 1.3 Python vs C# Strategy
-- **Python Solutions:** Lightweight, single-purpose, rapid prototyping
-- **C# Platform:** Industrial-grade, multi-device, enterprise architecture
-- **Migration Path:** Python proofs-of-concept evolve into C# production modules
+- **Python Solutions:** Lightweight, single-purpose counter monitoring, rapid prototyping
+- **C# Platform:** Industrial-grade, multi-counter device, enterprise manufacturing architecture
+- **Migration Path:** Python counter prototypes evolve into C# production manufacturing modules
 
 ---
 
@@ -117,7 +121,6 @@ public interface IDeviceProvider
 ```
 AdamDeviceProvider
 ├── Adam6051Provider (Modbus TCP counters)
-└── Adam4571Provider (TCP socket with protocol discovery)
 ```
 
 **Future Extensibility (Interface-Ready):**
@@ -174,11 +177,6 @@ ModbusTcpProvider (for ADAM-6051)
 ├── Read holding registers
 ├── 32-bit counter reconstruction  
 └── Connection management with retry logic
-
-RawTcpProvider (for ADAM-4571)
-├── Socket connection management
-├── Protocol discovery engine
-└── Real-time data stream parsing
 ```
 
 **Future Extensibility:**
@@ -223,7 +221,7 @@ public class DataProcessingPipeline
         // Stage 1: Data validation (format, range checks)
         result = await ValidateAsync(result);
         
-        // Stage 2: Basic calibration (scale factors, offsets)
+        // Stage 2: Basic calibration (conversion factors, offsets, rate calculations)
         result = await ApplyBasicCalibrationAsync(result);
         
         // Stage 3: Data classification (time-series vs discrete)
@@ -237,24 +235,6 @@ public class DataProcessingPipeline
 }
 ```
 
-### 5.2 Basic Calibration Engine
-```csharp
-public interface IBasicCalibration
-{
-    Task<CalibrationResult> CalibrateLinearAsync(double[] referenceValues, double[] measuredValues);
-    Task<double> ApplyCalibrationAsync(double rawValue, CalibrationParameters calibration);
-    Task<CalibrationParameters> SaveCalibrationAsync(Guid deviceId, CalibrationResult result);
-}
-
-public class CalibrationParameters
-{
-    public double Scale { get; set; }                        // Multiplication factor
-    public double Offset { get; set; }                       // Addition offset
-    public DateTime CalibrationDate { get; set; }
-    public string TechnicianId { get; set; }
-    public double Accuracy { get; set; }                     // R² or similar metric
-}
-```
 
 ---
 
@@ -294,7 +274,7 @@ CounterProcessor (ADAM-6051)
 ├── 32-bit overflow detection
 ├── Data classification: TimeSeriesContinuous → InfluxDB
 
-WeightProcessor (ADAM-4571 scales)  
+CounterProcessor (ADAM-6051 counters)  
 ├── Stability detection algorithms
 ├── Tare/gross/net handling
 ├── Data classification: TransactionalRecord → SQL Server
@@ -375,7 +355,7 @@ AuditLog (LogId, EntityType, EntityId, Action, OldValue, NewValue, Timestamp)
 ```csharp
 // Core services we need TODAY
 IDeviceManagementService
-├── RegisterDevice(ADAM-6051 or ADAM-4571)
+├── RegisterDevice(ADAM-6051 or future counter devices)
 ├── StartDevice / StopDevice  
 └── GetDeviceStatus
 
@@ -384,7 +364,7 @@ IDataRoutingService
 ├── RouteWeightData → SQL Server
 └── RouteConfigData → SQL Server
 
-IProtocolDiscoveryService (ADAM-4571 only)
+IProtocolDiscoveryService (future devices)
 ├── StartDiscoverySession
 ├── ProcessWeightTest  
 └── SaveScaleTemplate
@@ -415,19 +395,22 @@ Windows Services / Linux Daemons:
 ```
 Device Management:
 GET    /api/devices                     # List ADAM devices
+POST   /api/devices/6050                # Register ADAM-6050
 POST   /api/devices/6051                # Register ADAM-6051  
-POST   /api/devices/4571                # Register ADAM-4571
+POST   /api/devices/6066                # Register ADAM-6066
+POST   /api/devices/counter             # Register counter devices
 POST   /api/devices/{id}/start          # Start data collection
 GET    /api/devices/{id}/status         # Connection health
 
-Scale Discovery (ADAM-4571 only):
-POST   /api/discovery/start             # Begin scale discovery
-POST   /api/discovery/weight-test       # Process weight test
-POST   /api/discovery/save              # Save scale template
+Counter Discovery (future devices):
+POST   /api/discovery/start             # Begin counter device discovery
+POST   /api/discovery/counter-test      # Process counter validation test
+POST   /api/discovery/save              # Save counter device template
 
 Data Access:
 GET    /api/data/counters               # Latest counter values
-GET    /api/data/weights                # Latest weight readings  
+GET    /api/data/production             # Production line metrics
+GET    /api/data/oee                    # OEE calculations
 GET    /api/data/export                 # Export data (CSV)
 ```
 
