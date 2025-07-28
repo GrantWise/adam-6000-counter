@@ -18,6 +18,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{G1
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.WebApi", "src\Industrial.Adam.Logger.WebApi\Industrial.Adam.Logger.WebApi.csproj", "{9631BDEC-18CC-4140-830C-4B71A55756D4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Core", "src\Industrial.Adam.Logger.Core\Industrial.Adam.Logger.Core.csproj", "{A631BDEC-28CC-4240-930C-5B71A55756D5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -44,6 +46,10 @@ Global
 		{9631BDEC-18CC-4140-830C-4B71A55756D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9631BDEC-18CC-4140-830C-4B71A55756D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9631BDEC-18CC-4140-830C-4B71A55756D4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A631BDEC-28CC-4240-930C-5B71A55756D5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A631BDEC-28CC-4240-930C-5B71A55756D5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A631BDEC-28CC-4240-930C-5B71A55756D5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A631BDEC-28CC-4240-930C-5B71A55756D5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
@@ -51,5 +57,6 @@ Global
 		{C1D2E3F4-G5H6-7890-CDEF-123456789012} = {F1G2H3I4-J5K6-7890-F123-456789012345}
 		{D1E2F3G4-H5I6-7890-DEF1-234567890123} = {G1H2I3J4-K5L6-7890-1234-567890123456}
 		{9631BDEC-18CC-4140-830C-4B71A55756D4} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
+		{A631BDEC-28CC-4240-930C-5B71A55756D5} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
 	EndGlobalSection
 EndGlobal
