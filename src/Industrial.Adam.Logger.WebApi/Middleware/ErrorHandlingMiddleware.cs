@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text.Json;
-using Industrial.Adam.Logger.Interfaces;
 
 namespace Industrial.Adam.Logger.WebApi.Middleware;
 
@@ -18,7 +17,7 @@ public class ErrorHandlingMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context, IIndustrialErrorService? errorService = null)
+    public async Task InvokeAsync(HttpContext context)
     {
         try
         {
@@ -26,11 +25,11 @@ public class ErrorHandlingMiddleware
         }
         catch (Exception ex)
         {
-            await HandleExceptionAsync(context, ex, errorService);
+            await HandleExceptionAsync(context, ex);
         }
     }
 
-    private async Task HandleExceptionAsync(HttpContext context, Exception exception, IIndustrialErrorService? errorService)
+    private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         _logger.LogError(exception, "An unhandled exception occurred");
 
@@ -79,27 +78,9 @@ public class ErrorHandlingMiddleware
                 break;
         }
 
-        // Add industrial error context if available
-        if (errorService != null)
-        {
-            var industrialError = errorService.CreateAndLogError(
-                exception,
-                $"API-{response.StatusCode}",
-                errorResponse.Title,
-                new Dictionary<string, object>
-                {
-                    ["RequestPath"] = context.Request.Path,
-                    ["RequestMethod"] = context.Request.Method
-                }
-            );
-
-            errorResponse.ErrorCode = industrialError.ErrorCode;
-            errorResponse.TroubleshootingSteps = industrialError.TroubleshootingSteps.ToList();
-            errorResponse.CorrelationId = context.TraceIdentifier;
-        }
-
         errorResponse.Instance = context.Request.Path;
         errorResponse.Timestamp = DateTimeOffset.UtcNow;
+        errorResponse.CorrelationId = context.TraceIdentifier;
 
         var jsonOptions = new JsonSerializerOptions
         {
@@ -136,16 +117,6 @@ public class ErrorResponse
     /// A URI reference that identifies the specific occurrence of the problem
     /// </summary>
     public string Instance { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Application-specific error code
-    /// </summary>
-    public string? ErrorCode { get; set; }
-
-    /// <summary>
-    /// Troubleshooting steps for industrial context
-    /// </summary>
-    public List<string>? TroubleshootingSteps { get; set; }
 
     /// <summary>
     /// Correlation ID for tracing
