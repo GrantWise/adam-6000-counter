@@ -1,0 +1,229 @@
+# Technical PRD: ADAM Counter Production Rate Service
+
+## Overview
+Enhance existing ADAM counter service to support 12 production lines using ADAM 6050 modules, with production rate calculations, InfluxDB storage, and administrative management capabilities.
+
+## System Architecture
+
+### Backend Service (Headless)
+- **Runtime:** C# service on Windows Server or Docker container
+- **Database:** InfluxDB for time-series data storage
+- **Communication:** Modbus TCP to ADAM units
+- **API:** REST endpoints for frontend communication
+
+### Frontend Application (Future Phase)
+- **Purpose:** Device setup, configuration, and troubleshooting
+- **Functionality:** Administrative control and monitoring interface
+- **Target Users:** Production administrators and maintenance staff
+
+## Hardware Configuration
+
+### ADAM 6050 Setup
+- **Module Type:** ADAM 6050 (replacing current ADAM 6051)
+- **Counter Configuration:** Configure all 12 digital input channels as 32-bit counters
+- **Persistence Setting:** Enable "Keep Counter Value when Power-off" for all channels
+- **Input Frequency:** 5 Hz (sufficient for spice bottle filling applications)
+- **Network:** Single service connection per ADAM unit (no other services polling)
+
+## Data Model
+
+### InfluxDB Schema
+- **Storage Strategy:** Separate measurement per production line/channel
+- **Fields:**
+  - `counter_value` (integer) - raw counter reading
+  - `production_rate` (float) - bottles per second
+  - `elapsed_time_seconds` (integer) - actual time window duration
+- **Tags:**
+  - `line_id` - production line identifier
+  - `connection_status` - normal/reconnected (quality indicator)
+
+### Data Immutability
+- Never modify historical records
+- Store raw counter values, timestamps, and calculated rates
+- All data corrections handled through new records, not updates
+
+## Core Service Functionality
+
+### Production Rate Calculation
+- **Formula:** `rate = (current_counter - previous_counter) / elapsed_time_seconds`
+- **Window Strategy:** Always use actual elapsed time (no forced 2-minute windows)
+- **Baseline:** Calculate rate against most recent previous reading from InfluxDB
+
+### Data Reading Strategy
+- **Primary Method:** Bulk read all 12 counters in single Modbus transaction
+- **Fallback Method:** Individual channel reads if bulk read fails
+- **Error Handling:** Continue with successful readings, log failed channels
+- **Performance:** Single network round trip for normal operation
+
+### Connection Management
+- **Polling Frequency:** Every 10-30 seconds (configurable)
+- **Reconnection:** Exponential backoff on connection failures
+- **Recovery:** On reconnection, calculate rate over actual offline duration
+- **No Interpolation:** Accept variable time windows, don't estimate missing data
+
+### Service Startup Process
+1. Load configuration (ADAM IPs, channel mapping, InfluxDB connection)
+2. Connect to ADAM units and verify counter configuration
+3. Query InfluxDB for most recent counter value per line
+4. If no previous data exists, store initial readings (no rate calculation)
+5. Begin normal polling cycle
+
+## Administrative API
+
+### Counter Management Endpoints
+```
+POST /api/counters/{lineId}/reset
+- Reset specific production line counter to zero
+- Requires admin authentication
+- Logs reset action with timestamp and user
+
+POST /api/counters/reset-all
+- Reset all production line counters
+- Requires admin authentication
+- Logs bulk reset action
+
+GET /api/counters/configuration
+- Return current channel-to-line mapping
+- Show enabled/disabled status per channel
+
+PUT /api/counters/{lineId}/configuration
+- Enable/disable counter on specific channel
+- Update production line mapping
+
+GET /api/counters/status
+- Real-time counter values and connection status
+- Production rates and last update times
+- Error states and diagnostic information
+```
+
+### Device Management Endpoints
+```
+GET /api/devices/connection-status
+- ADAM unit connectivity status
+- Network latency and error rates
+
+POST /api/devices/reconnect
+- Force reconnection attempt to ADAM units
+
+GET /api/devices/diagnostics
+- Modbus communication statistics
+- Read success/failure rates per channel
+- Performance metrics
+```
+
+### Configuration Management
+```
+GET /api/configuration
+- Current service configuration
+- Polling intervals, connection settings
+
+PUT /api/configuration
+- Update service configuration
+- Hot-reload where possible
+
+GET /api/configuration/channel-mapping
+- Current channel-to-production-line mapping
+
+PUT /api/configuration/channel-mapping
+- Update production line assignments
+```
+
+## Error Handling & Diagnostics
+
+### Connection Failures
+- **Counter Rollover:** Detect and handle 32-bit counter overflow
+- **Backwards Counters:** Log anomalies, investigate ADAM configuration issues
+- **Network Failures:** Maintain last known state, resume calculations on reconnection
+- **Partial Read Failures:** Continue with successful channels, retry failed ones
+
+### Diagnostic Information
+- **Connection Health:** Real-time ADAM unit connectivity status
+- **Data Quality:** Indicators for normal vs. post-reconnection data
+- **Performance Metrics:** Read latencies, success rates, error frequencies
+- **Historical Issues:** Log of connection losses and recovery times
+
+## Configuration Requirements
+
+### Service Configuration
+- ADAM unit IP addresses and Modbus settings
+- InfluxDB connection parameters and database name
+- Polling interval (default 15 seconds, configurable 5-60 seconds)
+- Administrative authentication settings
+- Logging levels and retention policies
+
+### Production Line Configuration
+- Channel-to-production-line mapping (Channel 0 = Line A, etc.)
+- Production line names and descriptions
+- Counter enable/disable status per channel
+- Rate calculation thresholds and alerts
+
+### Security Requirements
+- **Authentication:** Admin operations require valid credentials
+- **Authorization:** Role-based access for different operation types
+- **Audit Logging:** All counter resets and configuration changes logged
+- **API Security:** Rate limiting and input validation on all endpoints
+
+## Frontend Application Requirements (Future Phase)
+
+### Device Setup Interface
+- **ADAM Discovery:** Scan network for ADAM units
+- **Connection Testing:** Verify Modbus connectivity
+- **Counter Configuration:** Enable/disable channels, test counter operation
+- **Channel Mapping:** Assign production line names to ADAM channels
+
+### Operational Dashboard
+- **Real-time Monitoring:** Current counter values and production rates
+- **Connection Status:** ADAM unit health and connectivity indicators
+- **Historical Trends:** Production rate graphs and statistics
+- **Alert Management:** Connection issues and production anomalies
+
+### Administrative Functions
+- **Counter Management:** Reset individual or all counters with confirmation
+- **Configuration Management:** Update polling intervals and connection settings
+- **Diagnostic Tools:** Connection testing, Modbus communication diagnostics
+- **Audit Trail:** View logs of resets, configuration changes, and system events
+
+## Key Differences from Current Implementation
+
+1. **Scale:** Support 12 counters instead of 2
+2. **Hardware:** ADAM 6050 instead of 6051
+3. **Rate Calculation:** Always use elapsed time, handle variable windows
+4. **Recovery:** Calculate production during offline periods
+5. **Data Storage:** Immutable counter data with separate rate calculations
+6. **Administrative Control:** API for counter management and configuration
+7. **Bulk Reading:** Optimize network efficiency with bulk Modbus reads
+8. **Future Frontend:** Extensible API design for management interface
+
+## Success Criteria
+
+### Functional Requirements
+- Accurate production rate calculation during normal operation
+- Graceful handling of connection losses with correct rate calculation upon reconnection
+- Immutable data storage enabling historical analysis and recalculation
+- Independent monitoring of 12 production lines with per-line data storage
+
+### Operational Requirements
+- Administrative control over counter resets and configuration
+- Comprehensive diagnostic information for troubleshooting
+- Extensible API design supporting future frontend development
+- Secure access controls for administrative functions
+
+### Performance Requirements
+- Sub-second response times for API endpoints
+- Reliable data collection with >99% uptime during normal network conditions
+- Efficient Modbus communication minimizing network overhead
+- Scalable architecture supporting multiple ADAM units if needed
+
+## Implementation Phases
+
+### Phase 1: Core Service Enhancement
+- Upgrade to ADAM 6050 support with 12 channels
+- Implement bulk reading strategy with fallback
+- Add administrative API endpoints
+- Enhanced error handling and diagnostics
+
+### Phase 2: Frontend Application Development
+- Device setup and configuration interface
+- Real-time monitoring dashboard
+- Administrative control panel
+- Audit trail and reporting features

@@ -1,5 +1,5 @@
 services:
-  # InfluxDB - Time series database for counter data
+  # InfluxDB - Time series database for counter data (Performance Optimized)
   influxdb:
     image: influxdb:2.7.12
     container_name: adam-influxdb
@@ -14,11 +14,28 @@ services:
       - DOCKER_INFLUXDB_INIT_BUCKET=adam_counters
       - DOCKER_INFLUXDB_INIT_RETENTION=365d
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=adam-super-secret-token
+      # Performance optimization settings
+      - INFLUXD_STORAGE_CACHE_MAX_MEMORY_SIZE=1g
+      - INFLUXD_STORAGE_CACHE_SNAPSHOT_MEMORY_SIZE=25m
+      - INFLUXD_STORAGE_CACHE_SNAPSHOT_WRITE_COLD_DURATION=10m
+      - INFLUXD_STORAGE_WAL_FSYNC_DELAY=0ms
     volumes:
       - influxdb_data:/var/lib/influxdb2
       - ./influxdb/init:/docker-entrypoint-initdb.d
     networks:
       - adam_network
+    # Performance resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    # Optimize for SSD/fast storage
+    tmpfs:
+      - /tmp:size=100M,noexec,nosuid,nodev
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
       interval: 30s
@@ -31,7 +48,7 @@ services:
     container_name: adam-grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3002:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
@@ -50,7 +67,7 @@ services:
       timeout: 10s
       retries: 5
 
-  # ADAM Counter Logger - C# application
+  # ADAM Counter Logger - C# application (Performance Optimized)
   adam-logger:
     build:
       context: ..
@@ -58,12 +75,25 @@ services:
     container_name: adam-counter-logger
     restart: unless-stopped
     environment:
-      # Override ADAM device IP via environment variable
+      # Device configuration
       - ADAM_HOST=${ADAM_HOST:-192.168.1.100}
       - ADAM_UNIT_ID=${ADAM_UNIT_ID:-1}
       - LOG_LEVEL=${LOG_LEVEL:-Information}
       - POLL_INTERVAL=${POLL_INTERVAL:-2000}
       - DEMO_MODE=${DEMO_MODE:-false}
+      # Performance optimization settings
+      - DOTNET_GCServer=1
+      - DOTNET_GCConcurrent=1
+      - DOTNET_GCRetainVM=1
+      - DOTNET_gcAllowVeryLargeObjects=1
+      - DOTNET_JitOptimizeType=1
+      - ASPNETCORE_ENVIRONMENT=Production
+      # Memory and performance tuning
+      - MAX_CONCURRENT_DEVICES=${MAX_CONCURRENT_DEVICES:-10}
+      - DATA_BUFFER_SIZE=${DATA_BUFFER_SIZE:-10000}
+      - BATCH_SIZE=${BATCH_SIZE:-100}
+      - BATCH_TIMEOUT_MS=${BATCH_TIMEOUT_MS:-5000}
+      - ENABLE_PERFORMANCE_COUNTERS=${ENABLE_PERFORMANCE_COUNTERS:-true}
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
@@ -72,6 +102,18 @@ services:
         condition: service_healthy
     networks:
       - adam_network
+    # Performance resource limits and optimization
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    # Memory optimization for continuous operation
+    tmpfs:
+      - /tmp:size=50M,noexec,nosuid,nodev
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f dotnet || exit 1"]
       interval: 60s
@@ -79,17 +121,76 @@ services:
       retries: 3
       start_period: 60s
 
+  # Prometheus - Metrics collection and alerting (New)
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: adam-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=10GB'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus:/etc/prometheus
+    networks:
+      - adam_network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Node Exporter - System metrics (New)
+  node-exporter:
+    image: prom/node-exporter:v1.6.1
+    container_name: adam-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - adam_network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.1'
+
+
 # Persistent volumes for data storage
 volumes:
   influxdb_data:
     driver: local
   grafana_data:
     driver: local
+  prometheus_data:
+    driver: local
 
 # Internal network for service communication
 networks:
   adam_network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16

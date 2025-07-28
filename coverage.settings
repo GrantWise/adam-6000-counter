@@ -1,0 +1,32 @@
+# Industrial ADAM Logger - Coverage Configuration
+# Industrial-grade code coverage settings for manufacturing reliability
+
+# Coverage Thresholds (Industrial Standards)
+COVERAGE_THRESHOLD_LINE=80
+COVERAGE_THRESHOLD_BRANCH=75
+COVERAGE_THRESHOLD_METHOD=80
+
+# File Exclusions
+EXCLUDE_FILES="**/bin/**,**/obj/**,**/*Tests.cs,**/Program.cs,**/Examples/**,**/TestHelpers/**"
+
+# Assembly Exclusions  
+EXCLUDE_ASSEMBLIES="[*Tests]*,[*.Examples]*,[*.IntegrationTests]*,[*TestHelpers]*"
+
+# Report Formats
+REPORT_FORMATS="opencover,cobertura,json,lcov"
+
+# Output Directories
+COVERAGE_OUTPUT="./TestResults/coverage"
+REPORT_OUTPUT="./CoverageReports"
+
+# Industrial Quality Gates
+# - Core services: 90%+ coverage required
+# - Infrastructure: 85%+ coverage required  
+# - Configuration: 80%+ coverage required
+# - Utilities: 75%+ coverage required
+
+# Critical Path Coverage Requirements
+# - Data processing pipelines: 95%+
+# - Error handling: 90%+
+# - Device communication: 85%+
+# - Health monitoring: 80%+

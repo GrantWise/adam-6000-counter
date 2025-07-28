@@ -1,0 +1,326 @@
+# Prometheus Alert Rules for Industrial Counter Data Acquisition Platform
+# Comprehensive alerting for counter applications, performance monitoring, and operational health
+
+groups:
+  - name: industrial_counter_alerts
+    interval: 30s
+    rules:
+      # Device Connectivity Alerts
+      - alert: DeviceOffline
+        expr: device_connected == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: connectivity
+          component: device
+        annotations:
+          summary: "Device {{ $labels.device_id }} is offline"
+          description: "Industrial device {{ $labels.device_id }} has been offline for more than 1 minute. This may impact production monitoring."
+          troubleshooting: |
+            1. Check network connectivity to device {{ $labels.device_id }}
+            2. Verify device power and operational status
+            3. Check Modbus TCP port accessibility
+            4. Review device configuration in the logger service
+
+      - alert: DeviceHighResponseTime
+        expr: device_response_time_ms > 1000
+        for: 2m
+        labels:
+          severity: warning
+          category: performance
+          component: device
+        annotations:
+          summary: "High response time for device {{ $labels.device_id }}"
+          description: "Device {{ $labels.device_id }} response time is {{ $value }}ms, exceeding the 1000ms threshold."
+          troubleshooting: |
+            1. Check network latency to device {{ $labels.device_id }}
+            2. Verify device processing load
+            3. Review Modbus TCP configuration settings
+            4. Consider adjusting timeout values in configuration
+
+      # Data Quality Alerts
+      - alert: LowDataQuality
+        expr: (data_quality_good_percentage < 95) and (data_quality_total_readings > 100)
+        for: 5m
+        labels:
+          severity: warning
+          category: data_quality
+          component: validation
+        annotations:
+          summary: "Data quality degraded for {{ $labels.device_id }}"
+          description: "Data quality for device {{ $labels.device_id }} has dropped to {{ $value }}%, below the 95% threshold."
+          troubleshooting: |
+            1. Check device communication stability
+            2. Review data validation rules and thresholds
+            3. Investigate environmental factors affecting measurements
+            4. Verify device calibration and configuration
+
+      - alert: HighDataErrorRate
+        expr: rate(data_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          category: data_quality
+          component: validation
+        annotations:
+          summary: "High data error rate detected"
+          description: "Data error rate is {{ $value }} errors per second, exceeding acceptable threshold."
+          troubleshooting: |
+            1. Review recent configuration changes
+            2. Check device communication parameters
+            3. Verify data transformation and validation rules
+            4. Investigate potential device hardware issues
+
+      # Counter-Specific Alerts
+      - alert: CounterOverflowFrequent
+        expr: rate(counter_overflow_events_total[1h]) > 5
+        for: 10m
+        labels:
+          severity: warning
+          category: counter
+          component: overflow
+        annotations:
+          summary: "Frequent counter overflow events for {{ $labels.device_id }}"
+          description: "Counter overflow rate is {{ $value }} events per hour for device {{ $labels.device_id }}, channel {{ $labels.channel }}."
+          troubleshooting: |
+            1. Consider increasing counter bit width if supported
+            2. Review counter reset frequency and timing
+            3. Verify overflow detection and handling logic
+            4. Check if counter values are within expected operational range
+
+      - alert: CounterRateAbnormal
+        expr: abs(rate(counter_raw_value[5m]) - avg_over_time(counter_raw_value[1h])) > (0.5 * avg_over_time(counter_raw_value[1h]))
+        for: 5m
+        labels:
+          severity: warning
+          category: counter
+          component: rate_calculation
+        annotations:
+          summary: "Abnormal counter rate detected for {{ $labels.device_id }}"
+          description: "Counter rate for device {{ $labels.device_id }}, channel {{ $labels.channel }} has deviated significantly from normal patterns."
+          troubleshooting: |
+            1. Investigate production line changes or anomalies
+            2. Check for mechanical issues with counting equipment
+            3. Verify sensor alignment and operational status
+            4. Review counter configuration and calibration
+
+      # Performance Alerts
+      - alert: HighCPUUsage
+        expr: system_cpu_usage_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+          component: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "System CPU usage is {{ $value }}%, exceeding the 80% threshold."
+          troubleshooting: |
+            1. Review application performance and resource usage
+            2. Check for inefficient data processing algorithms
+            3. Consider optimizing batch processing parameters
+            4. Monitor for memory leaks or excessive garbage collection
+
+      - alert: HighMemoryUsage
+        expr: system_memory_usage_percent > 85
+        for: 3m
+        labels:
+          severity: critical
+          category: performance
+          component: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "System memory usage is {{ $value }}%, exceeding the 85% threshold."
+          troubleshooting: |
+            1. Check for memory leaks in data processing
+            2. Review rate calculation history retention settings
+            3. Optimize memory pool configurations
+            4. Consider increasing available system memory
+
+      - alert: SlowDataProcessing
+        expr: data_processing_rate_per_second < 10
+        for: 3m
+        labels:
+          severity: warning
+          category: performance
+          component: processing
+        annotations:
+          summary: "Slow data processing detected"
+          description: "Data processing rate has dropped to {{ $value }} readings per second."
+          troubleshooting: |
+            1. Check system resource availability
+            2. Review batch processing configuration
+            3. Investigate network latency issues
+            4. Optimize data validation and transformation logic
+
+      # Batch Processing Alerts
+      - alert: BatchProcessingTimeout
+        expr: rate(batch_processing_timeouts_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          category: performance
+          component: batch_processing
+        annotations:
+          summary: "Batch processing timeouts detected"
+          description: "Batch processing timeouts occurring at rate of {{ $value }} per second."
+          troubleshooting: |
+            1. Increase batch timeout configuration values
+            2. Reduce batch size for faster processing
+            3. Check system resource availability during processing
+            4. Review network connectivity stability
+
+      - alert: LowBatchSuccessRate
+        expr: (batch_processing_success_rate < 0.95) and (batch_processing_total > 10)
+        for: 5m
+        labels:
+          severity: critical
+          category: performance
+          component: batch_processing
+        annotations:
+          summary: "Low batch processing success rate"
+          description: "Batch processing success rate has dropped to {{ $value }}, below the 95% threshold."
+          troubleshooting: |
+            1. Review recent configuration or code changes
+            2. Check system resource availability
+            3. Investigate data validation failures
+            4. Verify device communication stability
+
+      # Storage and Database Alerts
+      - alert: InfluxDBConnectionDown
+        expr: influxdb_connected == 0
+        for: 30s
+        labels:
+          severity: critical
+          category: storage
+          component: database
+        annotations:
+          summary: "InfluxDB connection is down"
+          description: "Connection to InfluxDB has been lost. Data storage may be impacted."
+          troubleshooting: |
+            1. Check InfluxDB service status and logs
+            2. Verify network connectivity to InfluxDB
+            3. Review authentication credentials and permissions
+            4. Check InfluxDB disk space and resource usage
+
+      - alert: InfluxDBHighResponseTime
+        expr: influxdb_response_time_ms > 2000
+        for: 2m
+        labels:
+          severity: warning
+          category: storage
+          component: database
+        annotations:
+          summary: "InfluxDB high response time"
+          description: "InfluxDB response time is {{ $value }}ms, exceeding the 2000ms threshold."
+          troubleshooting: |
+            1. Check InfluxDB resource usage and performance
+            2. Review database query complexity and efficiency
+            3. Consider database optimization and indexing
+            4. Monitor disk I/O and storage performance
+
+      # Application Health Alerts
+      - alert: ApplicationUnhealthy
+        expr: application_health_status != 1
+        for: 1m
+        labels:
+          severity: critical
+          category: application
+          component: health
+        annotations:
+          summary: "Application health check failed"
+          description: "Industrial counter application health check is failing."
+          troubleshooting: |
+            1. Check application logs for errors
+            2. Verify all required services are running
+            3. Review configuration file integrity
+            4. Restart application if necessary
+
+      - alert: HighErrorRate
+        expr: rate(application_errors_total[5m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+          category: application
+          component: errors
+        annotations:
+          summary: "High application error rate"
+          description: "Application error rate is {{ $value }} errors per second."
+          troubleshooting: |
+            1. Review application logs for specific error patterns
+            2. Check for configuration issues
+            3. Verify device connectivity and configuration
+            4. Monitor system resource availability
+
+  - name: industrial_counter_performance
+    interval: 60s
+    rules:
+      # Performance Degradation Predictions
+      - alert: PerformanceDegradationTrend
+        expr: predict_linear(data_processing_rate_per_second[30m], 3600) < 5
+        for: 5m
+        labels:
+          severity: warning
+          category: prediction
+          component: performance
+        annotations:
+          summary: "Performance degradation trend detected"
+          description: "Data processing rate is trending downward and may fall below 5 readings/sec within the next hour."
+          troubleshooting: |
+            1. Proactively monitor system resources
+            2. Review upcoming maintenance schedules
+            3. Consider load balancing or resource optimization
+            4. Prepare for potential service scaling
+
+      # Resource Exhaustion Predictions
+      - alert: MemoryExhaustionPrediction
+        expr: predict_linear(system_memory_usage_percent[30m], 1800) > 95
+        for: 3m
+        labels:
+          severity: warning
+          category: prediction
+          component: memory
+        annotations:
+          summary: "Memory exhaustion predicted"
+          description: "Memory usage is trending upward and may exceed 95% within the next 30 minutes."
+          troubleshooting: |
+            1. Implement proactive memory cleanup
+            2. Review and optimize memory pool settings
+            3. Consider restarting services during maintenance window
+            4. Prepare for memory capacity expansion
+
+  - name: industrial_counter_business
+    interval: 300s
+    rules:
+      # Business Impact Alerts
+      - alert: ProductionMonitoringImpacted
+        expr: count(device_connected == 0) > 0.25 * count(device_connected)
+        for: 5m
+        labels:
+          severity: critical
+          category: business
+          component: production
+        annotations:
+          summary: "Production monitoring significantly impacted"
+          description: "More than 25% of devices are offline, significantly impacting production monitoring capabilities."
+          troubleshooting: |
+            1. Implement emergency response procedures
+            2. Contact production line supervisors
+            3. Activate backup monitoring systems if available
+            4. Prioritize critical device restoration
+
+      - alert: DataContinuityRisk
+        expr: rate(data_storage_failures_total[15m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          category: business
+          component: data_continuity
+        annotations:
+          summary: "Data continuity at risk"
+          description: "Data storage failures detected, risking production data continuity."
+          troubleshooting: |
+            1. Activate data backup and recovery procedures
+            2. Verify alternative storage mechanisms
+            3. Contact database administration team
+            4. Implement temporary local data retention if necessary
