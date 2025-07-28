@@ -1,13 +1,13 @@
 // Industrial.Adam.Logger.Tests - RetryPolicyService Unit Tests
 // Comprehensive tests for retry policy implementation (25 tests as per TESTING_PLAN.md)
 
+using System.Net.Sockets;
 using FluentAssertions;
 using Industrial.Adam.Logger.Interfaces;
-using Industrial.Adam.Logger.Utilities;
 using Industrial.Adam.Logger.Tests.TestHelpers;
+using Industrial.Adam.Logger.Utilities;
 using Microsoft.Extensions.Logging;
 using Moq;
-using System.Net.Sockets;
 using Xunit;
 
 namespace Industrial.Adam.Logger.Tests.Utilities;
@@ -54,7 +54,7 @@ public class RetryPolicyServiceTests
 
         // Act
         var result = await service.ExecuteAsync(
-            async _ => 
+            async _ =>
             {
                 await Task.Delay(1);
                 return expectedResult;
@@ -203,7 +203,9 @@ public class RetryPolicyServiceTests
     {
         // Arrange
         var service = CreateRetryPolicyService();
+        // Disable jitter for predictable test behavior
         var policy = RetryPolicy.ExponentialBackoff(3, TimeSpan.FromMilliseconds(10));
+        policy.JitterFactor = 0; // Disable jitter for this test
         var timestamps = new List<DateTime>();
 
         // Act
@@ -220,13 +222,21 @@ public class RetryPolicyServiceTests
         result.IsFailure.Should().BeTrue();
         timestamps.Should().HaveCount(4); // Initial + 3 retries
 
-        // Check that delays increase (allowing for some timing variance)
+        // Check that delays increase exponentially (without jitter)
         var delay1 = timestamps[1] - timestamps[0];
         var delay2 = timestamps[2] - timestamps[1];
         var delay3 = timestamps[3] - timestamps[2];
 
+        // With exponential backoff and no jitter:
+        // delay1 should be ~10ms (base delay)
+        // delay2 should be ~20ms (base delay * 2)
+        // delay3 should be ~40ms (base delay * 4)
         delay2.Should().BeGreaterThan(delay1);
         delay3.Should().BeGreaterThan(delay2);
+        
+        // Verify exponential growth pattern (allowing for timing variance)
+        delay2.TotalMilliseconds.Should().BeApproximately(delay1.TotalMilliseconds * 2, 10);
+        delay3.TotalMilliseconds.Should().BeApproximately(delay2.TotalMilliseconds * 2, 20);
     }
 
     [Fact]
@@ -235,6 +245,7 @@ public class RetryPolicyServiceTests
         // Arrange
         var service = CreateRetryPolicyService();
         var policy = RetryPolicy.LinearBackoff(3, TimeSpan.FromMilliseconds(20));
+        policy.JitterFactor = 0; // Disable jitter for predictable test behavior
         var timestamps = new List<DateTime>();
 
         // Act
@@ -251,14 +262,21 @@ public class RetryPolicyServiceTests
         result.IsFailure.Should().BeTrue();
         timestamps.Should().HaveCount(4); // Initial + 3 retries
 
-        // Check that delays increase linearly (allowing for timing variance)
+        // Check that delays increase linearly (without jitter)
         var delay1 = timestamps[1] - timestamps[0];
         var delay2 = timestamps[2] - timestamps[1];
         var delay3 = timestamps[3] - timestamps[2];
 
+        // With linear backoff and no jitter:
+        // delay1 should be ~20ms (base delay * 1)
+        // delay2 should be ~40ms (base delay * 2)
+        // delay3 should be ~60ms (base delay * 3)
         delay2.Should().BeGreaterThan(delay1);
         delay3.Should().BeGreaterThan(delay2);
-        // In linear backoff, delay3 should be approximately 3x delay1
+        
+        // Verify linear growth pattern (allowing for timing variance)
+        delay2.TotalMilliseconds.Should().BeApproximately(delay1.TotalMilliseconds * 2, 15);
+        delay3.TotalMilliseconds.Should().BeApproximately(delay1.TotalMilliseconds * 3, 20);
     }
 
     #endregion
@@ -530,7 +548,7 @@ public class RetryPolicyServiceTests
         var service = CreateRetryPolicyService();
 
         // Act & Assert
-        await service.Invoking(async s => await s.ExecuteAsync(async _ => 
+        await service.Invoking(async s => await s.ExecuteAsync(async _ =>
         {
             await Task.Delay(1);
             return "test";

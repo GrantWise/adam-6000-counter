@@ -1,8 +1,8 @@
 // Industrial.Adam.Logger.Tests - Test Configuration Builder
 // Accurate configuration builders matching actual model structures
 
-using Industrial.Adam.Logger.Configuration;
 using Bogus;
+using Industrial.Adam.Logger.Configuration;
 
 namespace Industrial.Adam.Logger.Tests.TestHelpers;
 
@@ -26,26 +26,26 @@ public static class TestConfigurationBuilder
             // REQUIRED properties
             DeviceId = deviceId ?? $"TEST_DEVICE_{_faker.Random.AlphaNumeric(6)}",
             IpAddress = _faker.Internet.Ip(),
-            
+
             // OPTIONAL properties with defaults
             Port = Constants.DefaultModbusPort,
             UnitId = Constants.MinModbusUnitId,
             TimeoutMs = Constants.DefaultDeviceTimeoutMs,
             MaxRetries = Constants.DefaultMaxRetries,
             RetryDelayMs = Constants.DefaultRetryDelayMs,
-            
+
             // Advanced connection settings
             KeepAlive = true,
             EnableNagle = false,
             ReceiveBufferSize = Constants.DefaultReceiveBufferSize,
             SendBufferSize = Constants.DefaultSendBufferSize,
-            
+
             // Data processing options
             EnableRateCalculation = true,
             RateWindowSeconds = Constants.DefaultRateWindowSeconds,
             EnableDataValidation = true,
             OverflowThreshold = Constants.DefaultOverflowThreshold,
-            
+
             // Collections
             Channels = new List<ChannelConfig>(),
             Tags = new Dictionary<string, object>
@@ -78,26 +78,26 @@ public static class TestConfigurationBuilder
             // REQUIRED properties
             ChannelNumber = channelNumber,
             Name = name ?? $"Channel_{channelNumber:D2}",
-            
+
             // OPTIONAL properties with defaults
             Description = $"Test channel {channelNumber} for counter data",
             Enabled = true,
-            
+
             // Modbus register configuration
             StartRegister = (ushort)(channelNumber * 10), // Non-overlapping registers
             RegisterCount = Constants.CounterRegisterCount,
-            
+
             // Data processing configuration
             ScaleFactor = 1.0,
             Offset = 0.0,
             Unit = DefaultUnits.Counts,
             DecimalPlaces = Constants.DefaultDecimalPlaces,
-            
+
             // Validation limits (optional)
             MinValue = 0,
             MaxValue = 1000000,
             MaxRateOfChange = 1000.0,
-            
+
             // Tags
             Tags = new Dictionary<string, object>
             {
@@ -120,27 +120,30 @@ public static class TestConfigurationBuilder
             // Timing configuration
             PollIntervalMs = Constants.DefaultPollIntervalMs,
             HealthCheckIntervalMs = Constants.DefaultHealthCheckIntervalMs,
-            
+
             // Performance configuration
             MaxConcurrentDevices = Constants.DefaultMaxConcurrentDevices,
             DataBufferSize = Constants.DefaultDataBufferSize,
             BatchSize = Constants.DefaultBatchSize,
             BatchTimeoutMs = Constants.DefaultBatchTimeoutMs,
-            
+
             // Error handling configuration
             EnableAutomaticRecovery = true,
             MaxConsecutiveFailures = Constants.DefaultMaxConsecutiveFailures,
             DeviceTimeoutMinutes = Constants.DefaultDeviceTimeoutMinutes,
-            
+
             // Monitoring and diagnostics
             EnablePerformanceCounters = true,
             EnableDetailedLogging = false,
-            
+
             // Use demo mode for tests to avoid requiring real devices
             DemoMode = true,
-            
+
             // Devices collection
-            Devices = new List<AdamDeviceConfig>()
+            Devices = new List<AdamDeviceConfig>(),
+            
+            // InfluxDB configuration (required for InfluxDbWriter tests)
+            InfluxDb = ValidInfluxDbConfig()
         };
 
         // Add devices
@@ -151,6 +154,35 @@ public static class TestConfigurationBuilder
 
         return config;
     }
+    
+    /// <summary>
+    /// Create a valid InfluxDbConfig for testing
+    /// </summary>
+    /// <returns>Valid InfluxDB configuration</returns>
+    public static InfluxDbConfig ValidInfluxDbConfig()
+    {
+        return new InfluxDbConfig
+        {
+            Url = "http://localhost:8086",
+            Token = "test_token_" + _faker.Random.AlphaNumeric(32),
+            Organization = "test_org",
+            Bucket = "test_bucket",
+            Measurement = "test_counter_data",
+            WriteBatchSize = 100,
+            FlushIntervalMs = 5000,
+            TimeoutMs = 30000,
+            EnableRetry = true,
+            MaxRetryAttempts = 3,
+            RetryDelayMs = 1000,
+            EnableDebugLogging = false,
+            EnableCompression = true,
+            GlobalTags = new Dictionary<string, string>
+            {
+                { "environment", "test" },
+                { "source", "unit_tests" }
+            }
+        };
+    }
 
     /// <summary>
     /// Create a device config with invalid settings for testing validation
@@ -160,7 +192,7 @@ public static class TestConfigurationBuilder
     public static AdamDeviceConfig InvalidDeviceConfig(string errorType = "empty_device_id")
     {
         var config = ValidDeviceConfig();
-        
+
         switch (errorType)
         {
             case "empty_device_id":
@@ -185,8 +217,8 @@ public static class TestConfigurationBuilder
                 config.Channels = new List<ChannelConfig>();
                 break;
             case "duplicate_channels":
-                config.Channels = new List<ChannelConfig> 
-                { 
+                config.Channels = new List<ChannelConfig>
+                {
                     ValidChannelConfig(1, "Channel_1"),
                     ValidChannelConfig(1, "Channel_1_Duplicate") // Same channel number
                 };
@@ -207,7 +239,7 @@ public static class TestConfigurationBuilder
                 config.OverflowThreshold = 500; // Below minimum
                 break;
         }
-        
+
         return config;
     }
 
@@ -219,7 +251,7 @@ public static class TestConfigurationBuilder
     public static ChannelConfig InvalidChannelConfig(string errorType = "empty_name")
     {
         var config = ValidChannelConfig();
-        
+
         switch (errorType)
         {
             case "empty_name":
@@ -258,7 +290,7 @@ public static class TestConfigurationBuilder
                 config.ChannelNumber = 300; // Above max
                 break;
         }
-        
+
         return config;
     }
 
@@ -270,7 +302,7 @@ public static class TestConfigurationBuilder
     public static AdamLoggerConfig InvalidLoggerConfig(string errorType = "no_devices")
     {
         var config = ValidLoggerConfig();
-        
+
         switch (errorType)
         {
             case "no_devices":
@@ -301,8 +333,8 @@ public static class TestConfigurationBuilder
                 config.DeviceTimeoutMinutes = 0;
                 break;
             case "duplicate_device_ids":
-                config.Devices = new List<AdamDeviceConfig> 
-                { 
+                config.Devices = new List<AdamDeviceConfig>
+                {
                     ValidDeviceConfig("DUPLICATE_DEVICE"),
                     ValidDeviceConfig("DUPLICATE_DEVICE") // Same device ID
                 };
@@ -320,7 +352,7 @@ public static class TestConfigurationBuilder
                     .ToList();
                 break;
         }
-        
+
         return config;
     }
 
@@ -332,25 +364,25 @@ public static class TestConfigurationBuilder
     public static List<AdamDeviceConfig> DiverseDeviceConfigs(int count = 3)
     {
         var configs = new List<AdamDeviceConfig>();
-        
+
         for (int i = 0; i < count; i++)
         {
             var config = ValidDeviceConfig($"DIVERSE_DEVICE_{i:D3}", (i % 4) + 1); // 1-4 channels
-            
+
             // Vary some settings
             config.Port = Constants.DefaultModbusPort + i;
             config.UnitId = (byte)(Constants.MinModbusUnitId + i);
             config.TimeoutMs = Constants.DefaultDeviceTimeoutMs + (i * 1000);
             config.EnableRateCalculation = i % 2 == 0;
             config.EnableDataValidation = i % 3 != 0;
-            
+
             // Add device-specific tags
             config.Tags.Add("device_index", i);
             config.Tags.Add("test_variant", $"variant_{i}");
-            
+
             configs.Add(config);
         }
-        
+
         return configs;
     }
 
@@ -384,12 +416,12 @@ public static class TestConfigurationBuilder
     public static AdamDeviceConfig ComprehensiveDeviceConfig(string deviceId = "COMPREHENSIVE_DEVICE")
     {
         var config = ValidDeviceConfig(deviceId, 4);
-        
+
         // Enable all features
         config.EnableRateCalculation = true;
         config.EnableDataValidation = true;
         config.KeepAlive = true;
-        
+
         // Clear existing tags and add comprehensive tags
         config.Tags.Clear();
         config.Tags.Add("plant", "test_plant_001");
@@ -398,7 +430,7 @@ public static class TestConfigurationBuilder
         config.Tags.Add("station", "station_05");
         config.Tags.Add("shift", "day_shift");
         config.Tags.Add("operator", "test_operator");
-        
+
         // Configure channels with different settings
         for (int i = 0; i < config.Channels.Count; i++)
         {
@@ -409,11 +441,11 @@ public static class TestConfigurationBuilder
             channel.MinValue = i * 100;
             channel.MaxValue = (i + 1) * 10000;
             channel.MaxRateOfChange = (i + 1) * 100.0;
-            
+
             channel.Tags.Add("channel_purpose", $"measurement_{i + 1}");
             channel.Tags.Add("sensor_type", i % 2 == 0 ? "counter" : "rate");
         }
-        
+
         return config;
     }
 }

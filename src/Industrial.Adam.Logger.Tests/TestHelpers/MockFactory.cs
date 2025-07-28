@@ -27,16 +27,16 @@ public static class TestMockFactory
         bool defaultRateValid = true)
     {
         var mock = new Mock<IDataValidator>();
-        
+
         mock.Setup(v => v.ValidateReading(It.IsAny<AdamDataReading>(), It.IsAny<ChannelConfig>()))
             .Returns(defaultQuality);
-            
+
         mock.Setup(v => v.IsValidRange(It.IsAny<long>(), It.IsAny<ChannelConfig>()))
             .Returns(defaultRangeValid);
-            
+
         mock.Setup(v => v.IsValidRateOfChange(It.IsAny<double?>(), It.IsAny<ChannelConfig>()))
             .Returns(defaultRateValid);
-            
+
         return mock;
     }
 
@@ -48,7 +48,7 @@ public static class TestMockFactory
     public static Mock<IDataTransformer> CreateMockTransformer(double? transformResult = null)
     {
         var mock = new Mock<IDataTransformer>();
-        
+
         if (transformResult.HasValue)
         {
             mock.Setup(t => t.TransformValue(It.IsAny<long>(), It.IsAny<ChannelConfig>()))
@@ -60,7 +60,7 @@ public static class TestMockFactory
             mock.Setup(t => t.TransformValue(It.IsAny<long>(), It.IsAny<ChannelConfig>()))
                 .Returns<long, ChannelConfig>((value, config) => value * config.ScaleFactor + config.Offset);
         }
-        
+
         mock.Setup(t => t.EnrichTags(It.IsAny<Dictionary<string, object>>(), It.IsAny<AdamDeviceConfig>(), It.IsAny<ChannelConfig>()))
             .Returns<Dictionary<string, object>, AdamDeviceConfig, ChannelConfig>((baseTags, deviceConfig, channelConfig) =>
             {
@@ -72,7 +72,7 @@ public static class TestMockFactory
                 };
                 return enrichedTags;
             });
-            
+
         return mock;
     }
 
@@ -84,7 +84,7 @@ public static class TestMockFactory
     public static Mock<ILogger<T>> CreateMockLogger<T>()
     {
         var mock = new Mock<ILogger<T>>();
-        
+
         // Setup the Log method to capture log calls
         mock.Setup(logger => logger.Log(
                 It.IsAny<LogLevel>(),
@@ -93,7 +93,7 @@ public static class TestMockFactory
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()))
             .Verifiable();
-            
+
         return mock;
     }
 
@@ -108,30 +108,30 @@ public static class TestMockFactory
         IEnumerable<double>? uncertainRateValues = null)
     {
         var mock = new Mock<IDataValidator>();
-        
+
         mock.Setup(v => v.ValidateReading(It.IsAny<AdamDataReading>(), It.IsAny<ChannelConfig>()))
             .Returns<AdamDataReading, ChannelConfig>((reading, config) =>
             {
                 // Check if value is in bad range
                 if (badRangeValues != null && badRangeValues.Contains(reading.RawValue))
                     return DataQuality.Bad;
-                    
+
                 // Check if rate is uncertain
-                if (uncertainRateValues != null && reading.Rate.HasValue && 
+                if (uncertainRateValues != null && reading.Rate.HasValue &&
                     uncertainRateValues.Contains(reading.Rate.Value))
                     return DataQuality.Uncertain;
-                    
+
                 return DataQuality.Good;
             });
-            
+
         mock.Setup(v => v.IsValidRange(It.IsAny<long>(), It.IsAny<ChannelConfig>()))
             .Returns<long, ChannelConfig>((value, config) =>
                 badRangeValues == null || !badRangeValues.Contains(value));
-                
+
         mock.Setup(v => v.IsValidRateOfChange(It.IsAny<double?>(), It.IsAny<ChannelConfig>()))
             .Returns<double?, ChannelConfig>((rate, config) =>
                 uncertainRateValues == null || !rate.HasValue || !uncertainRateValues.Contains(rate.Value));
-                
+
         return mock;
     }
 
@@ -143,13 +143,13 @@ public static class TestMockFactory
     public static Mock<IDataTransformer> CreateThrowingMockTransformer(string exceptionMessage = "Mock transformer error")
     {
         var mock = new Mock<IDataTransformer>();
-        
+
         mock.Setup(t => t.TransformValue(It.IsAny<long>(), It.IsAny<ChannelConfig>()))
             .Throws(new InvalidOperationException(exceptionMessage));
-            
+
         mock.Setup(t => t.EnrichTags(It.IsAny<Dictionary<string, object>>(), It.IsAny<AdamDeviceConfig>(), It.IsAny<ChannelConfig>()))
             .Throws(new InvalidOperationException(exceptionMessage));
-            
+
         return mock;
     }
 
@@ -161,16 +161,16 @@ public static class TestMockFactory
     public static Mock<IDataValidator> CreateThrowingMockValidator(string exceptionMessage = "Mock validator error")
     {
         var mock = new Mock<IDataValidator>();
-        
+
         mock.Setup(v => v.ValidateReading(It.IsAny<AdamDataReading>(), It.IsAny<ChannelConfig>()))
             .Throws(new InvalidOperationException(exceptionMessage));
-            
+
         mock.Setup(v => v.IsValidRange(It.IsAny<long>(), It.IsAny<ChannelConfig>()))
             .Throws(new InvalidOperationException(exceptionMessage));
-            
+
         mock.Setup(v => v.IsValidRateOfChange(It.IsAny<double?>(), It.IsAny<ChannelConfig>()))
             .Throws(new InvalidOperationException(exceptionMessage));
-            
+
         return mock;
     }
 }

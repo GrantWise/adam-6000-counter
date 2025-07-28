@@ -1,10 +1,10 @@
 // Industrial.Adam.Logger.Tests - ChannelConfig Validation Tests
 // Comprehensive tests for channel configuration validation (20 tests as per TESTING_PLAN.md)
 
+using System.ComponentModel.DataAnnotations;
 using FluentAssertions;
 using Industrial.Adam.Logger.Configuration;
 using Industrial.Adam.Logger.Tests.TestHelpers;
-using System.ComponentModel.DataAnnotations;
 using Xunit;
 
 namespace Industrial.Adam.Logger.Tests.Configuration;
@@ -108,7 +108,7 @@ public class ChannelConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(ChannelConfig.Name)) &&
             r.ErrorMessage!.Contains("100 characters"));
     }
@@ -128,7 +128,7 @@ public class ChannelConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(ChannelConfig.ChannelNumber)) &&
             r.ErrorMessage!.Contains("between 0 and 255"));
     }
@@ -138,13 +138,13 @@ public class ChannelConfigTests
     {
         // Arrange & Act & Assert
         var validChannelNumbers = new[] { 0, 1, 100, 255 };
-        
+
         foreach (var channelNumber in validChannelNumbers)
         {
             var config = TestConfigurationBuilder.ValidChannelConfig(channelNumber);
-            
+
             var validationResults = ValidateConfiguration(config);
-            
+
             validationResults.Should().BeEmpty($"Channel number {channelNumber} should be valid");
         }
     }
@@ -164,7 +164,7 @@ public class ChannelConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(ChannelConfig.RegisterCount)) &&
             r.ErrorMessage!.Contains("between 1 and 4"));
     }
@@ -174,15 +174,15 @@ public class ChannelConfigTests
     {
         // Arrange & Act & Assert
         var validStartRegisters = new ushort[] { 0, 100, 1000, 65533 }; // 65533 + 2 = 65535 (max)
-        
+
         foreach (var startRegister in validStartRegisters)
         {
             var config = TestConfigurationBuilder.ValidChannelConfig();
             config.StartRegister = startRegister;
             config.RegisterCount = 1; // Ensure no overflow
-            
+
             var validationResults = ValidateConfiguration(config);
-            
+
             validationResults.Should().BeEmpty($"Start register {startRegister} should be valid");
         }
     }
@@ -198,7 +198,7 @@ public class ChannelConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.ErrorMessage!.Contains("exceeds maximum Modbus address range"));
     }
 
@@ -217,7 +217,7 @@ public class ChannelConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(ChannelConfig.ScaleFactor)) &&
             r.ErrorMessage!.Contains("cannot be zero"));
     }
@@ -233,7 +233,7 @@ public class ChannelConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(ChannelConfig.DecimalPlaces)) &&
             r.ErrorMessage!.Contains("between 0 and 10"));
     }
@@ -270,7 +270,7 @@ public class ChannelConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.ErrorMessage!.Contains("MinValue cannot be greater than MaxValue"));
     }
 
@@ -304,7 +304,7 @@ public class ChannelConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(ChannelConfig.MaxRateOfChange)) &&
             r.ErrorMessage!.Contains("must be positive"));
     }
@@ -371,11 +371,11 @@ public class ChannelConfigTests
     {
         var results = new List<ValidationResult>();
         var context = new ValidationContext(config);
-        
+
         // Use both DataAnnotations validation and custom validation
         Validator.TryValidateObject(config, context, results, true);
         results.AddRange(config.Validate(context));
-        
+
         return results;
     }
 

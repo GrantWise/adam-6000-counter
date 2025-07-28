@@ -43,7 +43,7 @@ public class ServiceCollectionExtensionsTests
         serviceProvider.GetService<IDataTransformer>().Should().NotBeNull().And.BeOfType<DefaultDataTransformer>();
         serviceProvider.GetService<IDataProcessor>().Should().NotBeNull().And.BeOfType<DefaultDataProcessor>();
         serviceProvider.GetService<IAdamLoggerService>().Should().NotBeNull().And.BeOfType<AdamLoggerService>();
-        
+
         // Verify hosted service registration
         var hostedServices = serviceProvider.GetServices<IHostedService>();
         hostedServices.Should().Contain(s => s is AdamLoggerService);
@@ -168,9 +168,9 @@ public class ServiceCollectionExtensionsTests
         serviceProvider.GetService<IDataTransformer>().Should().NotBeNull().And.BeOfType<DefaultDataTransformer>();
         serviceProvider.GetService<IDataProcessor>().Should().NotBeNull().And.BeOfType<DefaultDataProcessor>();
         serviceProvider.GetService<IAdamLoggerService>().Should().NotBeNull().And.BeOfType<AdamLoggerService>();
-        
+
         // Verify options configuration is registered
-        var optionsServices = services.Where(s => s.ServiceType.IsGenericType && 
+        var optionsServices = services.Where(s => s.ServiceType.IsGenericType &&
                                                   s.ServiceType.GetGenericTypeDefinition() == typeof(IOptions<>));
         optionsServices.Should().NotBeEmpty();
     }
@@ -189,7 +189,7 @@ public class ServiceCollectionExtensionsTests
         // Assert
         result.Should().BeSameAs(services);
         // Verify that options were configured (the section name is used internally)
-        var optionsServices = services.Where(s => s.ServiceType.IsGenericType && 
+        var optionsServices = services.Where(s => s.ServiceType.IsGenericType &&
                                                   s.ServiceType.GetGenericTypeDefinition() == typeof(IOptions<>));
         optionsServices.Should().NotBeEmpty();
     }
@@ -240,8 +240,8 @@ public class ServiceCollectionExtensionsTests
 
         // Assert
         // Verify that health check services are registered
-        var healthCheckServices = services.Where(s => 
-            s.ServiceType.Name.Contains("HealthCheck") || 
+        var healthCheckServices = services.Where(s =>
+            s.ServiceType.Name.Contains("HealthCheck") ||
             s.ServiceType.Name.Contains("IHealthCheckService"));
         healthCheckServices.Should().NotBeEmpty();
     }

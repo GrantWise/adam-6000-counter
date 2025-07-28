@@ -1,10 +1,10 @@
 // Industrial.Adam.Logger.Tests - AdamDeviceConfig Validation Tests
 // Comprehensive tests for device configuration validation (25 tests as per TESTING_PLAN.md)
 
+using System.ComponentModel.DataAnnotations;
 using FluentAssertions;
 using Industrial.Adam.Logger.Configuration;
 using Industrial.Adam.Logger.Tests.TestHelpers;
-using System.ComponentModel.DataAnnotations;
 using Xunit;
 
 namespace Industrial.Adam.Logger.Tests.Configuration;
@@ -151,7 +151,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.DeviceId)) &&
             r.ErrorMessage!.Contains("50 characters"));
     }
@@ -194,14 +194,14 @@ public class AdamDeviceConfigTests
     {
         // Arrange & Act & Assert
         var validIpAddresses = new[] { "192.168.1.1", "10.0.0.1", "127.0.0.1", "255.255.255.255" };
-        
+
         foreach (var ipAddress in validIpAddresses)
         {
             var config = TestConfigurationBuilder.ValidDeviceConfig();
             config.IpAddress = ipAddress;
-            
+
             var validationResults = ValidateConfiguration(config);
-            
+
             validationResults.Should().BeEmpty($"IP address {ipAddress} should be valid");
         }
     }
@@ -221,7 +221,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.Port)) &&
             r.ErrorMessage!.Contains("between 1 and 65535"));
     }
@@ -231,14 +231,14 @@ public class AdamDeviceConfigTests
     {
         // Arrange & Act & Assert
         var validPorts = new[] { 1, 502, 1502, 8080, 65535 };
-        
+
         foreach (var port in validPorts)
         {
             var config = TestConfigurationBuilder.ValidDeviceConfig();
             config.Port = port;
-            
+
             var validationResults = ValidateConfiguration(config);
-            
+
             validationResults.Should().BeEmpty($"Port {port} should be valid");
         }
     }
@@ -258,7 +258,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.UnitId)) &&
             r.ErrorMessage!.Contains("between 1 and 255"));
     }
@@ -268,14 +268,14 @@ public class AdamDeviceConfigTests
     {
         // Arrange & Act & Assert
         var validUnitIds = new byte[] { 1, 10, 100, 255 };
-        
+
         foreach (var unitId in validUnitIds)
         {
             var config = TestConfigurationBuilder.ValidDeviceConfig();
             config.UnitId = unitId;
-            
+
             var validationResults = ValidateConfiguration(config);
-            
+
             validationResults.Should().BeEmpty($"UnitId {unitId} should be valid");
         }
     }
@@ -295,7 +295,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.TimeoutMs)) &&
             r.ErrorMessage!.Contains("between 500ms and 30 seconds"));
     }
@@ -311,7 +311,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.MaxRetries)) &&
             r.ErrorMessage!.Contains("between 0 and 10"));
     }
@@ -328,7 +328,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.RetryDelayMs)) &&
             r.ErrorMessage!.Contains("between 100ms and 10 seconds"));
     }
@@ -348,7 +348,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.ReceiveBufferSize)) &&
             r.ErrorMessage!.Contains("between 1KB and 64KB"));
     }
@@ -364,7 +364,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.SendBufferSize)) &&
             r.ErrorMessage!.Contains("between 1KB and 64KB"));
     }
@@ -384,7 +384,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.RateWindowSeconds)) &&
             r.ErrorMessage!.Contains("between 10 seconds and 1 hour"));
     }
@@ -400,7 +400,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.OverflowThreshold)) &&
             r.ErrorMessage!.Contains("reasonable for 32-bit counters"));
     }
@@ -420,7 +420,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.Channels)) &&
             r.ErrorMessage!.Contains("At least one channel"));
     }
@@ -436,7 +436,7 @@ public class AdamDeviceConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamDeviceConfig.Channels)) &&
             r.ErrorMessage!.Contains("Duplicate channel numbers"));
     }
@@ -454,11 +454,11 @@ public class AdamDeviceConfigTests
     {
         var results = new List<ValidationResult>();
         var context = new ValidationContext(config);
-        
+
         // Use both DataAnnotations validation and custom validation
         Validator.TryValidateObject(config, context, results, true);
         results.AddRange(config.Validate(context));
-        
+
         return results;
     }
 

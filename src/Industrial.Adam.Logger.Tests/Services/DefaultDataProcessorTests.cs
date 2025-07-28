@@ -46,15 +46,15 @@ public class DefaultDataProcessorTests
         var mockLogger = TestMockFactory.CreateMockLogger<DefaultDataProcessor>();
 
         // Act & Assert
-        Action createWithNullValidator = () => 
+        Action createWithNullValidator = () =>
             new DefaultDataProcessor(null!, mockTransformer.Object, mockLogger.Object);
         createWithNullValidator.Should().Throw<ArgumentNullException>();
-            
-        Action createWithNullTransformer = () => 
+
+        Action createWithNullTransformer = () =>
             new DefaultDataProcessor(mockValidator.Object, null!, mockLogger.Object);
         createWithNullTransformer.Should().Throw<ArgumentNullException>();
-            
-        Action createWithNullLogger = () => 
+
+        Action createWithNullLogger = () =>
             new DefaultDataProcessor(mockValidator.Object, mockTransformer.Object, null!);
         createWithNullLogger.Should().Throw<ArgumentNullException>();
     }
@@ -341,7 +341,7 @@ public class DefaultDataProcessorTests
         // Act
         processor.CalculateRate("DEVICE_001", 1, 1000, baseTime);
         processor.CalculateRate("DEVICE_002", 1, 2000, baseTime);
-        
+
         var result1 = processor.CalculateRate("DEVICE_001", 1, 1100, baseTime.AddSeconds(10));
         var result2 = processor.CalculateRate("DEVICE_002", 1, 2200, baseTime.AddSeconds(10));
 
@@ -360,7 +360,7 @@ public class DefaultDataProcessorTests
         // Act
         processor.CalculateRate("DEVICE_001", 1, 1000, baseTime);
         processor.CalculateRate("DEVICE_001", 2, 2000, baseTime);
-        
+
         var result1 = processor.CalculateRate("DEVICE_001", 1, 1100, baseTime.AddSeconds(10));
         var result2 = processor.CalculateRate("DEVICE_001", 2, 2200, baseTime.AddSeconds(10));
 
@@ -387,11 +387,11 @@ public class DefaultDataProcessorTests
         // Assert
         result.Should().Be(DataQuality.Good);
         mockValidator.Verify(v => v.ValidateReading(
-            It.Is<AdamDataReading>(r => 
-                r.Channel == channel.ChannelNumber && 
-                r.RawValue == 1000 && 
-                r.Rate == 5.0), 
-            channel), 
+            It.Is<AdamDataReading>(r =>
+                r.Channel == channel.ChannelNumber &&
+                r.RawValue == 1000 &&
+                r.Rate == 5.0),
+            channel),
             Times.Once);
     }
 
@@ -409,10 +409,10 @@ public class DefaultDataProcessorTests
         // Assert
         result.Should().Be(DataQuality.Uncertain);
         mockValidator.Verify(v => v.ValidateReading(
-            It.Is<AdamDataReading>(r => 
-                r.RawValue == 1000 && 
-                r.Rate == null), 
-            channel), 
+            It.Is<AdamDataReading>(r =>
+                r.RawValue == 1000 &&
+                r.Rate == null),
+            channel),
             Times.Once);
     }
 
@@ -431,7 +431,7 @@ public class DefaultDataProcessorTests
 
         // Act
         var firstResult = processor.ProcessRawData("DEVICE_001", channel, registers, baseTime, TimeSpan.Zero);
-        
+
         registers[0] = 1100;
         var secondResult = processor.ProcessRawData("DEVICE_001", channel, registers, baseTime.AddSeconds(10), TimeSpan.Zero);
 
@@ -449,7 +449,7 @@ public class DefaultDataProcessorTests
         var mockTransformer = TestMockFactory.CreateMockTransformer(null); // Returns null for processed value
         mockTransformer.Setup(t => t.TransformValue(It.IsAny<long>(), It.IsAny<ChannelConfig>()))
                       .Returns((double?)null);
-                      
+
         var processor = CreateProcessor(validator: mockValidator, transformer: mockTransformer);
         var channel = TestConfigurationBuilder.ValidChannelConfig();
         var registers = new ushort[] { 1000 };
@@ -457,14 +457,14 @@ public class DefaultDataProcessorTests
 
         // Act
         var firstResult = processor.ProcessRawData("DEVICE_001", channel, registers, baseTime, TimeSpan.Zero);
-        
+
         registers[0] = 1100;
         var secondResult = processor.ProcessRawData("DEVICE_001", channel, registers, baseTime.AddSeconds(10), TimeSpan.Zero);
 
         // Assert
         firstResult.ProcessedValue.Should().BeNull();
         firstResult.Rate.Should().BeNull(); // No rate when processed value is null
-        
+
         secondResult.ProcessedValue.Should().BeNull();
         secondResult.Rate.Should().BeNull(); // Still no rate calculation
     }
@@ -481,7 +481,7 @@ public class DefaultDataProcessorTests
         var mockValidator = TestMockFactory.CreateMockValidator();
         var mockTransformer = TestMockFactory.CreateMockTransformer();
         var mockLogger = TestMockFactory.CreateMockLogger<DefaultDataProcessor>();
-        
+
         return new DefaultDataProcessor(
             mockValidator.Object,
             mockTransformer.Object,

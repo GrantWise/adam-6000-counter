@@ -1,6 +1,7 @@
 // Industrial.Adam.Logger.Tests - AdamLoggerService Integration Tests
 // Comprehensive integration tests for the main service orchestrator (20 tests as per TESTING_PLAN.md)
 
+using System.Reactive.Linq;
 using FluentAssertions;
 using Industrial.Adam.Logger.Configuration;
 using Industrial.Adam.Logger.Interfaces;
@@ -13,7 +14,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using System.Reactive.Linq;
 using Xunit;
 
 namespace Industrial.Adam.Logger.Tests.Integration;
@@ -36,7 +36,7 @@ public class AdamLoggerServiceIntegrationTests : IDisposable
         services.AddSingleton(_mockLogger.Object);
         services.AddSingleton(_mockDataProcessor.Object);
         services.AddLogging(); // Add logging services for internal dependencies
-        
+
         _serviceProvider = services.BuildServiceProvider();
     }
 
@@ -175,9 +175,9 @@ public class AdamLoggerServiceIntegrationTests : IDisposable
             Devices = new List<AdamDeviceConfig>() // No devices
         };
         var service = new AdamLoggerService(
-            Options.Create(config), 
-            _mockDataProcessor.Object, 
-            _serviceProvider, 
+            Options.Create(config),
+            _mockDataProcessor.Object,
+            _serviceProvider,
             _mockLogger.Object);
 
         await service.StartAsync();
@@ -199,10 +199,10 @@ public class AdamLoggerServiceIntegrationTests : IDisposable
         // Arrange
         var service = CreateValidService();
         await service.StartAsync();
-        
+
         // Wait a moment for service to initialize device health
         await Task.Delay(100);
-        
+
         var context = new HealthCheckContext();
 
         // Act
@@ -220,14 +220,14 @@ public class AdamLoggerServiceIntegrationTests : IDisposable
         // Arrange
         var config = CreateConfigWithMultipleDevices();
         var service = new AdamLoggerService(
-            Options.Create(config), 
-            _mockDataProcessor.Object, 
-            _serviceProvider, 
+            Options.Create(config),
+            _mockDataProcessor.Object,
+            _serviceProvider,
             _mockLogger.Object);
 
         await service.StartAsync();
         await Task.Delay(100); // Allow initialization
-        
+
         var context = new HealthCheckContext();
 
         // Act
@@ -253,10 +253,10 @@ public class AdamLoggerServiceIntegrationTests : IDisposable
 
         // Setup mock to return valid data
         _mockDataProcessor.Setup(p => p.ProcessRawData(
-            It.IsAny<string>(), 
-            It.IsAny<ChannelConfig>(), 
-            It.IsAny<ushort[]>(), 
-            It.IsAny<DateTimeOffset>(), 
+            It.IsAny<string>(),
+            It.IsAny<ChannelConfig>(),
+            It.IsAny<ushort[]>(),
+            It.IsAny<DateTimeOffset>(),
             It.IsAny<TimeSpan>()))
             .Returns(TestData.ValidReading());
 
@@ -297,15 +297,15 @@ public class AdamLoggerServiceIntegrationTests : IDisposable
         var service = CreateValidService();
         var subscriber1Data = new List<AdamDataReading>();
         var subscriber2Data = new List<AdamDataReading>();
-        
+
         var subscription1 = service.DataStream.Subscribe(subscriber1Data.Add);
         var subscription2 = service.DataStream.Subscribe(subscriber2Data.Add);
 
         _mockDataProcessor.Setup(p => p.ProcessRawData(
-            It.IsAny<string>(), 
-            It.IsAny<ChannelConfig>(), 
-            It.IsAny<ushort[]>(), 
-            It.IsAny<DateTimeOffset>(), 
+            It.IsAny<string>(),
+            It.IsAny<ChannelConfig>(),
+            It.IsAny<ushort[]>(),
+            It.IsAny<DateTimeOffset>(),
             It.IsAny<TimeSpan>()))
             .Returns(TestData.ValidReading());
 

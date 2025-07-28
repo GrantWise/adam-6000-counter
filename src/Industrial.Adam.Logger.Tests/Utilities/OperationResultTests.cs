@@ -357,7 +357,7 @@ public class OperationResultTests
         // Assert
         successString.Should().Contain("Success");
         successString.Should().Contain("200.00ms");
-        
+
         failureString.Should().Contain("Failure");
         failureString.Should().Contain("Test failure");
         failureString.Should().Contain("200.00ms");
@@ -514,7 +514,7 @@ public class OperationResultTests
             { "operation_name", "test_operation" },
             { "start_time", DateTimeOffset.UtcNow }
         };
-        
+
         var result = OperationResult<int>.Success(42, context: originalContext);
 
         // Act
@@ -533,7 +533,7 @@ public class OperationResultTests
         {
             { "initial_value", "test" }
         };
-        
+
         var result = OperationResult<string>.Success("test", context: context);
 
         // Act
@@ -558,7 +558,7 @@ public class OperationResultTests
         // Assert
         successResult.IsSuccess.Should().BeTrue();
         successResult.Value.Should().Be(0);
-        
+
         successResultWithDefault.IsSuccess.Should().BeTrue();
         successResultWithDefault.Value.Should().BeNull();
     }

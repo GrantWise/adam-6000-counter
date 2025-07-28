@@ -1,8 +1,8 @@
 // Industrial.Adam.Logger.Tests - Test Data Generator
 // Accurate test data matching actual model structures
 
-using Industrial.Adam.Logger.Models;
 using Bogus;
+using Industrial.Adam.Logger.Models;
 
 namespace Industrial.Adam.Logger.Tests.TestHelpers;
 
@@ -28,7 +28,7 @@ public static class TestData
             Channel = channel ?? 1,
             RawValue = _faker.Random.Long(0, 1000000),
             Timestamp = DateTimeOffset.UtcNow,
-            
+
             // OPTIONAL properties
             ProcessedValue = _faker.Random.Double(0, 1000),
             Rate = _faker.Random.Double(0, 100),
@@ -53,9 +53,9 @@ public static class TestData
     public static AdamDataReading ReadingWithQuality(DataQuality quality)
     {
         var reading = ValidReading();
-        
-        return reading with 
-        { 
+
+        return reading with
+        {
             Quality = quality,
             ProcessedValue = quality switch
             {
@@ -111,7 +111,7 @@ public static class TestData
             DeviceId = deviceId ?? "TEST_DEVICE_001",
             Timestamp = DateTimeOffset.UtcNow,
             Status = DeviceStatus.Online,
-            
+
             // OPTIONAL properties
             IsConnected = true,
             LastSuccessfulRead = TimeSpan.FromSeconds(30),
@@ -140,18 +140,18 @@ public static class TestData
             DeviceStatus.Warning => _faker.Random.Int(totalReads / 2, totalReads * 3 / 4), // Moderate success
             _ => totalReads
         };
-        
+
         return new AdamDeviceHealth
         {
             // REQUIRED properties
             DeviceId = deviceId ?? "TEST_DEVICE_001",
             Timestamp = DateTimeOffset.UtcNow,
             Status = deviceStatus,
-            
+
             // OPTIONAL properties
             IsConnected = deviceStatus != DeviceStatus.Offline,
-            LastSuccessfulRead = deviceStatus == DeviceStatus.Offline 
-                ? TimeSpan.FromMinutes(10) 
+            LastSuccessfulRead = deviceStatus == DeviceStatus.Offline
+                ? TimeSpan.FromMinutes(10)
                 : TimeSpan.FromMinutes(1),
             ConsecutiveFailures = deviceStatus switch
             {
@@ -160,8 +160,8 @@ public static class TestData
                 DeviceStatus.Warning => _faker.Random.Int(1, 5),
                 _ => 0
             },
-            CommunicationLatency = deviceStatus == DeviceStatus.Offline 
-                ? null 
+            CommunicationLatency = deviceStatus == DeviceStatus.Offline
+                ? null
                 : _faker.Random.Double(100, 5000),
             LastError = deviceStatus switch
             {
@@ -184,9 +184,9 @@ public static class TestData
     /// <param name="intervalSeconds">Seconds between readings</param>
     /// <returns>Readings with consistent rate pattern</returns>
     public static List<AdamDataReading> ReadingsWithRate(
-        long baseValue, 
-        long increment, 
-        int count, 
+        long baseValue,
+        long increment,
+        int count,
         int intervalSeconds = 60)
     {
         var readings = new List<AdamDataReading>();
@@ -196,7 +196,7 @@ public static class TestData
         {
             var rawValue = baseValue + (i * increment);
             var reading = ValidReading();
-            
+
             readings.Add(reading with
             {
                 RawValue = rawValue,
@@ -219,42 +219,42 @@ public static class TestData
         var baseTime = DateTimeOffset.UtcNow.AddMinutes(-5);
 
         // Values before overflow
-        readings.Add(ValidReading() with 
-        { 
+        readings.Add(ValidReading() with
+        {
             RawValue = overflowPoint - 100,
             ProcessedValue = overflowPoint - 100,
-            Timestamp = baseTime 
+            Timestamp = baseTime
         });
-        
-        readings.Add(ValidReading() with 
-        { 
+
+        readings.Add(ValidReading() with
+        {
             RawValue = overflowPoint - 50,
             ProcessedValue = overflowPoint - 50,
-            Timestamp = baseTime.AddMinutes(1) 
+            Timestamp = baseTime.AddMinutes(1)
         });
-        
+
         // Overflow point
-        readings.Add(ValidReading() with 
-        { 
+        readings.Add(ValidReading() with
+        {
             RawValue = overflowPoint,
             ProcessedValue = overflowPoint,
             Timestamp = baseTime.AddMinutes(2),
             Quality = DataQuality.Overflow
         });
-        
+
         // Values after overflow (reset to 0)
-        readings.Add(ValidReading() with 
-        { 
+        readings.Add(ValidReading() with
+        {
             RawValue = 50,
             ProcessedValue = 50,
-            Timestamp = baseTime.AddMinutes(3) 
+            Timestamp = baseTime.AddMinutes(3)
         });
-        
-        readings.Add(ValidReading() with 
-        { 
+
+        readings.Add(ValidReading() with
+        {
             RawValue = 100,
             ProcessedValue = 100,
-            Timestamp = baseTime.AddMinutes(4) 
+            Timestamp = baseTime.AddMinutes(4)
         });
 
         return readings;
@@ -269,7 +269,7 @@ public static class TestData
     public static List<AdamDataReading> BoundaryValueReadings(long minValue, long maxValue)
     {
         var baseReading = ValidReading();
-        
+
         return new List<AdamDataReading>
         {
             // Below minimum
@@ -309,8 +309,8 @@ public static class TestData
         for (int i = 0; i < count; i++)
         {
             var reading = ValidReading(deviceId, (i % 4) + 1);
-            readings.Add(reading with 
-            { 
+            readings.Add(reading with
+            {
                 Timestamp = baseTime.AddMinutes(i),
                 RawValue = 1000 + (i * 100L), // Incremental values for rate calculation
                 ProcessedValue = 1000 + (i * 100)
@@ -329,12 +329,12 @@ public static class TestData
     public static List<AdamDataReading> MultiDeviceReadings(IEnumerable<string> deviceIds, int readingsPerDevice = 5)
     {
         var allReadings = new List<AdamDataReading>();
-        
+
         foreach (var deviceId in deviceIds)
         {
             allReadings.AddRange(ValidReadings(readingsPerDevice, deviceId));
         }
-        
+
         return allReadings.OrderBy(r => r.Timestamp).ToList();
     }
 

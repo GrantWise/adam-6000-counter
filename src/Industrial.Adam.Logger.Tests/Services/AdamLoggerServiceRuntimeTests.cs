@@ -1,6 +1,7 @@
 // Industrial.Adam.Logger.Tests - Runtime Device Management Tests
 // Unit tests for runtime device addition, removal, and configuration updates
 
+using System.Reactive.Linq;
 using FluentAssertions;
 using Industrial.Adam.Logger.Configuration;
 using Industrial.Adam.Logger.Extensions;
@@ -12,7 +13,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using System.Reactive.Linq;
 using Xunit;
 
 namespace Industrial.Adam.Logger.Tests.Services;
@@ -28,14 +28,14 @@ public class AdamLoggerServiceRuntimeTests : IDisposable
     public AdamLoggerServiceRuntimeTests()
     {
         var services = new ServiceCollection();
-        
+
         // Add logging services required by ADAM Logger
-        services.AddLogging(builder => 
+        services.AddLogging(builder =>
         {
             builder.SetMinimumLevel(LogLevel.Warning);
             // Don't add console logging to avoid noise in tests
         });
-        
+
         // Add ADAM Logger with empty device list for runtime testing
         services.AddAdamLogger(config =>
         {
@@ -353,7 +353,7 @@ public class AdamLoggerServiceRuntimeTests : IDisposable
         // Assert
         var remainingHealth = await _service.GetAllDeviceHealthAsync();
         remainingHealth.Should().HaveCount(5);
-        
+
         // Verify remaining devices are the last 5
         for (int i = 6; i <= 10; i++)
         {
@@ -367,7 +367,7 @@ public class AdamLoggerServiceRuntimeTests : IDisposable
         // Arrange
         var device1 = TestConfigurationBuilder.ValidDeviceConfig("MIXED_OP_DEVICE_001");
         var device2 = TestConfigurationBuilder.ValidDeviceConfig("MIXED_OP_DEVICE_002");
-        
+
         await _service.AddDeviceAsync(device1);
         await _service.AddDeviceAsync(device2);
 
@@ -407,16 +407,16 @@ public class AdamLoggerServiceRuntimeTests : IDisposable
         // Act
         await _service.AddDeviceAsync(deviceConfig);
         await Task.Delay(10); // Small delay to ensure event processing
-        
+
         await _service.RemoveDeviceAsync("STREAM_DEVICE");
         await Task.Delay(10); // Small delay to ensure event processing
 
         // Assert
         healthUpdates.Should().HaveCountGreaterOrEqualTo(2);
-        
+
         var addUpdate = healthUpdates.First(h => h.DeviceId == "STREAM_DEVICE");
         addUpdate.Status.Should().Be(DeviceStatus.Unknown);
-        
+
         var removeUpdate = healthUpdates.Last(h => h.DeviceId == "STREAM_DEVICE");
         removeUpdate.Status.Should().Be(DeviceStatus.Offline);
 
@@ -429,7 +429,7 @@ public class AdamLoggerServiceRuntimeTests : IDisposable
         // Arrange
         var healthUpdates = new List<AdamDeviceHealth>();
         var subscription = _service.HealthStream.Subscribe(healthUpdates.Add);
-        
+
         var originalConfig = TestConfigurationBuilder.ValidDeviceConfig("UPDATE_STREAM_DEVICE");
         await _service.AddDeviceAsync(originalConfig);
 

@@ -1,10 +1,10 @@
 // Industrial.Adam.Logger.Tests - AdamLoggerConfig Validation Tests
 // Comprehensive tests for logger configuration validation (18 tests as per TESTING_PLAN.md)
 
+using System.ComponentModel.DataAnnotations;
 using FluentAssertions;
 using Industrial.Adam.Logger.Configuration;
 using Industrial.Adam.Logger.Tests.TestHelpers;
-using System.ComponentModel.DataAnnotations;
 using Xunit;
 
 namespace Industrial.Adam.Logger.Tests.Configuration;
@@ -85,11 +85,11 @@ public class AdamLoggerConfigTests
         // Note: The current implementation may not validate empty collections via [Required] attribute
         // This test documents the current behavior. In production, additional validation logic
         // should be added to the ValidateConfiguration method to check for empty device collections.
-        
+
         // For now, we'll check if there are any validation results
         // The empty devices collection should ideally be caught by custom validation logic
         var hasAnyValidation = validationResults.Any();
-        
+
         // If no validation errors, then the current implementation allows empty devices
         // This test serves as documentation that this case needs to be handled
         if (!hasAnyValidation)
@@ -100,10 +100,10 @@ public class AdamLoggerConfigTests
         else
         {
             // If there are validation errors, verify they're device-related
-            var hasDeviceError = validationResults.Any(r => 
+            var hasDeviceError = validationResults.Any(r =>
                 r.MemberNames.Contains(nameof(AdamLoggerConfig.Devices)) ||
                 r.ErrorMessage!.Contains("device", StringComparison.OrdinalIgnoreCase));
-            
+
             hasDeviceError.Should().BeTrue("Should have a validation error related to devices");
         }
     }
@@ -119,7 +119,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamLoggerConfig.Devices)) &&
             r.ErrorMessage!.Contains("Duplicate device IDs"));
     }
@@ -139,7 +139,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamLoggerConfig.PollIntervalMs)) &&
             r.ErrorMessage!.Contains("between 100ms and 5 minutes"));
     }
@@ -155,7 +155,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamLoggerConfig.HealthCheckIntervalMs)) &&
             r.ErrorMessage!.Contains("between 5 seconds and 5 minutes"));
     }
@@ -175,7 +175,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamLoggerConfig.MaxConcurrentDevices)) &&
             r.ErrorMessage!.Contains("between 1 and 50"));
     }
@@ -191,7 +191,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamLoggerConfig.DataBufferSize)) &&
             r.ErrorMessage!.Contains("between 100 and 100,000"));
     }
@@ -207,7 +207,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamLoggerConfig.BatchSize)) &&
             r.ErrorMessage!.Contains("between 1 and 1,000"));
     }
@@ -223,7 +223,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamLoggerConfig.BatchTimeoutMs)) &&
             r.ErrorMessage!.Contains("between 100ms and 30 seconds"));
     }
@@ -243,7 +243,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamLoggerConfig.MaxConsecutiveFailures)) &&
             r.ErrorMessage!.Contains("between 1 and 100"));
     }
@@ -259,7 +259,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.MemberNames.Contains(nameof(AdamLoggerConfig.DeviceTimeoutMinutes)) &&
             r.ErrorMessage!.Contains("between 1 and 60 minutes"));
     }
@@ -279,7 +279,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.ErrorMessage!.Contains("exceeds MaxConcurrentDevices") &&
             r.ErrorMessage!.Contains("may impact performance"));
     }
@@ -295,7 +295,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.ErrorMessage!.Contains("Polling interval") &&
             r.ErrorMessage!.Contains("may be too short"));
     }
@@ -316,7 +316,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.ErrorMessage!.Contains("Device") &&
             r.ErrorMessage!.Contains("DeviceId"));
     }
@@ -333,7 +333,7 @@ public class AdamLoggerConfigTests
 
         // Assert
         validationResults.Should().NotBeEmpty();
-        validationResults.Should().Contain(r => 
+        validationResults.Should().Contain(r =>
             r.ErrorMessage!.Contains("Channel") &&
             r.ErrorMessage!.Contains("name"));
     }
@@ -356,11 +356,11 @@ public class AdamLoggerConfigTests
         validationResults.Should().HaveCountGreaterOrEqualTo(2); // At least the two explicit validation errors
         validationResults.Should().Contain(r => r.ErrorMessage!.Contains("PollIntervalMs"));
         validationResults.Should().Contain(r => r.ErrorMessage!.Contains("MaxConcurrentDevices"));
-        
+
         // Check if there's any device-related error (may or may not be present depending on validation logic)
-        var hasDeviceError = validationResults.Any(r => 
+        var hasDeviceError = validationResults.Any(r =>
             r.ErrorMessage!.Contains("device", StringComparison.OrdinalIgnoreCase));
-        
+
         // We expect at least 2 errors, possibly 3 if device validation is triggered
         validationResults.Should().HaveCountGreaterOrEqualTo(2);
     }
