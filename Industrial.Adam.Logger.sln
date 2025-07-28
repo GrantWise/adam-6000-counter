@@ -22,6 +22,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Core
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Core.Tests", "src\Industrial.Adam.Logger.Core.Tests\Industrial.Adam.Logger.Core.Tests.csproj", "{B631BDEC-38CC-4340-A30C-6B71A55756D6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Console", "src\Industrial.Adam.Logger.Console\Industrial.Adam.Logger.Console.csproj", "{C631BDEC-48CC-4440-B30C-7B71A55756D7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -56,6 +58,10 @@ Global
 		{B631BDEC-38CC-4340-A30C-6B71A55756D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B631BDEC-38CC-4340-A30C-6B71A55756D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B631BDEC-38CC-4340-A30C-6B71A55756D6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C631BDEC-48CC-4440-B30C-7B71A55756D7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C631BDEC-48CC-4440-B30C-7B71A55756D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C631BDEC-48CC-4440-B30C-7B71A55756D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C631BDEC-48CC-4440-B30C-7B71A55756D7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
@@ -65,5 +71,6 @@ Global
 		{9631BDEC-18CC-4140-830C-4B71A55756D4} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
 		{A631BDEC-28CC-4240-930C-5B71A55756D5} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
 		{B631BDEC-38CC-4340-A30C-6B71A55756D6} = {F1G2H3I4-J5K6-7890-F123-456789012345}
+		{C631BDEC-48CC-4440-B30C-7B71A55756D7} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
 	EndGlobalSection
 EndGlobal

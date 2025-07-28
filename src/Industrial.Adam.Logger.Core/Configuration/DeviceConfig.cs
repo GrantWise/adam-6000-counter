@@ -16,6 +16,17 @@ public class DeviceConfig
     public string DeviceId { get; set; } = string.Empty;
     
     /// <summary>
+    /// Human-readable name for the device
+    /// </summary>
+    [StringLength(100, ErrorMessage = "Name must be 100 characters or less")]
+    public string Name { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Whether this device is enabled for monitoring
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+    
+    /// <summary>
     /// IP address of the ADAM device
     /// </summary>
     [Required(ErrorMessage = "IP Address is required")]
