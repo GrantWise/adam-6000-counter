@@ -56,6 +56,23 @@ public class InfluxDbSettings
     public int TimeoutSeconds { get; set; } = 30;
     
     /// <summary>
+    /// Measurement name in InfluxDB
+    /// </summary>
+    [Required(ErrorMessage = "MeasurementName is required")]
+    public string MeasurementName { get; set; } = "counter_data";
+    
+    /// <summary>
+    /// Flush interval in milliseconds for batch writes
+    /// </summary>
+    [Range(100, 60000, ErrorMessage = "FlushIntervalMs must be between 100ms and 60 seconds")]
+    public int FlushIntervalMs { get; set; } = 5000;
+    
+    /// <summary>
+    /// Additional tags to add to all measurements
+    /// </summary>
+    public Dictionary<string, string>? Tags { get; set; }
+    
+    /// <summary>
     /// Validate InfluxDB settings
     /// </summary>
     public ValidationResult Validate()

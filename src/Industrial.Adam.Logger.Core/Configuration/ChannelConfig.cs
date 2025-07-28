@@ -69,6 +69,11 @@ public class ChannelConfig
     public double? HighRateThreshold { get; set; }
     
     /// <summary>
+    /// Maximum allowed change rate (units per second)
+    /// </summary>
+    public double? MaxChangeRate { get; set; }
+    
+    /// <summary>
     /// Additional tags for this channel
     /// </summary>
     public Dictionary<string, string> Tags { get; set; } = new();
