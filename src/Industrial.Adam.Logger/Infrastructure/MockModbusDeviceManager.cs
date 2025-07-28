@@ -1,9 +1,9 @@
 // Industrial.Adam.Logger - Mock Modbus Device Manager for Demo Mode
 // Simulates ADAM device communication with realistic counter data
 
+using System.Diagnostics;
 using Industrial.Adam.Logger.Configuration;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 
 namespace Industrial.Adam.Logger.Infrastructure;
 
@@ -31,7 +31,7 @@ internal class MockModbusDeviceManager : IModbusDeviceManager
         _random = new Random();
         _counter = (uint)_random.Next(1000, 10000); // Start with random counter value
         _lastUpdate = DateTime.UtcNow;
-        
+
         _logger.LogInformation("Mock Modbus device manager created for {DeviceId}", DeviceId);
     }
 
@@ -42,7 +42,7 @@ internal class MockModbusDeviceManager : IModbusDeviceManager
 
         // Simulate connection delay
         await Task.Delay(100, cancellationToken);
-        
+
         IsConnected = true;
         _logger.LogInformation("Mock connection established to device {DeviceId}", DeviceId);
         return true;
@@ -73,7 +73,7 @@ internal class MockModbusDeviceManager : IModbusDeviceManager
             // Update counter based on time elapsed (simulate production counting)
             var now = DateTime.UtcNow;
             var elapsed = now - _lastUpdate;
-            
+
             // Simulate production rate: 1-5 counts per second on average
             var expectedCounts = (int)(elapsed.TotalSeconds * _random.NextDouble() * 5);
             _counter += (uint)Math.Max(0, expectedCounts);
@@ -86,8 +86,8 @@ internal class MockModbusDeviceManager : IModbusDeviceManager
                 // Low word in register 0, high word in register 1 (typical ADAM-6051 format)
                 data[0] = (ushort)(_counter & 0xFFFF);        // Low 16 bits
                 data[1] = (ushort)((_counter >> 16) & 0xFFFF); // High 16 bits
-                
-                _logger.LogDebug("Mock device {DeviceId} generated counter value: {Counter} (Low: {Low}, High: {High})", 
+
+                _logger.LogDebug("Mock device {DeviceId} generated counter value: {Counter} (Low: {Low}, High: {High})",
                     DeviceId, _counter, data[0], data[1]);
             }
             else
@@ -117,7 +117,7 @@ internal class MockModbusDeviceManager : IModbusDeviceManager
 
         // Simulate connection test delay
         Task.Delay(50, cancellationToken);
-        
+
         // Mock connection is always successful unless disposed
         return Task.FromResult(IsConnected);
     }
@@ -129,7 +129,7 @@ internal class MockModbusDeviceManager : IModbusDeviceManager
 
         _disposed = true;
         IsConnected = false;
-        
+
         _logger.LogInformation("Mock Modbus device manager disposed for {DeviceId}", DeviceId);
     }
 }

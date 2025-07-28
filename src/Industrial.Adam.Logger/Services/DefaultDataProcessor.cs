@@ -45,16 +45,16 @@ public class DefaultDataProcessor : IDataProcessor
     /// <param name="acquisitionTime">Time taken to acquire the data from the device</param>
     /// <returns>Processed data reading with quality assessment and transformed values</returns>
     public AdamDataReading ProcessRawData(
-        string deviceId, 
-        ChannelConfig channel, 
-        ushort[] registers, 
+        string deviceId,
+        ChannelConfig channel,
+        ushort[] registers,
         DateTimeOffset timestamp,
         TimeSpan acquisitionTime)
     {
         try
         {
             // Convert registers to 32-bit value (assuming little-endian)
-            long rawValue = registers.Length >= Constants.CounterRegisterCount 
+            long rawValue = registers.Length >= Constants.CounterRegisterCount
                 ? ((long)registers[1] << Constants.ModbusRegisterBits) | registers[0]
                 : registers[0];
 
@@ -95,7 +95,7 @@ public class DefaultDataProcessor : IDataProcessor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing data for device {DeviceId}, channel {Channel}", 
+            _logger.LogError(ex, "Error processing data for device {DeviceId}, channel {Channel}",
                 deviceId, channel.ChannelNumber);
 
             return new AdamDataReading
@@ -131,7 +131,7 @@ public class DefaultDataProcessor : IDataProcessor
             _rateHistory[deviceId][channelNumber] = new List<(DateTimeOffset, long)>();
 
         var history = _rateHistory[deviceId][channelNumber];
-        
+
         // Add current reading to history
         history.Add((timestamp, currentValue));
 
@@ -171,15 +171,15 @@ public class DefaultDataProcessor : IDataProcessor
     /// <returns>Quality assessment indicating whether the data is valid</returns>
     public DataQuality ValidateReading(ChannelConfig channel, long rawValue, double? rate)
     {
-        var tempReading = new AdamDataReading 
-        { 
-            DeviceId = "", 
-            Channel = channel.ChannelNumber, 
-            RawValue = rawValue, 
+        var tempReading = new AdamDataReading
+        {
+            DeviceId = "",
+            Channel = channel.ChannelNumber,
+            RawValue = rawValue,
             Rate = rate,
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         return _validator.ValidateReading(tempReading, channel);
     }
 }

@@ -1,12 +1,12 @@
 // Industrial.Adam.Logger - InfluxDB Data Processor
 // Data processor that writes to InfluxDB
 
+using System.Collections.Concurrent;
 using Industrial.Adam.Logger.Configuration;
 using Industrial.Adam.Logger.Interfaces;
 using Industrial.Adam.Logger.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Collections.Concurrent;
 
 namespace Industrial.Adam.Logger.Services;
 
@@ -31,7 +31,7 @@ public class InfluxDbDataProcessor : IDataProcessor
         IOptions<AdamLoggerConfig> config,
         ILogger<InfluxDbDataProcessor> logger)
     {
-        var baseLogger = logger as ILogger<DefaultDataProcessor> ?? 
+        var baseLogger = logger as ILogger<DefaultDataProcessor> ??
             Microsoft.Extensions.Logging.LoggerFactoryExtensions.CreateLogger<DefaultDataProcessor>(
                 Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
         _baseProcessor = new DefaultDataProcessor(validator, transformer, baseLogger);
@@ -46,28 +46,28 @@ public class InfluxDbDataProcessor : IDataProcessor
         {
             var batchInterval = TimeSpan.FromMilliseconds(_config.InfluxDb.FlushIntervalMs);
             _batchTimer = new Timer(ProcessBatch, null, batchInterval, batchInterval);
-            _logger.LogInformation("InfluxDB data processor initialized with batch interval: {Interval}ms", 
+            _logger.LogInformation("InfluxDB data processor initialized with batch interval: {Interval}ms",
                 _config.InfluxDb.FlushIntervalMs);
         }
     }
 
     /// <inheritdoc/>
     public AdamDataReading ProcessRawData(
-        string deviceId, 
-        ChannelConfig channel, 
-        ushort[] registers, 
+        string deviceId,
+        ChannelConfig channel,
+        ushort[] registers,
         DateTimeOffset timestamp,
         TimeSpan acquisitionTime)
     {
         // Use the base processor for all the heavy lifting
         var reading = _baseProcessor.ProcessRawData(deviceId, channel, registers, timestamp, acquisitionTime);
-        
+
         // Queue for InfluxDB writing if configured and data quality is good
         if (_config.InfluxDb != null && reading.Quality == DataQuality.Good)
         {
             _processingQueue.Enqueue(reading);
         }
-        
+
         return reading;
     }
 
@@ -93,7 +93,7 @@ public class InfluxDbDataProcessor : IDataProcessor
         {
             var batch = new List<AdamDataReading>();
             var batchSize = _config.InfluxDb.WriteBatchSize;
-            
+
             // Collect readings for batch
             while (batch.Count < batchSize && _processingQueue.TryDequeue(out var reading))
             {
@@ -110,7 +110,7 @@ public class InfluxDbDataProcessor : IDataProcessor
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to write batch of {Count} readings to InfluxDB", batch.Count);
-                    
+
                     // Re-queue failed readings for retry (up to a limit to prevent memory issues)
                     if (_processingQueue.Count < 10000) // Prevent unbounded growth
                     {
@@ -142,7 +142,7 @@ public class InfluxDbDataProcessor : IDataProcessor
         try
         {
             var batch = new List<AdamDataReading>();
-            
+
             // Collect all remaining readings
             while (_processingQueue.TryDequeue(out var reading))
             {
@@ -175,15 +175,13 @@ public class InfluxDbDataProcessor : IDataProcessor
         if (_disposed)
             return;
 
-        _disposed = true;
-
         try
         {
             _batchTimer?.Dispose();
-            
-            // Flush any remaining data
+
+            // Flush any remaining data before marking as disposed
             FlushAsync().Wait(TimeSpan.FromSeconds(10));
-            
+
             _batchSemaphore?.Dispose();
         }
         catch (Exception ex)
@@ -191,6 +189,7 @@ public class InfluxDbDataProcessor : IDataProcessor
             _logger.LogError(ex, "Error disposing InfluxDB data processor");
         }
 
+        _disposed = true;
         _logger.LogInformation("InfluxDB data processor disposed");
     }
 }

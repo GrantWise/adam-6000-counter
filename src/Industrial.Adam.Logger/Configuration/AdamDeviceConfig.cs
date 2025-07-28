@@ -150,7 +150,7 @@ public class AdamDeviceConfig : IValidatableObject
             {
                 MemberName = $"{nameof(Channels)}[{channel.index}]"
             };
-            
+
             var channelResults = new List<ValidationResult>();
             if (!Validator.TryValidateObject(channel.value, channelValidationContext, channelResults, true))
             {

@@ -142,7 +142,8 @@ public readonly struct OperationResult<T>
     /// <returns>New operation result with transformed value or the original failure</returns>
     public OperationResult<TNew> Map<TNew>(Func<T, TNew> transform)
     {
-        if (transform == null) throw new ArgumentNullException(nameof(transform));
+        if (transform == null)
+            throw new ArgumentNullException(nameof(transform));
 
         if (IsFailure)
         {
@@ -169,7 +170,8 @@ public readonly struct OperationResult<T>
     /// <returns>The original operation result</returns>
     public OperationResult<T> OnSuccess(Action<T> action)
     {
-        if (action == null) throw new ArgumentNullException(nameof(action));
+        if (action == null)
+            throw new ArgumentNullException(nameof(action));
 
         if (IsSuccess)
         {
@@ -186,7 +188,8 @@ public readonly struct OperationResult<T>
     /// <returns>The original operation result</returns>
     public OperationResult<T> OnFailure(Action<string> action)
     {
-        if (action == null) throw new ArgumentNullException(nameof(action));
+        if (action == null)
+            throw new ArgumentNullException(nameof(action));
 
         if (IsFailure)
         {
@@ -212,7 +215,7 @@ public readonly struct OperationResult<T>
     {
         if (IsSuccess)
             return $"Success: {_value} (Duration: {Duration.TotalMilliseconds:F2}ms)";
-        
+
         return $"Failure: {ErrorMessage} (Duration: {Duration.TotalMilliseconds:F2}ms)";
     }
 }
@@ -336,7 +339,7 @@ public readonly struct OperationResult
     {
         if (IsSuccess)
             return $"Success (Duration: {Duration.TotalMilliseconds:F2}ms)";
-        
+
         return $"Failure: {ErrorMessage} (Duration: {Duration.TotalMilliseconds:F2}ms)";
     }
 }

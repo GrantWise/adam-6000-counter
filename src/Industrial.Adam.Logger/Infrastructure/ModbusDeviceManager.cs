@@ -92,14 +92,14 @@ internal class ModbusDeviceManager : IModbusDeviceManager
             _modbusMaster.Transport.Retries = Math.Max(0, _config.MaxRetries);
 
             _isConnected = true;
-            _logger.LogInformation("Connected to ADAM device {DeviceId} at {IpAddress}:{Port}", 
+            _logger.LogInformation("Connected to ADAM device {DeviceId} at {IpAddress}:{Port}",
                 _config.DeviceId, _config.IpAddress, _config.Port);
-            
+
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to connect to ADAM device {DeviceId} at {IpAddress}:{Port}", 
+            _logger.LogWarning(ex, "Failed to connect to ADAM device {DeviceId} at {IpAddress}:{Port}",
                 _config.DeviceId, _config.IpAddress, _config.Port);
             _isConnected = false;
             Disconnect(); // Clean up partial connection
@@ -124,12 +124,12 @@ internal class ModbusDeviceManager : IModbusDeviceManager
         if (!_isConnected && !await ConnectAsync(cancellationToken))
         {
             return ModbusReadResult.CreateFailure(
-                new InvalidOperationException("Device not connected"), 
+                new InvalidOperationException("Device not connected"),
                 TimeSpan.Zero);
         }
 
         var stopwatch = Stopwatch.StartNew();
-        
+
         // Attempt the read operation with retry logic
         for (int attempt = 0; attempt <= _config.MaxRetries; attempt++)
         {
@@ -139,15 +139,15 @@ internal class ModbusDeviceManager : IModbusDeviceManager
                     throw new InvalidOperationException("Modbus master not initialized");
 
                 // Perform the Modbus read operation
-                var registers = await Task.Run(() => 
-                    _modbusMaster.ReadHoldingRegisters(_config.UnitId, startAddress, count), 
+                var registers = await Task.Run(() =>
+                    _modbusMaster.ReadHoldingRegisters(_config.UnitId, startAddress, count),
                     cancellationToken);
 
                 return ModbusReadResult.CreateSuccess(registers, stopwatch.Elapsed);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Modbus read attempt {Attempt} failed for device {DeviceId}", 
+                _logger.LogWarning(ex, "Modbus read attempt {Attempt} failed for device {DeviceId}",
                     attempt + 1, _config.DeviceId);
 
                 // If we have more attempts, try to reconnect and retry
@@ -167,7 +167,7 @@ internal class ModbusDeviceManager : IModbusDeviceManager
 
         // Fallback (should not reach here)
         return ModbusReadResult.CreateFailure(
-            new TimeoutException("Max retries exceeded"), 
+            new TimeoutException("Max retries exceeded"),
             stopwatch.Elapsed);
     }
 

@@ -9,11 +9,11 @@ using Industrial.Adam.Logger.Configuration;
 using Industrial.Adam.Logger.Infrastructure;
 using Industrial.Adam.Logger.Interfaces;
 using Industrial.Adam.Logger.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Industrial.Adam.Logger.Services;
 
@@ -30,10 +30,10 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
 
     private readonly ConcurrentDictionary<string, IModbusDeviceManager> _deviceManagers = new();
     private readonly ConcurrentDictionary<string, AdamDeviceHealth> _deviceHealth = new();
-    
+
     private readonly Subject<AdamDataReading> _dataSubject = new();
     private readonly Subject<AdamDeviceHealth> _healthSubject = new();
-    
+
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly SemaphoreSlim _deviceManagementSemaphore = new(1, 1);
     private Task? _acquisitionTask;
@@ -81,7 +81,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
     private void ValidateConfiguration()
     {
         var validationResults = _config.ValidateConfiguration();
-        
+
         if (validationResults.Any())
         {
             var errors = string.Join(Environment.NewLine, validationResults.Select(r => $"- {r.ErrorMessage}"));
@@ -105,7 +105,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
         foreach (var deviceConfig in _config.Devices)
         {
             IModbusDeviceManager manager;
-            
+
             if (_config.DemoMode)
             {
                 var mockLogger = _serviceProvider.GetRequiredService<ILogger<MockModbusDeviceManager>>();
@@ -118,7 +118,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
                 manager = new ModbusDeviceManager(deviceConfig, deviceLogger);
                 _logger.LogInformation("Created Modbus device manager for {DeviceId}", deviceConfig.DeviceId);
             }
-            
+
             _deviceManagers[deviceConfig.DeviceId] = manager;
 
             // Initialize health status
@@ -226,7 +226,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
             }
             else
             {
-                _logger.LogWarning("Data acquisition took {ElapsedMs}ms, longer than interval {IntervalMs}ms", 
+                _logger.LogWarning("Data acquisition took {ElapsedMs}ms, longer than interval {IntervalMs}ms",
                     elapsed.TotalMilliseconds, _config.PollIntervalMs);
             }
         }
@@ -248,17 +248,17 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
             try
             {
                 var result = await manager.ReadRegistersAsync(
-                    channel.StartRegister, 
-                    (ushort)channel.RegisterCount, 
+                    channel.StartRegister,
+                    (ushort)channel.RegisterCount,
                     cancellationToken);
 
                 if (result.Success && result.Data != null)
                 {
                     var reading = _dataProcessor.ProcessRawData(
-                        deviceConfig.DeviceId, 
-                        channel, 
-                        result.Data, 
-                        timestamp, 
+                        deviceConfig.DeviceId,
+                        channel,
+                        result.Data,
+                        timestamp,
                         result.Duration);
 
                     _dataSubject.OnNext(reading);
@@ -266,14 +266,14 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to read channel {Channel} from device {DeviceId}: {Error}", 
+                    _logger.LogWarning("Failed to read channel {Channel} from device {DeviceId}: {Error}",
                         channel.ChannelNumber, deviceConfig.DeviceId, result.Error?.Message);
                     UpdateDeviceHealth(deviceConfig.DeviceId, false, result.Error?.Message);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error reading channel {Channel} from device {DeviceId}", 
+                _logger.LogError(ex, "Error reading channel {Channel} from device {DeviceId}",
                     channel.ChannelNumber, deviceConfig.DeviceId);
                 UpdateDeviceHealth(deviceConfig.DeviceId, false, ex.Message);
             }
@@ -399,7 +399,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
 
             // Create device manager using the same pattern as startup
             IModbusDeviceManager deviceManager;
-            
+
             if (_config.DemoMode)
             {
                 var mockLogger = _serviceProvider.GetRequiredService<ILogger<MockModbusDeviceManager>>();
@@ -410,7 +410,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
                 var deviceLogger = _serviceProvider.GetRequiredService<ILogger<ModbusDeviceManager>>();
                 deviceManager = new ModbusDeviceManager(deviceConfig, deviceLogger);
             }
-            
+
             // Add to device collections
             if (_deviceManagers.TryAdd(deviceConfig.DeviceId, deviceManager))
             {
@@ -473,7 +473,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Error disposing device manager for {DeviceId}: {Message}", 
+                    _logger.LogWarning(ex, "Error disposing device manager for {DeviceId}: {Message}",
                         deviceId, ex.Message);
                 }
             }
@@ -486,13 +486,13 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
             if (_deviceHealth.TryRemove(deviceId, out var finalHealth))
             {
                 // Emit final health update indicating removal
-                var removalHealth = finalHealth with 
-                { 
+                var removalHealth = finalHealth with
+                {
                     Status = DeviceStatus.Offline,
                     IsConnected = false,
                     Timestamp = DateTimeOffset.UtcNow
                 };
-                
+
                 _healthSubject.OnNext(removalHealth);
                 _logger.LogInformation("Successfully removed device {DeviceId}", deviceId);
             }
@@ -571,7 +571,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error disposing device manager for {DeviceId}: {Message}", 
+                _logger.LogWarning(ex, "Error disposing device manager for {DeviceId}: {Message}",
                     deviceId, ex.Message);
             }
         }
@@ -581,13 +581,13 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
         {
             if (!preserveStats)
             {
-                var removalHealth = finalHealth with 
-                { 
+                var removalHealth = finalHealth with
+                {
                     Status = DeviceStatus.Offline,
                     IsConnected = false,
                     Timestamp = DateTimeOffset.UtcNow
                 };
-                
+
                 _healthSubject.OnNext(removalHealth);
             }
         }
@@ -604,7 +604,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
     {
         // Create device manager using the same pattern as startup
         IModbusDeviceManager deviceManager;
-        
+
         if (_config.DemoMode)
         {
             var mockLogger = _serviceProvider.GetRequiredService<ILogger<MockModbusDeviceManager>>();
@@ -615,7 +615,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
             var deviceLogger = _serviceProvider.GetRequiredService<ILogger<ModbusDeviceManager>>();
             deviceManager = new ModbusDeviceManager(deviceConfig, deviceLogger);
         }
-        
+
         // Add to device collections
         if (_deviceManagers.TryAdd(deviceConfig.DeviceId, deviceManager))
         {
@@ -700,7 +700,7 @@ public class AdamLoggerService : IAdamLoggerService, IHostedService, IHealthChec
         {
             // CancellationTokenSource already disposed
         }
-        
+
         foreach (var manager in _deviceManagers.Values)
         {
             try

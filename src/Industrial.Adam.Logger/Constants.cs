@@ -227,6 +227,55 @@ namespace Industrial.Adam.Logger
 
         #endregion
 
+        #region Performance Optimization Constants
+
+        /// <summary>
+        /// Default number of data points to keep for rate calculation in circular buffer
+        /// </summary>
+        public const int DefaultRateCalculationPoints = 120;
+
+        /// <summary>
+        /// Default memory pool size for high-frequency operations
+        /// </summary>
+        public const int DefaultMemoryPoolSize = 1000;
+
+        /// <summary>
+        /// Default network connection pool size per device
+        /// </summary>
+        public const int DefaultConnectionPoolSize = 5;
+
+        /// <summary>
+        /// Default vectorization batch size for parallel processing
+        /// </summary>
+        public const int DefaultVectorizationBatchSize = 64;
+
+        /// <summary>
+        /// Default maximum memory usage in MB before triggering optimization
+        /// </summary>
+        public const int DefaultMaxMemoryUsageMB = 500;
+
+        /// <summary>
+        /// Default cleanup interval in minutes for memory management
+        /// </summary>
+        public const int DefaultCleanupIntervalMinutes = 30;
+
+        /// <summary>
+        /// Default network latency threshold in milliseconds for optimization
+        /// </summary>
+        public const double DefaultNetworkLatencyThresholdMs = 100.0;
+
+        /// <summary>
+        /// Default CPU usage threshold percentage for performance alerts
+        /// </summary>
+        public const double DefaultCpuUsageThresholdPercent = 80.0;
+
+        /// <summary>
+        /// Default memory usage threshold percentage for performance alerts
+        /// </summary>
+        public const double DefaultMemoryUsageThresholdPercent = 85.0;
+
+        #endregion
+
         #region String Format Constants
 
         /// <summary>

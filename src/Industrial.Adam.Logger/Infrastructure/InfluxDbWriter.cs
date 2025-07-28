@@ -1,6 +1,7 @@
 // Industrial.Adam.Logger - InfluxDB Writer Implementation
 // Implementation for writing ADAM data to InfluxDB
 
+using System.Collections.Concurrent;
 using Industrial.Adam.Logger.Configuration;
 using Industrial.Adam.Logger.Interfaces;
 using Industrial.Adam.Logger.Models;
@@ -11,7 +12,6 @@ using InfluxDB.Client.Core.Exceptions;
 using InfluxDB.Client.Writes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Collections.Concurrent;
 
 namespace Industrial.Adam.Logger.Infrastructure;
 
@@ -62,11 +62,11 @@ public class InfluxDbWriter : IInfluxDbWriter
         _writeSemaphore = new SemaphoreSlim(1, 1);
 
         // Start flush timer
-        _flushTimer = new Timer(FlushPendingWrites, null, 
+        _flushTimer = new Timer(FlushPendingWrites, null,
             TimeSpan.FromMilliseconds(_config.FlushIntervalMs),
             TimeSpan.FromMilliseconds(_config.FlushIntervalMs));
 
-        _logger.LogInformation("InfluxDB writer initialized for {Url} -> {Bucket}", 
+        _logger.LogInformation("InfluxDB writer initialized for {Url} -> {Bucket}",
             _config.Url, _config.Bucket);
     }
 
@@ -79,14 +79,14 @@ public class InfluxDbWriter : IInfluxDbWriter
         try
         {
             var point = CreateDataPoint(reading);
-            
+
             if (_config.EnableDebugLogging)
             {
-                _logger.LogDebug("Writing data point: {DeviceId} Ch{Channel} = {Value}", 
+                _logger.LogDebug("Writing data point: {DeviceId} Ch{Channel} = {Value}",
                     reading.DeviceId, reading.Channel, reading.ProcessedValue);
             }
 
-            var retryPolicy = _retryService.CreateNetworkRetryPolicy(_config.MaxRetryAttempts, 
+            var retryPolicy = _retryService.CreateNetworkRetryPolicy(_config.MaxRetryAttempts,
                 TimeSpan.FromMilliseconds(_config.RetryDelayMs));
             await _retryService.ExecuteAsync(async (ct) =>
             {
@@ -95,7 +95,7 @@ public class InfluxDbWriter : IInfluxDbWriter
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to write data point to InfluxDB: {DeviceId} Ch{Channel}", 
+            _logger.LogError(ex, "Failed to write data point to InfluxDB: {DeviceId} Ch{Channel}",
                 reading.DeviceId, reading.Channel);
             throw;
         }
@@ -114,13 +114,13 @@ public class InfluxDbWriter : IInfluxDbWriter
         try
         {
             var points = readingsList.Select(CreateDataPoint).ToList();
-            
+
             if (_config.EnableDebugLogging)
             {
                 _logger.LogDebug("Writing batch of {Count} data points to InfluxDB", points.Count);
             }
 
-            var retryPolicy = _retryService.CreateNetworkRetryPolicy(_config.MaxRetryAttempts, 
+            var retryPolicy = _retryService.CreateNetworkRetryPolicy(_config.MaxRetryAttempts,
                 TimeSpan.FromMilliseconds(_config.RetryDelayMs));
             await _retryService.ExecuteAsync(async (ct) =>
             {
@@ -235,10 +235,10 @@ public class InfluxDbWriter : IInfluxDbWriter
         try
         {
             _flushTimer?.Dispose();
-            
+
             // Flush any remaining writes
             FlushAsync().Wait(TimeSpan.FromSeconds(10));
-            
+
             // WriteApiAsync doesn't implement IDisposable directly
             _client?.Dispose();
             _writeSemaphore?.Dispose();

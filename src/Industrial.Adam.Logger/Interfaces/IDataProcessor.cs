@@ -22,10 +22,10 @@ public interface IDataProcessor
     /// <param name="acquisitionTime">Time taken to acquire the data from the device</param>
     /// <returns>Processed data reading with quality assessment and transformed values</returns>
     AdamDataReading ProcessRawData(
-        string deviceId, 
-        ChannelConfig channel, 
-        ushort[] registers, 
-        DateTimeOffset timestamp, 
+        string deviceId,
+        ChannelConfig channel,
+        ushort[] registers,
+        DateTimeOffset timestamp,
         TimeSpan acquisitionTime);
 
     /// <summary>
@@ -101,7 +101,7 @@ public interface IDataTransformer
     /// <param name="channelConfig">Channel configuration for specific metadata</param>
     /// <returns>Enriched tags dictionary with additional metadata</returns>
     Dictionary<string, object> EnrichTags(
-        Dictionary<string, object> baseTags, 
-        AdamDeviceConfig deviceConfig, 
+        Dictionary<string, object> baseTags,
+        AdamDeviceConfig deviceConfig,
         ChannelConfig channelConfig);
 }

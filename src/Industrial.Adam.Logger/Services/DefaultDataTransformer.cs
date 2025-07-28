@@ -21,7 +21,7 @@ public class DefaultDataTransformer : IDataTransformer
     {
         // Apply scaling and offset transformation
         var scaled = rawValue * channelConfig.ScaleFactor + channelConfig.Offset;
-        
+
         // Round to the specified number of decimal places
         return Math.Round(scaled, channelConfig.DecimalPlaces);
     }
@@ -34,16 +34,16 @@ public class DefaultDataTransformer : IDataTransformer
     /// <param name="channelConfig">Channel configuration for specific metadata</param>
     /// <returns>Enriched tags dictionary with additional metadata</returns>
     public Dictionary<string, object> EnrichTags(
-        Dictionary<string, object> baseTags, 
-        AdamDeviceConfig deviceConfig, 
+        Dictionary<string, object> baseTags,
+        AdamDeviceConfig deviceConfig,
         ChannelConfig channelConfig)
     {
         var enrichedTags = new Dictionary<string, object>(baseTags);
-        
+
         // Add channel metadata
         enrichedTags[StandardTags.DataSource] = "adam_logger";
         enrichedTags["channel_name"] = channelConfig.Name;
-        
+
         if (!string.IsNullOrWhiteSpace(channelConfig.Description))
             enrichedTags["channel_description"] = channelConfig.Description;
 
@@ -51,7 +51,7 @@ public class DefaultDataTransformer : IDataTransformer
         enrichedTags["register_start"] = channelConfig.StartRegister;
         enrichedTags["register_count"] = channelConfig.RegisterCount;
         enrichedTags["scale_factor"] = channelConfig.ScaleFactor;
-        
+
         if (channelConfig.Offset != 0)
             enrichedTags["offset"] = channelConfig.Offset;
 

@@ -38,8 +38,10 @@ public class RetryPolicyService : IRetryPolicyService
         RetryPolicy policy,
         CancellationToken cancellationToken = default)
     {
-        if (operation == null) throw new ArgumentNullException(nameof(operation));
-        if (policy == null) throw new ArgumentNullException(nameof(policy));
+        if (operation == null)
+            throw new ArgumentNullException(nameof(operation));
+        if (policy == null)
+            throw new ArgumentNullException(nameof(policy));
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var context = new Dictionary<string, object>
@@ -55,17 +57,17 @@ public class RetryPolicyService : IRetryPolicyService
         {
             try
             {
-                _logger.LogDebug("Executing operation, attempt {Attempt}/{MaxAttempts}", 
+                _logger.LogDebug("Executing operation, attempt {Attempt}/{MaxAttempts}",
                     attempt + 1, policy.MaxAttempts + 1);
 
                 var result = await operation(cancellationToken);
-                
+
                 stopwatch.Stop();
                 context["ActualAttempts"] = attempt + 1;
                 context["Success"] = true;
 
                 _logger.LogDebug("Operation succeeded on attempt {Attempt}", attempt + 1);
-                
+
                 return OperationResult<T>.Success(result, stopwatch.Elapsed, context);
             }
             catch (Exception ex) when (cancellationToken.IsCancellationRequested)
@@ -73,9 +75,9 @@ public class RetryPolicyService : IRetryPolicyService
                 stopwatch.Stop();
                 context["ActualAttempts"] = attempt + 1;
                 context["CancelledOnAttempt"] = attempt + 1;
-                
+
                 _logger.LogDebug("Operation cancelled on attempt {Attempt}", attempt + 1);
-                
+
                 return OperationResult<T>.Failure(ex, stopwatch.Elapsed, context);
             }
             catch (Exception ex)
@@ -83,7 +85,7 @@ public class RetryPolicyService : IRetryPolicyService
                 lastException = ex;
                 attempt++;
 
-                _logger.LogWarning(ex, "Operation failed on attempt {Attempt}/{MaxAttempts}: {Message}", 
+                _logger.LogWarning(ex, "Operation failed on attempt {Attempt}/{MaxAttempts}: {Message}",
                     attempt, policy.MaxAttempts + 1, ex.Message);
 
                 // Check if we should retry this exception
@@ -102,8 +104,8 @@ public class RetryPolicyService : IRetryPolicyService
 
                 // Calculate delay for next attempt
                 var delay = CalculateDelay(policy, attempt);
-                
-                _logger.LogDebug("Waiting {DelayMs}ms before retry attempt {NextAttempt}", 
+
+                _logger.LogDebug("Waiting {DelayMs}ms before retry attempt {NextAttempt}",
                     delay.TotalMilliseconds, attempt + 1);
 
                 // Execute retry callback if provided
@@ -119,9 +121,9 @@ public class RetryPolicyService : IRetryPolicyService
                     stopwatch.Stop();
                     context["ActualAttempts"] = attempt;
                     context["CancelledDuringDelay"] = true;
-                    
+
                     _logger.LogDebug("Operation cancelled during retry delay");
-                    
+
                     return OperationResult<T>.Failure(lastException, stopwatch.Elapsed, context);
                 }
             }
@@ -132,7 +134,7 @@ public class RetryPolicyService : IRetryPolicyService
         context["Success"] = false;
 
         _logger.LogError(lastException, "Operation failed after {Attempts} attempts", attempt);
-        
+
         return OperationResult<T>.Failure(lastException!, stopwatch.Elapsed, context);
     }
 
@@ -148,8 +150,10 @@ public class RetryPolicyService : IRetryPolicyService
         RetryPolicy policy,
         CancellationToken cancellationToken = default)
     {
-        if (operation == null) throw new ArgumentNullException(nameof(operation));
-        if (policy == null) throw new ArgumentNullException(nameof(policy));
+        if (operation == null)
+            throw new ArgumentNullException(nameof(operation));
+        if (policy == null)
+            throw new ArgumentNullException(nameof(policy));
 
         // Wrap the void operation to return a dummy value
         var result = await ExecuteAsync(async ct =>
@@ -177,8 +181,10 @@ public class RetryPolicyService : IRetryPolicyService
         RetryPolicy policy,
         CancellationToken cancellationToken = default)
     {
-        if (operation == null) throw new ArgumentNullException(nameof(operation));
-        if (policy == null) throw new ArgumentNullException(nameof(policy));
+        if (operation == null)
+            throw new ArgumentNullException(nameof(operation));
+        if (policy == null)
+            throw new ArgumentNullException(nameof(policy));
 
         // Wrap the synchronous operation in a task
         return await ExecuteAsync(_ => Task.FromResult(operation()), policy, cancellationToken);
@@ -336,7 +342,7 @@ public class RetryPolicyService : IRetryPolicyService
     private static bool IsRetryableHttpException(HttpRequestException httpException)
     {
         var message = httpException.Message.ToLowerInvariant();
-        
+
         return message.Contains("timeout") ||
                message.Contains("connection") ||
                message.Contains("network") ||

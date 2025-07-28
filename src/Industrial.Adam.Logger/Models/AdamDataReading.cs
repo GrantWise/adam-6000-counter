@@ -163,7 +163,12 @@ public enum DataQuality
     /// <summary>
     /// Counter overflow detected (value exceeds expected range)
     /// </summary>
-    Overflow = 6
+    Overflow = 6,
+
+    /// <summary>
+    /// Data quality cannot be determined or is unknown
+    /// </summary>
+    Unknown = 7
 }
 
 /// <summary>
