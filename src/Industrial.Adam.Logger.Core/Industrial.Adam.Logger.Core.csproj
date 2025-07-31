@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    
+    <!-- Package Properties -->
+    <PackageId>Industrial.Adam.Logger.Core</PackageId>
+    <Version>2.0.0</Version>
+    <Authors>Industrial Systems</Authors>
+    <Description>Simplified industrial-grade ADAM device data acquisition core. Focused on reliability and maintainability.</Description>
+    <PackageTags>industrial;adam;modbus;data-acquisition;iot</PackageTags>
+    
+    <!-- Build Properties -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Core Dependencies Only -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
+    
+    <!-- Industrial Communication -->
+    <PackageReference Include="NModbus" Version="3.0.72" />
+    
+    <!-- Time Series Storage -->
+    <PackageReference Include="InfluxDB.Client" Version="4.15.0" />
+    
+    <!-- Retry Policies -->
+    <PackageReference Include="Polly" Version="8.4.2" />
+    
+    <!-- Required for data annotations -->
+    <PackageReference Include="System.ComponentModel.Annotations" Version="5.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Industrial.Adam.Logger.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,147 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft": "Warning",
+      "Microsoft.Hosting.Lifetime": "Information",
+      "Industrial.Adam.Logger.Core": "Information"
+    }
+  },
+  "AdamLogger": {
+    "GlobalPollIntervalMs": 2000,
+    "HealthCheckIntervalMs": 10000,
+    "DemoMode": false,
+    "Devices": [
+      {
+        "DeviceId": "SIM_ADAM_001",
+        "Name": "Simulator Device 1",
+        "IpAddress": "adam-simulator-1",
+        "Port": 5502,
+        "UnitId": 1,
+        "Enabled": true,
+        "PollIntervalMs": 2000,
+        "TimeoutMs": 3000,
+        "MaxRetries": 2,
+        "KeepAlive": true,
+        "Channels": [
+          {
+            "ChannelNumber": 0,
+            "Name": "MainProductCounter",
+            "StartRegister": 0,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 10000
+          },
+          {
+            "ChannelNumber": 1,
+            "Name": "RejectCounter",
+            "StartRegister": 2,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 1000
+          }
+        ]
+      },
+      {
+        "DeviceId": "SIM_ADAM_002",
+        "Name": "Simulator Device 2",
+        "IpAddress": "adam-simulator-2",
+        "Port": 5502,
+        "UnitId": 1,
+        "Enabled": true,
+        "PollIntervalMs": 2000,
+        "TimeoutMs": 3000,
+        "MaxRetries": 2,
+        "KeepAlive": true,
+        "Channels": [
+          {
+            "ChannelNumber": 0,
+            "Name": "MainProductCounter",
+            "StartRegister": 0,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 10000
+          },
+          {
+            "ChannelNumber": 1,
+            "Name": "RejectCounter",
+            "StartRegister": 2,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 1000
+          }
+        ]
+      },
+      {
+        "DeviceId": "SIM_ADAM_003",
+        "Name": "Simulator Device 3",
+        "IpAddress": "adam-simulator-3",
+        "Port": 5502,
+        "UnitId": 1,
+        "Enabled": true,
+        "PollIntervalMs": 2000,
+        "TimeoutMs": 3000,
+        "MaxRetries": 2,
+        "KeepAlive": true,
+        "Channels": [
+          {
+            "ChannelNumber": 0,
+            "Name": "MainProductCounter",
+            "StartRegister": 0,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 10000
+          },
+          {
+            "ChannelNumber": 1,
+            "Name": "RejectCounter",
+            "StartRegister": 2,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 1000
+          }
+        ]
+      }
+    ]
+  },
+  "InfluxDb": {
+    "Url": "http://influxdb:8086",
+    "Token": "adam-super-secret-token",
+    "Organization": "adam_org",
+    "Bucket": "adam_counters",
+    "MeasurementName": "counter_data",
+    "BatchSize": 50,
+    "BatchTimeoutMs": 5000,
+    "FlushIntervalMs": 5000,
+    "EnableGzip": false,
+    "TimeoutSeconds": 30,
+    "Tags": {
+      "environment": "production",
+      "source": "docker"
+    }
+  }
+}

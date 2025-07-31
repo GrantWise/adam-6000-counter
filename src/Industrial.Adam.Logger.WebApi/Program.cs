@@ -1,124 +1,152 @@
-using Industrial.Adam.Logger.Extensions;
-using Industrial.Adam.Logger.Logging;
-using Industrial.Adam.Logger.WebApi.Hubs;
+using Industrial.Adam.Logger.Core.Extensions;
 using Industrial.Adam.Logger.WebApi.Middleware;
-using Industrial.Adam.Logger.WebApi.Services;
-using Microsoft.OpenApi.Models;
-using System.Reflection;
-using FluentValidation;
-using FluentValidation.AspNetCore;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Add services to the container
 builder.Services.AddControllers();
-
-// Configure Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
+builder.Services.AddSwaggerGen(c =>
 {
-    options.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Version = "v1",
-        Title = "ADAM Counter Logger API",
-        Description = "REST API for ADAM-6000 series counter device management and monitoring",
-        Contact = new OpenApiContact
-        {
-            Name = "Industrial Systems Team",
-            Email = "support@industrial.com"
-        }
-    });
-
-    // Include XML documentation
-    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    if (File.Exists(xmlPath))
-    {
-        options.IncludeXmlComments(xmlPath);
-    }
+    c.SwaggerDoc("v1", new() { Title = "ADAM Logger API", Version = "v1" });
 });
 
-// Add SignalR
-builder.Services.AddSignalR(options =>
-{
-    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
-});
+// Add health checks
+builder.Services.AddHealthChecks()
+    .AddTypeActivatedCheck<InfluxDbHealthCheck>("influxdb")
+    .AddTypeActivatedCheck<DevicePoolHealthCheck>("device-pool");
 
-// Configure CORS for frontend access
+// Add CORS for development
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("FrontendPolicy", policy =>
+    options.AddPolicy("Development", policy =>
     {
-        policy.WithOrigins(
-                "http://localhost:3000",     // Next.js development
-                "http://localhost:3001",     // Alternative port
-                "http://localhost:5173"      // Vite development
-            )
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials();
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
     });
 });
 
-// Add AutoMapper
-builder.Services.AddAutoMapper(Assembly.GetExecutingAssembly());
-
-// Add FluentValidation (modern approach)
-builder.Services.AddFluentValidationAutoValidation();
-builder.Services.AddFluentValidationClientsideAdapters();
-builder.Services.AddValidatorsFromAssemblyContaining<Program>();
-
-// Add ADAM Logger services
-builder.Services.AddAdamLoggerWithStructuredLogging(builder.Configuration, config =>
-{
-    // Allow configuration override from appsettings.json
-    builder.Configuration.GetSection("AdamLogger").Bind(config);
-});
-
-// Add API-specific services
-builder.Services.AddScoped<IDeviceOrchestrator, DeviceOrchestrator>();
-builder.Services.AddHostedService<RealtimeDataService>();
-
-// Configure JSON serialization options
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
-    options.SerializerOptions.WriteIndented = builder.Environment.IsDevelopment();
-});
+// Add ADAM Logger Core services
+builder.Services.AddAdamLogger(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+    app.UseCors("Development");
+}
 
-// Global error handling middleware
 app.UseMiddleware<ErrorHandlingMiddleware>();
 
-// Enable CORS
-app.UseCors("FrontendPolicy");
-
-// Swagger UI - available in all environments for this industrial application
-app.UseSwagger();
-app.UseSwaggerUI(options =>
-{
-    options.SwaggerEndpoint("/swagger/v1/swagger.json", "ADAM Counter Logger API v1");
-    options.RoutePrefix = "api-docs";
-    options.DocumentTitle = "ADAM Counter Logger API Documentation";
-});
-
-// Add a redirect from root to Swagger UI
-app.MapGet("/", () => Results.Redirect("/api-docs")).ExcludeFromDescription();
-
+app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// Map SignalR hubs
-app.MapHub<CounterDataHub>("/hubs/counter-data");
-app.MapHub<HealthStatusHub>("/hubs/health-status");
+// Map health check endpoints
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = HealthCheckResponseWriter.WriteResponse
+});
 
-// Log startup information
-var logger = app.Services.GetRequiredService<ILogger<Program>>();
-logger.LogInformation("ADAM Counter Logger Web API started");
-logger.LogInformation("Swagger UI available at: {SwaggerUrl}", $"{app.Urls.FirstOrDefault()}/api-docs");
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = HealthCheckResponseWriter.WriteResponse
+});
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = HealthCheckResponseWriter.WriteResponse
+});
 
 app.Run();
+
+// Health check implementations
+public class InfluxDbHealthCheck : IHealthCheck
+{
+    private readonly Industrial.Adam.Logger.Core.Storage.IInfluxDbStorage _storage;
+    
+    public InfluxDbHealthCheck(Industrial.Adam.Logger.Core.Storage.IInfluxDbStorage storage)
+    {
+        _storage = storage;
+    }
+    
+    public async Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var connected = await _storage.TestConnectionAsync(cancellationToken);
+            return connected
+                ? HealthCheckResult.Healthy("InfluxDB connection is healthy")
+                : HealthCheckResult.Unhealthy("InfluxDB connection failed");
+        }
+        catch (Exception ex)
+        {
+            return HealthCheckResult.Unhealthy($"InfluxDB check failed: {ex.Message}");
+        }
+    }
+}
+
+public class DevicePoolHealthCheck : IHealthCheck
+{
+    private readonly Industrial.Adam.Logger.Core.Services.AdamLoggerService _service;
+    
+    public DevicePoolHealthCheck(Industrial.Adam.Logger.Core.Services.AdamLoggerService service)
+    {
+        _service = service;
+    }
+    
+    public Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
+    {
+        var status = _service.GetStatus();
+        var description = $"{status.ConnectedDevices}/{status.TotalDevices} devices connected";
+        
+        if (status.ConnectedDevices == 0 && status.TotalDevices > 0)
+        {
+            return Task.FromResult(HealthCheckResult.Unhealthy(description));
+        }
+        else if (status.ConnectedDevices < status.TotalDevices)
+        {
+            return Task.FromResult(HealthCheckResult.Degraded(description));
+        }
+        else
+        {
+            return Task.FromResult(HealthCheckResult.Healthy(description));
+        }
+    }
+}
+
+public static class HealthCheckResponseWriter
+{
+    public static Task WriteResponse(HttpContext context, HealthReport report)
+    {
+        context.Response.ContentType = "application/json";
+        
+        var response = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(x => new
+            {
+                name = x.Key,
+                status = x.Value.Status.ToString(),
+                description = x.Value.Description,
+                duration = x.Value.Duration.TotalMilliseconds
+            }),
+            totalDuration = report.TotalDuration.TotalMilliseconds
+        };
+        
+        return context.Response.WriteAsJsonAsync(response);
+    }
+}

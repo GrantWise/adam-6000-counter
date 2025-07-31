@@ -11,6 +11,11 @@ COPY src/Industrial.Adam.Logger/Industrial.Adam.Logger.csproj ./src/Industrial.A
 COPY src/Industrial.Adam.Logger.Examples/Industrial.Adam.Logger.Examples.csproj ./src/Industrial.Adam.Logger.Examples/
 COPY src/Industrial.Adam.Logger.Tests/Industrial.Adam.Logger.Tests.csproj ./src/Industrial.Adam.Logger.Tests/
 COPY src/Industrial.Adam.Logger.IntegrationTests/Industrial.Adam.Logger.IntegrationTests.csproj ./src/Industrial.Adam.Logger.IntegrationTests/
+COPY src/Industrial.Adam.Logger.WebApi/Industrial.Adam.Logger.WebApi.csproj ./src/Industrial.Adam.Logger.WebApi/
+COPY src/Industrial.Adam.Logger.Core/Industrial.Adam.Logger.Core.csproj ./src/Industrial.Adam.Logger.Core/
+COPY src/Industrial.Adam.Logger.Core.Tests/Industrial.Adam.Logger.Core.Tests.csproj ./src/Industrial.Adam.Logger.Core.Tests/
+COPY src/Industrial.Adam.Logger.Console/Industrial.Adam.Logger.Console.csproj ./src/Industrial.Adam.Logger.Console/
+COPY src/Industrial.Adam.Logger.Simulator/Industrial.Adam.Logger.Simulator.csproj ./src/Industrial.Adam.Logger.Simulator/
 
 # Restore dependencies for the solution
 RUN dotnet restore Industrial.Adam.Logger.sln
@@ -19,7 +24,7 @@ RUN dotnet restore Industrial.Adam.Logger.sln
 COPY src/ ./src/
 
 # Build and publish the application
-RUN dotnet publish ./src/Industrial.Adam.Logger.Examples/Industrial.Adam.Logger.Examples.csproj \
+RUN dotnet publish ./src/Industrial.Adam.Logger.Console/Industrial.Adam.Logger.Console.csproj \
     -c Release -o /app/publish
 
 # Runtime stage
@@ -38,6 +43,10 @@ RUN chmod +x ./entrypoint.sh
 
 # Create directories for configuration and logs
 RUN mkdir -p /app/config /app/logs
+
+# Copy configuration files (V2 format)
+COPY docker/config/adam_config_v2.json /app/config/
+COPY docker/config/adam_config_production_v2.json /app/config/
 
 # Set environment variables
 ENV DOTNET_ENVIRONMENT=Production

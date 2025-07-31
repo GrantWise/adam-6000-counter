@@ -1,179 +1,132 @@
-# ADAM-6051 Counter Logger - Docker Setup
+# Docker Deployment Guide
 
-Complete monitoring solution for ADAM-6051 industrial counter devices with InfluxDB 2.x and Grafana.
+This guide covers deploying the Industrial ADAM Logger stack using Docker Compose.
 
 ## Quick Start
 
-### Prerequisites
-- Docker and Docker Compose installed
-- ADAM-6051 device accessible on your network
-- Basic knowledge of your device's IP address
-
-### 1. Start the Stack
 ```bash
-cd docker
+# Clone the repository
+git clone https://github.com/yourusername/adam-6000-counter.git
+cd adam-6000-counter/docker
+
+# Start the stack
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+```
+
+## Services Overview
+
+| Service | Port | Purpose | Default Credentials |
+|---------|------|---------|---------------------|
+| InfluxDB | 8086 | Time-series database | admin/admin123 |
+| Grafana | 3002 | Visualization dashboard | admin/admin |
+| Prometheus | 9090 | Metrics collection | None |
+| ADAM Logger | - | C# logging service | None |
+
+## Configuration
+
+### 1. Device Configuration
+
+Edit `config/adam_config_v2.json` to configure your ADAM devices:
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information"
+    }
+  },
+  "AdamLogger": {
+    "GlobalPollIntervalMs": 2000,
+    "Devices": [
+      {
+        "DeviceId": "Device001",
+        "IpAddress": "192.168.1.100",  // Your ADAM device IP
+        "Port": 502,
+        "UnitId": 1,
+        "Enabled": true,
+        "Channels": [
+          {
+            "ChannelNumber": 0,
+            "Name": "ProductionCounter",
+            "RegisterAddress": 0,
+            "RegisterCount": 2,
+            "Enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  "InfluxDb": {
+    "Url": "http://influxdb:8086",
+    "Token": "adam-super-secret-token",
+    "Organization": "adam_org",
+    "Bucket": "adam_counters"
+  }
+}
+```
+
+### 2. Environment Variables
+
+The following environment variables are available:
+
+- `DEMO_MODE`: Set to `true` to use demo configuration
+- `LOG_LEVEL`: Logging level (Debug, Information, Warning, Error)
+
+## Deployment Modes
+
+### Production Mode (Real Devices)
+
+```bash
+# Edit your device configuration
+nano config/adam_config_v2.json
+
+# Start the stack
 docker-compose up -d
 ```
 
-### 2. Configure Your Device
-Edit `config/adam_config.json` and update the ADAM device IP:
-```json
-{
-    "modbus": {
-        "host": "192.168.1.100",  ← Change this to your ADAM device IP
-        ...
-    }
-}
-```
+### Demo Mode with Simulator
 
-### 3. Restart the Logger
 ```bash
-docker-compose restart adam-logger
+# Start with simulated ADAM devices
+docker-compose -f docker-compose.yml -f docker-compose.simulator.yml up -d
+
+# The simulator creates 3 virtual ADAM devices on ports 5020-5022
 ```
 
-### 4. Access Dashboard
-- **Grafana Dashboard**: http://localhost:3000 (admin/admin)
-- **InfluxDB Web UI**: http://localhost:8086 (admin/admin123)
+## Data Storage
 
-## Services
-
-| Service | Port | Purpose | Credentials |
-|---------|------|---------|-------------|
-| Grafana | 3000 | Visualization dashboard | admin/admin |
-| InfluxDB 2.x | 8086 | Time-series database | admin/admin123 |
-| Logger | - | Background data collection | - |
-
-## What's New in Version 2.x
-
-### InfluxDB 2.7.12
-- **Modern Architecture**: Latest stable InfluxDB with improved performance
-- **Flux Query Language**: More powerful queries and data transformations  
-- **Organization/Bucket Model**: Better data organization than old database model
-- **Built-in Web UI**: Modern interface for data exploration at :8086
-
-### Grafana 12.0.2
-- **Latest Features**: Most recent stable Grafana with enhanced visualization
-- **Better InfluxDB 2.x Support**: Native Flux query support
-- **Improved Performance**: Faster dashboard loading and query execution
-- **Enhanced Security**: Latest security features and fixes
-
-## Configuration Options
-
-### Environment Variables
-Create a `.env` file from the template for quick configuration:
-```bash
-cp .env.template .env
-# Edit .env with your settings
-```
-
-Key variables:
-- `ADAM_HOST`: IP address of your ADAM-6051 device
-- `ADAM_UNIT_ID`: Modbus unit ID (usually 1)
-- `LOG_LEVEL`: DEBUG, INFO, WARNING, ERROR
-- `POLL_INTERVAL`: Seconds between readings (default: 5.0)
-
-### Configuration File
-For advanced settings, edit `config/adam_config.json`:
-
-```json
-{
-    "modbus": {
-        "host": "192.168.1.100",     // Device IP address
-        "port": 502,                 // Modbus TCP port
-        "unit_id": 1,                // Device unit ID
-        "timeout": 3,                // Connection timeout
-        "retries": 3                 // Retry attempts
-    },
-    "influxdb": {
-        "url": "http://influxdb:8086",      // InfluxDB 2.x URL
-        "token": "adam-super-secret-token", // Access token
-        "org": "adam_org",                  // Organization
-        "bucket": "adam_counters",          // Data bucket
-        "timeout": 5,                       // Connection timeout
-        "retries": 3                        // Retry attempts
-    },
-    "counters": {
-        "channels": [0, 1, 2, 3],    // Active counter channels
-        "calculate_rate": true,       // Enable rate calculation
-        "rate_window": 60            // Rate calculation window (seconds)
-    },
-    "device": {
-        "name": "ADAM-6051",         // Device identifier
-        "location": "Line_1",        // Location tag
-        "description": "Counter 1"   // Description
-    }
-}
-```
-
-## InfluxDB 2.x Data Model
-
-### Organization Structure
+### InfluxDB Configuration
 - **Organization**: `adam_org`
 - **Bucket**: `adam_counters` (365-day retention)
-- **Measurement**: `counter_data`
+- **Token**: `adam-super-secret-token` (change in production!)
 
 ### Data Schema
 ```
-counter_data,device=ADAM-6051,location=Line_1,channel=0 count=1234,rate=5.2 1640995200000000000
+counter_data,device=Device001,channel=0 value=12345,quality="Good" 1640995200000000000
 ```
 
-**Tags** (indexed for fast queries):
-- `device`: Device name (e.g., "ADAM-6051")
-- `location`: Physical location (e.g., "Line_1")  
-- `channel`: Counter channel number (e.g., "0", "1")
+## Monitoring
 
-**Fields** (actual data values):
-- `count`: Current counter value (integer)
-- `rate`: Counts per second (float, optional)
+### Grafana Dashboards
 
-## Dashboard Features
+Access Grafana at http://localhost:3002 (admin/admin)
 
-The pre-built Grafana dashboard includes:
+Pre-configured dashboards include:
+- Counter values and trends
+- Device status and health
+- Data quality indicators
 
-- **Real-time Counter Values**: Current count for each channel
-- **Counter Trends**: Historical count data over time  
-- **Count Rates**: Counts per second for each channel
-- **Device Status**: Online/offline monitoring
-- **Data Quality**: Freshness and missing data indicators
-- **System Health**: Connection status and error monitoring
+### Prometheus Metrics
 
-### Creating Custom Dashboards
+Access Prometheus at http://localhost:9090
 
-InfluxDB 2.x uses Flux query language. Example queries:
-
-```flux
-// Get latest counter values
-from(bucket: "adam_counters")
-  |> range(start: -1h)
-  |> filter(fn: (r) => r._measurement == "counter_data")
-  |> filter(fn: (r) => r._field == "count")
-  |> last()
-
-// Calculate hourly averages
-from(bucket: "adam_counters")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r._measurement == "counter_data")
-  |> filter(fn: (r) => r._field == "count")
-  |> aggregateWindow(every: 1h, fn: mean)
-```
-
-## Data Management
-
-### Data Retention
-- **Default**: Data kept for 365 days in `adam_counters` bucket
-- **Configurable**: Modify retention via InfluxDB 2.x UI or API
-- **Automatic**: Old data automatically deleted when retention period expires
-
-### Data Access
-Query data using Flux in InfluxDB UI or API:
-
-```bash
-# Query via API
-curl -X POST http://localhost:8086/api/v2/query \
-  -H "Authorization: Token adam-super-secret-token" \
-  -H "Content-Type: application/vnd.flux" \
-  -d 'from(bucket:"adam_counters") |> range(start: -1h)'
-```
+Available metrics:
+- Container resource usage
+- Application performance metrics
+- System health indicators
 
 ## Troubleshooting
 
@@ -181,160 +134,123 @@ curl -X POST http://localhost:8086/api/v2/query \
 ```bash
 docker-compose ps
 docker-compose logs adam-logger
-docker-compose logs influxdb
-docker-compose logs grafana
 ```
 
 ### Common Issues
 
-**Logger not connecting to ADAM device:**
-1. Verify device IP in `config/adam_config.json`
-2. Check network connectivity: `ping <device_ip>`
-3. Verify Modbus TCP port 502 is accessible
-4. Check device unit ID configuration
+**Logger not connecting to device:**
+1. Check device IP in configuration
+2. Verify network connectivity: `docker-compose exec adam-logger ping <device-ip>`
+3. Ensure Modbus TCP port 502 is accessible
 
 **No data in InfluxDB:**
-1. Check logger logs: `docker-compose logs adam-logger`
-2. Verify InfluxDB 2.x connection: http://localhost:8086
-3. Check bucket exists in InfluxDB UI
-4. Verify token and organization configuration
+1. Check logger logs for errors
+2. Verify InfluxDB is running: http://localhost:8086
+3. Check configuration file syntax
 
-**Dashboard not loading:**
-1. Wait 60 seconds for initial provisioning
-2. Check Grafana logs: `docker-compose logs grafana`
-3. Verify datasource configuration in Grafana UI
-4. Manually create dashboards using Flux queries
-
-### Health Checks
-```bash
-# Check if services are healthy
-docker-compose ps
-
-# Test individual components
-curl http://localhost:8086/health      # InfluxDB 2.x
-curl http://localhost:3000/api/health  # Grafana
-```
+**Grafana shows no data:**
+1. Verify InfluxDB datasource is configured
+2. Check if data exists in InfluxDB
+3. Review Grafana datasource settings
 
 ## Advanced Usage
 
-### Multiple ADAM Devices
-To monitor multiple devices:
+### Multiple Devices
 
-1. Copy configuration file:
-```bash
-cp config/adam_config.json config/adam_device2.json
+Add multiple devices to the configuration:
+
+```json
+{
+  "AdamLogger": {
+    "Devices": [
+      {
+        "DeviceId": "Device001",
+        "IpAddress": "192.168.1.100"
+      },
+      {
+        "DeviceId": "Device002",
+        "IpAddress": "192.168.1.101"
+      }
+    ]
+  }
+}
 ```
 
-2. Update the second config with different IP and device name
+### Custom Configuration
 
-3. Add second logger service to `docker-compose.yml`:
-```yaml
-adam-logger-2:
-  build:
-    context: ./python
-  volumes:
-    - ./config:/app/config
-  environment:
-    - CONFIG_FILE=/app/config/adam_device2.json
+Use environment variables to override configuration:
+
+```bash
+# Use a different configuration file
+docker run -v $(pwd)/myconfig.json:/app/appsettings.json adam-logger
 ```
 
 ### Data Export
-Export data using InfluxDB 2.x CLI:
+
+Export data from InfluxDB:
 
 ```bash
-# Export to CSV
+# Export last 24 hours as CSV
 docker exec adam-influxdb influx query \
   'from(bucket:"adam_counters") |> range(start: -24h)' \
-  --format csv > data.csv
-
-# Export specific time range
-docker exec adam-influxdb influx query \
-  'from(bucket:"adam_counters") |> range(start: 2024-01-01T00:00:00Z, stop: 2024-12-31T23:59:59Z)' \
-  --format csv > data_2024.csv
+  --org adam_org \
+  --token adam-super-secret-token \
+  --format csv > export.csv
 ```
 
-## Security Considerations
+## Security
 
-### Production Deployment
-For production use:
+For production deployments:
 
-1. **Change default tokens** in `docker-compose.yml`
-2. **Enable HTTPS** for Grafana (add reverse proxy)
-3. **Restrict network access** using Docker networks
-4. **Use proper authentication** for InfluxDB 2.x
-5. **Regular backups** of InfluxDB 2.x data
-
-### Secure Token Management
-```yaml
-# Use Docker secrets for production
-secrets:
-  influx_token:
-    file: ./secrets/influx_token.txt
-```
-
-## Migration from InfluxDB 1.x
-
-If upgrading from the previous version:
-
-1. **Backup existing data** before migration
-2. **Update queries** from InfluxQL to Flux syntax
-3. **Recreate dashboards** with new datasource configuration
-4. **Update application** to use InfluxDB 2.x client library
-
-### Data Migration
-```bash
-# Export from InfluxDB 1.x
-influx_inspect export -datadir /var/lib/influxdb/data -waldir /var/lib/influxdb/wal -out export.txt
-
-# Import to InfluxDB 2.x (requires transformation)
-# See InfluxDB documentation for migration tools
-```
+1. **Change default passwords** in `docker-compose.yml`
+2. **Update InfluxDB token** to a secure value
+3. **Use Docker secrets** for sensitive data
+4. **Enable HTTPS** for external access
+5. **Restrict network access** using firewall rules
 
 ## Maintenance
 
-### Backup Data
-```bash
-# Backup InfluxDB 2.x
-docker exec adam-influxdb influx backup /backup --bucket adam_counters
-docker cp adam-influxdb:/backup ./backup_$(date +%Y%m%d)
+### Backup
 
-# Backup Grafana
-docker exec adam-grafana tar -czf /tmp/grafana-backup.tar.gz /var/lib/grafana
-docker cp adam-grafana:/tmp/grafana-backup.tar.gz ./grafana-backup_$(date +%Y%m%d).tar.gz
+```bash
+# Backup InfluxDB data
+docker exec adam-influxdb influx backup /backup
+docker cp adam-influxdb:/backup ./influx-backup
+
+# Backup Grafana dashboards
+docker cp adam-grafana:/var/lib/grafana ./grafana-backup
 ```
 
 ### Update Services
+
 ```bash
-# Update to latest versions
+# Pull latest images
 docker-compose pull
+
+# Restart with updates
 docker-compose up -d
 ```
 
-### Clean Up
-```bash
-# Remove everything (WARNING: Deletes all data)
-docker-compose down -v
+### Cleanup
 
-# Remove just containers (keeps data)
+```bash
+# Stop services (keeps data)
 docker-compose down
+
+# Remove everything including volumes (WARNING: deletes data)
+docker-compose down -v
 ```
+
+## Performance Tuning
+
+- Adjust `GlobalPollIntervalMs` in configuration for polling frequency
+- Configure InfluxDB retention policies for data management
+- Use Grafana query caching for better dashboard performance
 
 ## Support
 
-### Logs Location
-- Logger: `logs/adam_logger.log` (mounted from container)
-- System: `docker-compose logs <service>`
-
-### Performance Tuning
-- Increase `poll_interval` for less frequent data collection
-- Adjust InfluxDB 2.x retention policy for storage optimization
-- Use Grafana query caching for large datasets
-
-### Getting Help
-1. Check service logs for error messages
-2. Verify network connectivity to ADAM device
-3. Test Modbus communication with diagnostic tools
-4. Review configuration file syntax
-5. Check InfluxDB 2.x UI for data presence
-
-For additional support, refer to the main project documentation.
+For issues or questions:
+1. Check service logs: `docker-compose logs`
+2. Review configuration syntax
+3. Verify network connectivity
+4. Consult main project documentation

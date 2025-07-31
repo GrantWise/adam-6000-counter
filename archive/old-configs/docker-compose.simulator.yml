@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # Production Line 1 - High speed line
+  adam-sim-line1:
+    build:
+      context: ./src/Industrial.Adam.Logger.Simulator
+      dockerfile: Dockerfile
+    container_name: adam-sim-6051-line1
+    ports:
+      - "5502:502"     # Modbus TCP
+      - "8081:80"      # REST API
+    environment:
+      - SimulatorSettings__DeviceId=SIM-6051-01
+      - SimulatorSettings__DeviceName=Production Line 1
+      - ProductionSettings__BaseRate=120
+      - ProductionSettings__JobSizeMin=2000
+      - ProductionSettings__JobSizeMax=5000
+    volumes:
+      - ./simulator-data/line1:/app/data
+    restart: unless-stopped
+    
+  # Production Line 2 - Medium speed line
+  adam-sim-line2:
+    build:
+      context: ./src/Industrial.Adam.Logger.Simulator
+      dockerfile: Dockerfile
+    container_name: adam-sim-6051-line2
+    ports:
+      - "5503:502"     # Modbus TCP
+      - "8082:80"      # REST API
+    environment:
+      - SimulatorSettings__DeviceId=SIM-6051-02
+      - SimulatorSettings__DeviceName=Production Line 2
+      - ProductionSettings__BaseRate=80
+      - ProductionSettings__JobSizeMin=1000
+      - ProductionSettings__JobSizeMax=3000
+      - ProductionSettings__MinorStoppageProbability=0.03
+    volumes:
+      - ./simulator-data/line2:/app/data
+    restart: unless-stopped
+    
+  # Production Line 3 - Packaging line (slower, more reliable)
+  adam-sim-line3:
+    build:
+      context: ./src/Industrial.Adam.Logger.Simulator
+      dockerfile: Dockerfile
+    container_name: adam-sim-6051-line3
+    ports:
+      - "5504:502"     # Modbus TCP
+      - "8083:80"      # REST API
+    environment:
+      - SimulatorSettings__DeviceId=SIM-6051-03
+      - SimulatorSettings__DeviceName=Packaging Line
+      - ProductionSettings__BaseRate=60
+      - ProductionSettings__RateVariation=0.05
+      - ProductionSettings__MinorStoppageProbability=0.01
+      - ProductionSettings__MajorStoppageProbability=0.002
+    volumes:
+      - ./simulator-data/line3:/app/data
+    restart: unless-stopped
+
+  # Optional: Simulator UI Dashboard
+  simulator-dashboard:
+    image: nginx:alpine
+    container_name: adam-simulator-dashboard
+    ports:
+      - "8080:80"
+    volumes:
+      - ./simulator-dashboard:/usr/share/nginx/html:ro
+    depends_on:
+      - adam-sim-line1
+      - adam-sim-line2
+      - adam-sim-line3
+
+networks:
+  default:
+    name: adam-simulator-network
