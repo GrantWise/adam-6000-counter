@@ -49,8 +49,7 @@ public sealed class ModbusDevicePool : IDisposable
         if (_disposed)
             throw new ObjectDisposedException(nameof(ModbusDevicePool));
         
-        if (config == null)
-            throw new ArgumentNullException(nameof(config));
+        ArgumentNullException.ThrowIfNull(config);
         
         // Check if device already exists
         if (_devices.ContainsKey(config.DeviceId))
@@ -74,8 +73,9 @@ public sealed class ModbusDevicePool : IDisposable
             return Task.FromResult(false);
         }
         
-        // Start polling for this device
-        _ = Task.Run(() => PollDeviceAsync(context), context.CancellationTokenSource.Token);
+        // Start polling for this device with improved task creation
+        _ = Task.Run(async () => await PollDeviceAsync(context).ConfigureAwait(false), 
+            context.CancellationTokenSource.Token);
         
         _logger.LogInformation(
             "Added device {DeviceId} to pool (total: {Count})",

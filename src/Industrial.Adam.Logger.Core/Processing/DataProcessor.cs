@@ -180,6 +180,14 @@ public sealed class DataProcessor : IDataProcessor
     
     private static string GetChannelKey(string deviceId, int channel)
     {
-        return $"{deviceId}:{channel}";
+        // Use string.Create for better performance in .NET 9
+        return string.Create(deviceId.Length + 1 + channel.ToString().Length, 
+            (deviceId, channel), 
+            (span, state) =>
+            {
+                state.deviceId.AsSpan().CopyTo(span);
+                span[state.deviceId.Length] = ':';
+                state.channel.TryFormat(span[(state.deviceId.Length + 1)..], out _);
+            });
     }
 }

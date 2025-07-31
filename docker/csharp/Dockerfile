@@ -2,14 +2,12 @@
 # Multi-stage build for optimized production image
 
 # Build stage
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Copy solution and project files
 COPY Industrial.Adam.Logger.sln ./
-COPY src/Industrial.Adam.Logger/Industrial.Adam.Logger.csproj ./src/Industrial.Adam.Logger/
-COPY src/Industrial.Adam.Logger.Examples/Industrial.Adam.Logger.Examples.csproj ./src/Industrial.Adam.Logger.Examples/
-COPY src/Industrial.Adam.Logger.Tests/Industrial.Adam.Logger.Tests.csproj ./src/Industrial.Adam.Logger.Tests/
+# Copy only active project files (V1 projects are archived)
 COPY src/Industrial.Adam.Logger.IntegrationTests/Industrial.Adam.Logger.IntegrationTests.csproj ./src/Industrial.Adam.Logger.IntegrationTests/
 COPY src/Industrial.Adam.Logger.WebApi/Industrial.Adam.Logger.WebApi.csproj ./src/Industrial.Adam.Logger.WebApi/
 COPY src/Industrial.Adam.Logger.Core/Industrial.Adam.Logger.Core.csproj ./src/Industrial.Adam.Logger.Core/
@@ -28,7 +26,7 @@ RUN dotnet publish ./src/Industrial.Adam.Logger.Console/Industrial.Adam.Logger.C
     -c Release -o /app/publish
 
 # Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
 # Install curl for health checks
