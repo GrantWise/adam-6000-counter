@@ -26,6 +26,12 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
     private readonly Task _backgroundWriteTask;
     private volatile bool _disposed;
 
+    // Health monitoring fields
+    private volatile bool _isBackgroundTaskHealthy = true;
+    private DateTimeOffset? _lastSuccessfulWrite;
+    private string? _lastError;
+    private readonly object _healthLock = new();
+
     /// <summary>
     /// Initialize InfluxDB storage with high-performance Channel-based processing
     /// </summary>
@@ -103,7 +109,7 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
     {
         try
         {
-            var pingResult = await _client.PingAsync();
+            var pingResult = await _client.PingAsync().ConfigureAwait(false);
             var isHealthy = pingResult;
 
             if (isHealthy)
@@ -142,6 +148,23 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
         catch (OperationCanceledException)
         {
             // Expected during shutdown
+        }
+    }
+
+    /// <summary>
+    /// Get the current health status of the storage subsystem
+    /// </summary>
+    public StorageHealthStatus GetHealthStatus()
+    {
+        lock (_healthLock)
+        {
+            return new StorageHealthStatus
+            {
+                IsBackgroundTaskHealthy = _isBackgroundTaskHealthy,
+                LastSuccessfulWrite = _lastSuccessfulWrite,
+                LastError = _lastError,
+                PendingWrites = _writeChannel.Reader.CanCount ? _writeChannel.Reader.Count : 0
+            };
         }
     }
 
@@ -228,6 +251,13 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in background write processing");
+
+            // Update health status
+            lock (_healthLock)
+            {
+                _isBackgroundTaskHealthy = false;
+                _lastError = ex.Message;
+            }
         }
     }
 
@@ -244,11 +274,27 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
                 _settings.Organization,
                 cancellationToken).ConfigureAwait(false);
 
+            // Update health status on successful write
+            lock (_healthLock)
+            {
+                _isBackgroundTaskHealthy = true;
+                _lastSuccessfulWrite = DateTimeOffset.UtcNow;
+                _lastError = null;
+            }
+
             _logger.LogDebug("Wrote batch of {Count} points to InfluxDB", points.Count);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to write batch of {Count} points to InfluxDB", points.Count);
+
+            // Update health status on write failure
+            lock (_healthLock)
+            {
+                _isBackgroundTaskHealthy = false;
+                _lastError = ex.Message;
+            }
+
             throw;
         }
     }

@@ -3,7 +3,7 @@
 
 **Version:** 1.0  
 **Date:** July 2025  
-**Target Platform:** .NET 8+ C# Industrial Solution  
+**Target Platform:** .NET 9+ C# Industrial Solution  
 
 ---
 
@@ -496,7 +496,7 @@ Deployment Scenarios:
 ### 10.2 Technology Stack
 ```
 Core Platform:
-├── .NET 8+ (Cross-platform runtime)
+├── .NET 9+ (Cross-platform runtime)
 ├── ASP.NET Core (Web API, WebSockets)
 ├── Entity Framework Core (ORM)
 ├── SignalR (Real-time communication)

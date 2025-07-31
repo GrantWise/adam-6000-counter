@@ -16,7 +16,7 @@ The Industrial ADAM Logger connects to ADAM-6051 devices via Modbus TCP, collect
 - **Simple Configuration**: JSON-based configuration for easy management
 - **Standard .NET Logging**: Uses Microsoft.Extensions.Logging (no Serilog dependency)
 - **Clean Architecture**: Maintainable codebase following SOLID principles
-- **Multi-Language Support**: Both C# (.NET 8) and Python implementations available
+- **Multi-Language Support**: Both C# (.NET 9) and Python implementations available
 
 ## Repository Structure
 
@@ -193,7 +193,7 @@ The Docker stack includes:
 
 - **InfluxDB 2.7**: Time-series database for counter data storage
 - **Grafana 12.0**: Real-time dashboard and visualization  
-- **ADAM Logger**: C# .NET 8 application using Core library (V2)
+- **ADAM Logger**: C# .NET 9 application using Core library (V2)
 - **Prometheus**: Metrics collection and monitoring
 - **ADAM Simulator**: Device simulator for testing without hardware
 

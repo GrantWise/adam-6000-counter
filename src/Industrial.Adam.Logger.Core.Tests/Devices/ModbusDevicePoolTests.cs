@@ -151,11 +151,11 @@ public class ModbusDevicePoolTests : IDisposable
     }
 
     [Fact]
-    public void IsDeviceConnected_WithExistingDevice_ReturnsConnectionStatus()
+    public async Task IsDeviceConnected_WithExistingDevice_ReturnsConnectionStatus()
     {
         // Arrange
         var config = CreateTestDeviceConfig("TEST001");
-        _pool.AddDeviceAsync(config).Wait();
+        await _pool.AddDeviceAsync(config);
 
         // Act
         var isConnected = _pool.IsDeviceConnected("TEST001");
@@ -229,10 +229,10 @@ public class ModbusDevicePoolTests : IDisposable
     }
 
     [Fact]
-    public void Dispose_DisposesAllResources()
+    public async Task Dispose_DisposesAllResources()
     {
         // Arrange
-        _pool.AddDeviceAsync(CreateTestDeviceConfig("TEST001")).Wait();
+        await _pool.AddDeviceAsync(CreateTestDeviceConfig("TEST001"));
 
         // Act
         _pool.Dispose();
@@ -243,7 +243,7 @@ public class ModbusDevicePoolTests : IDisposable
 
         // Should throw ObjectDisposedException on operations after dispose
         var addAct = async () => await _pool.AddDeviceAsync(CreateTestDeviceConfig("TEST002"));
-        addAct.Should().ThrowAsync<ObjectDisposedException>();
+        await addAct.Should().ThrowAsync<ObjectDisposedException>();
     }
 
     private DeviceConfig CreateTestDeviceConfig(string deviceId, int pollIntervalMs = 1000)

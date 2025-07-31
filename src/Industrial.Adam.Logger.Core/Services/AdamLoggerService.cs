@@ -24,6 +24,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
     private readonly ConcurrentDictionary<string, DeviceReading> _lastReadings = new();
     private readonly SemaphoreSlim _startStopLock = new(1, 1);
     private CancellationTokenSource? _stoppingCts;
+    private DateTimeOffset? _actualStartTime;
     private bool _disposed;
 
     /// <summary>
@@ -53,7 +54,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await _startStopLock.WaitAsync(cancellationToken);
+        await _startStopLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             _logger.LogInformation("Starting ADAM Logger Service");
@@ -69,7 +70,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
 
             // Test InfluxDB connection
             _logger.LogInformation("Testing InfluxDB connection");
-            if (!await _influxStorage.TestConnectionAsync(cancellationToken))
+            if (!await _influxStorage.TestConnectionAsync(cancellationToken).ConfigureAwait(false))
             {
                 throw new InvalidOperationException("Failed to connect to InfluxDB");
             }
@@ -87,7 +88,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
                     continue;
                 }
 
-                var added = await _devicePool.AddDeviceAsync(deviceConfig, cancellationToken);
+                var added = await _devicePool.AddDeviceAsync(deviceConfig, cancellationToken).ConfigureAwait(false);
                 if (added)
                 {
                     _logger.LogInformation(
@@ -101,6 +102,9 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
                         deviceConfig.DeviceId);
                 }
             }
+
+            // Record actual start time after successful initialization
+            _actualStartTime = DateTimeOffset.UtcNow;
 
             _logger.LogInformation(
                 "ADAM Logger Service started with {DeviceCount} active devices",
@@ -122,7 +126,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
     /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        await _startStopLock.WaitAsync(cancellationToken);
+        await _startStopLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             _logger.LogInformation("Stopping ADAM Logger Service");
@@ -131,10 +135,13 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
             _stoppingCts?.Cancel();
 
             // Stop all device polling
-            await _devicePool.StopAllAsync();
+            await _devicePool.StopAllAsync().ConfigureAwait(false);
 
             // Flush any pending data
-            await _influxStorage.FlushAsync(cancellationToken);
+            await _influxStorage.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+            // Reset start time on stop
+            _actualStartTime = null;
 
             _logger.LogInformation("ADAM Logger Service stopped");
         }
@@ -176,7 +183,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
             }
 
             // Write to InfluxDB
-            await _influxStorage.WriteReadingAsync(processedReading);
+            await _influxStorage.WriteReadingAsync(processedReading).ConfigureAwait(false);
 
             // Log high-frequency updates at debug level
             _logger.LogDebug(
@@ -204,7 +211,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
         return new ServiceStatus
         {
             IsRunning = _stoppingCts != null && !_stoppingCts.Token.IsCancellationRequested,
-            StartTime = DateTimeOffset.UtcNow, // TODO: Track actual start time
+            StartTime = _actualStartTime ?? DateTimeOffset.UtcNow,
             TotalDevices = totalDevices,
             ConnectedDevices = connectedDevices,
             DeviceHealth = deviceHealth
@@ -220,7 +227,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
             throw new ObjectDisposedException(nameof(AdamLoggerService));
 
         _logger.LogInformation("Adding new device {DeviceId}", config.DeviceId);
-        return await _devicePool.AddDeviceAsync(config);
+        return await _devicePool.AddDeviceAsync(config).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -243,7 +250,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
             _lastReadings.TryRemove(key, out _);
         }
 
-        return await _devicePool.RemoveDeviceAsync(deviceId);
+        return await _devicePool.RemoveDeviceAsync(deviceId).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -255,7 +262,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
             throw new ObjectDisposedException(nameof(AdamLoggerService));
 
         _logger.LogInformation("Restarting device {DeviceId}", deviceId);
-        return await _devicePool.RestartDeviceAsync(deviceId);
+        return await _devicePool.RestartDeviceAsync(deviceId).ConfigureAwait(false);
     }
 
     private static string GetChannelKey(string deviceId, int channel)
