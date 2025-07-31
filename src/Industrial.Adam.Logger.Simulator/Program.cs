@@ -9,9 +9,9 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new() 
-    { 
-        Title = "ADAM-6051 Simulator API", 
+    c.SwaggerDoc("v1", new()
+    {
+        Title = "ADAM-6051 Simulator API",
         Version = "v1",
         Description = "Control API for ADAM-6051 counter module simulator"
     });
@@ -23,7 +23,7 @@ builder.Services.AddSingleton<Adam6051ModbusServer>(provider =>
 {
     var config = provider.GetRequiredService<IConfiguration>();
     var modbusPort = config.GetValue<int>("SimulatorSettings:ModbusPort", 502);
-    
+
     return new Adam6051ModbusServer(
         provider.GetRequiredService<Adam6051RegisterMap>(),
         provider.GetRequiredService<ILogger<Adam6051ModbusServer>>(),
@@ -33,14 +33,14 @@ builder.Services.AddSingleton<SimulatorDatabase>(provider =>
 {
     var config = provider.GetRequiredService<IConfiguration>();
     var dbPath = config["SimulatorSettings:DatabasePath"] ?? "data/simulator.db";
-    
+
     // Ensure directory exists
     var directory = Path.GetDirectoryName(dbPath);
     if (!string.IsNullOrEmpty(directory))
     {
         Directory.CreateDirectory(directory);
     }
-    
+
     return new SimulatorDatabase(
         dbPath,
         provider.GetRequiredService<ILogger<SimulatorDatabase>>());
@@ -84,17 +84,17 @@ app.Run();
 public class ModbusServerHost : IHostedService
 {
     private readonly Adam6051ModbusServer _modbusServer;
-    
+
     public ModbusServerHost(Adam6051ModbusServer modbusServer)
     {
         _modbusServer = modbusServer;
     }
-    
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         return _modbusServer.StartAsync(cancellationToken);
     }
-    
+
     public Task StopAsync(CancellationToken cancellationToken)
     {
         return _modbusServer.StopAsync();

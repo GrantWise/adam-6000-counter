@@ -23,29 +23,29 @@ public class AdamLoggerServiceTests : IDisposable
     private readonly LoggerConfiguration _testConfig;
     private readonly Mock<ILoggerFactory> _loggerFactoryMock;
     private AdamLoggerService? _service;
-    
+
     public AdamLoggerServiceTests()
     {
         _loggerMock = new Mock<ILogger<AdamLoggerService>>();
         _configMock = new Mock<IOptions<LoggerConfiguration>>();
-        
+
         // Create real instances instead of mocks for sealed classes
         var healthTrackerLogger = new Mock<ILogger<DeviceHealthTracker>>();
         _healthTracker = new DeviceHealthTracker(healthTrackerLogger.Object);
-        
+
         var devicePoolLogger = new Mock<ILogger<ModbusDevicePool>>();
         _loggerFactoryMock = new Mock<ILoggerFactory>();
         _loggerFactoryMock.Setup(x => x.CreateLogger(It.IsAny<string>()))
             .Returns(() => new Mock<ILogger>().Object);
-        
+
         _devicePool = new ModbusDevicePool(
             devicePoolLogger.Object,
             _loggerFactoryMock.Object,
             _healthTracker);
-        
+
         _dataProcessorMock = new Mock<IDataProcessor>();
         _influxStorageMock = new Mock<IInfluxDbStorage>();
-        
+
         _testConfig = new LoggerConfiguration
         {
             Devices = new List<DeviceConfig>
@@ -72,20 +72,20 @@ public class AdamLoggerServiceTests : IDisposable
                 }
             }
         };
-        
+
         _configMock.Setup(x => x.Value).Returns(_testConfig);
     }
-    
+
     [Fact]
     public void Constructor_WithValidDependencies_InitializesSuccessfully()
     {
         // Act
         _service = CreateService();
-        
+
         // Assert
         _service.Should().NotBeNull();
     }
-    
+
     [Fact]
     public void Constructor_WithNullLogger_ThrowsArgumentNullException()
     {
@@ -93,14 +93,14 @@ public class AdamLoggerServiceTests : IDisposable
         var act = () => new AdamLoggerService(
             null!,
             _configMock.Object,
-            _devicePoolMock.Object,
-            _healthTrackerMock.Object,
+            _devicePool,
+            _healthTracker,
             _dataProcessorMock.Object,
             _influxStorageMock.Object);
-        
+
         act.Should().Throw<ArgumentNullException>().WithParameterName("logger");
     }
-    
+
     [Fact]
     public async Task StartAsync_WithValidConfiguration_StartsSuccessfully()
     {
@@ -108,19 +108,19 @@ public class AdamLoggerServiceTests : IDisposable
         _service = CreateService();
         _influxStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        
+
         // Since we're using a real ModbusDevicePool, we need to mock the IModbusDeviceConnection
         // that it will create. For this test, we'll check the device count after adding
-        
+
         // Act
         await _service.StartAsync(CancellationToken.None);
-        
+
         // Assert
         _influxStorageMock.Verify(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()), Times.Once);
-        
+
         // Check that device was added to pool (we can't verify the method call since it's not mocked)
         _devicePool.DeviceCount.Should().Be(1);
-        
+
         // Verify info logs
         _loggerMock.Verify(
             x => x.Log(
@@ -131,20 +131,20 @@ public class AdamLoggerServiceTests : IDisposable
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
     }
-    
+
     [Fact]
     public async Task StartAsync_WithInvalidConfiguration_ThrowsException()
     {
         // Arrange
         _testConfig.Devices.Clear(); // Invalid - no devices
         _service = CreateService();
-        
+
         // Act & Assert
         var act = async () => await _service.StartAsync(CancellationToken.None);
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Invalid configuration*");
     }
-    
+
     [Fact]
     public async Task StartAsync_WithInfluxDbConnectionFailure_ThrowsException()
     {
@@ -152,13 +152,13 @@ public class AdamLoggerServiceTests : IDisposable
         _service = CreateService();
         _influxStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
-        
+
         // Act & Assert
         var act = async () => await _service.StartAsync(CancellationToken.None);
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Failed to connect to InfluxDB*");
     }
-    
+
     [Fact]
     public async Task StopAsync_AfterStart_StopsGracefully()
     {
@@ -166,17 +166,17 @@ public class AdamLoggerServiceTests : IDisposable
         _service = CreateService();
         _influxStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        
+
         await _service.StartAsync(CancellationToken.None);
-        
+
         // Act
         await _service.StopAsync(CancellationToken.None);
-        
+
         // Assert
         // Since we're using a real device pool, we check its state after stop
         _devicePool.DeviceCount.Should().Be(0); // All devices should be removed
         _influxStorageMock.Verify(x => x.FlushAsync(It.IsAny<CancellationToken>()), Times.Once);
-        
+
         // Verify info logs
         _loggerMock.Verify(
             x => x.Log(
@@ -187,23 +187,25 @@ public class AdamLoggerServiceTests : IDisposable
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
     }
-    
+
     [Fact]
     public void GetStatus_ReturnsCurrentStatus()
     {
         // Arrange
         _service = CreateService();
-        
+
         // Update health tracker with test data
-        _healthTracker.UpdateDeviceStatus("TEST001", true);
         for (int i = 0; i < 100; i++)
         {
-            _healthTracker.RecordRead("TEST001", i < 95); // 95 successful, 5 failed
+            if (i < 95) // 95 successful, 5 failed
+                _healthTracker.RecordSuccess("TEST001", TimeSpan.FromMilliseconds(10));
+            else
+                _healthTracker.RecordFailure("TEST001", "Test failure");
         }
-        
+
         // Act
         var status = _service.GetStatus();
-        
+
         // Assert
         status.Should().NotBeNull();
         status.TotalDevices.Should().Be(0); // No devices added yet in this test
@@ -211,7 +213,7 @@ public class AdamLoggerServiceTests : IDisposable
         status.DeviceHealth.Should().HaveCount(1);
         status.DeviceHealth["TEST001"].SuccessfulReads.Should().Be(95);
     }
-    
+
     [Fact]
     public async Task AddDeviceAsync_WithValidConfig_AddsDevice()
     {
@@ -236,17 +238,17 @@ public class AdamLoggerServiceTests : IDisposable
                 }
             }
         };
-        
+
         var initialCount = _devicePool.DeviceCount;
-        
+
         // Act
         var result = await _service.AddDeviceAsync(newDevice);
-        
+
         // Assert
         result.Should().BeTrue();
         _devicePool.DeviceCount.Should().Be(initialCount + 1);
     }
-    
+
     [Fact]
     public async Task RemoveDeviceAsync_WithExistingDevice_RemovesDevice()
     {
@@ -254,19 +256,19 @@ public class AdamLoggerServiceTests : IDisposable
         _service = CreateService();
         _influxStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        
+
         // Start service to add initial device
         await _service.StartAsync(CancellationToken.None);
         var initialCount = _devicePool.DeviceCount;
-        
+
         // Act
         var result = await _service.RemoveDeviceAsync("TEST001");
-        
+
         // Assert
         result.Should().BeTrue();
         _devicePool.DeviceCount.Should().Be(initialCount - 1);
     }
-    
+
     [Fact]
     public async Task RestartDeviceAsync_WithExistingDevice_RestartsDevice()
     {
@@ -274,50 +276,50 @@ public class AdamLoggerServiceTests : IDisposable
         _service = CreateService();
         _influxStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        
+
         // Start service to add initial device
         await _service.StartAsync(CancellationToken.None);
-        
+
         // Act
         var result = await _service.RestartDeviceAsync("TEST001");
-        
+
         // Assert
         result.Should().BeTrue();
         _devicePool.DeviceCount.Should().Be(1); // Device count should remain the same
     }
-    
+
     [Fact]
     public void Dispose_DisposesResources()
     {
         // Arrange
         _service = CreateService();
-        
+
         // Act
         _service.Dispose();
-        
+
         // Assert - Should not throw
         var act = () => _service.Dispose(); // Double dispose
         act.Should().NotThrow();
     }
-    
+
     [Fact]
     public async Task Dispose_AfterDispose_OperationsThrowObjectDisposedException()
     {
         // Arrange
         _service = CreateService();
         _service.Dispose();
-        
+
         // Act & Assert
         var act1 = async () => await _service.AddDeviceAsync(new DeviceConfig());
         await act1.Should().ThrowAsync<ObjectDisposedException>();
-        
+
         var act2 = async () => await _service.RemoveDeviceAsync("TEST001");
         await act2.Should().ThrowAsync<ObjectDisposedException>();
-        
+
         var act3 = async () => await _service.RestartDeviceAsync("TEST001");
         await act3.Should().ThrowAsync<ObjectDisposedException>();
     }
-    
+
     private AdamLoggerService CreateService()
     {
         return new AdamLoggerService(
@@ -328,7 +330,7 @@ public class AdamLoggerServiceTests : IDisposable
             _dataProcessorMock.Object,
             _influxStorageMock.Object);
     }
-    
+
     public void Dispose()
     {
         _service?.Dispose();

@@ -14,7 +14,7 @@ public class ModbusDevicePoolBenchmarks
     private ModbusDevicePool _pool = null!;
     private DeviceHealthTracker _healthTracker = null!;
     private List<DeviceConfig> _deviceConfigs = null!;
-    
+
     [GlobalSetup]
     public void Setup()
     {
@@ -24,7 +24,7 @@ public class ModbusDevicePoolBenchmarks
             loggerFactory.CreateLogger<ModbusDevicePool>(),
             loggerFactory,
             _healthTracker);
-        
+
         // Create test device configurations
         _deviceConfigs = new List<DeviceConfig>();
         for (int i = 0; i < 10; i++)
@@ -46,13 +46,13 @@ public class ModbusDevicePoolBenchmarks
             });
         }
     }
-    
+
     [GlobalCleanup]
     public void Cleanup()
     {
         _pool?.Dispose();
     }
-    
+
     [Benchmark]
     public async Task AddAndRemoveDevices()
     {
@@ -61,23 +61,23 @@ public class ModbusDevicePoolBenchmarks
         {
             await _pool.AddDeviceAsync(config);
         }
-        
+
         // Check connection status
         foreach (var config in _deviceConfigs)
         {
             _ = _pool.IsDeviceConnected(config.DeviceId);
         }
-        
+
         // Get health data
         _ = _pool.GetAllDeviceHealth();
-        
+
         // Remove all devices
         foreach (var config in _deviceConfigs)
         {
             await _pool.RemoveDeviceAsync(config.DeviceId);
         }
     }
-    
+
     [Benchmark]
     public void DeviceLookupPerformance()
     {
@@ -88,7 +88,7 @@ public class ModbusDevicePoolBenchmarks
             _ = _pool.IsDeviceConnected(deviceId);
         }
     }
-    
+
     [Benchmark]
     public Dictionary<string, DeviceHealth> GetHealthData()
     {

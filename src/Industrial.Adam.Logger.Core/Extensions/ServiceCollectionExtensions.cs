@@ -25,12 +25,12 @@ public static class ServiceCollectionExtensions
     {
         // Add configuration
         services.Configure<LoggerConfiguration>(configuration.GetSection("AdamLogger"));
-        services.Configure<InfluxDbSettings>(configuration.GetSection("InfluxDb"));
-        
+        services.Configure<InfluxDbSettings>(configuration.GetSection("AdamLogger:InfluxDb"));
+
         // Add core services
         services.AddSingleton<DeviceHealthTracker>();
         services.AddSingleton<ModbusDevicePool>();
-        
+
         // Add data processing
         services.AddSingleton<IDataProcessor>(provider =>
         {
@@ -38,7 +38,7 @@ public static class ServiceCollectionExtensions
             var config = provider.GetRequiredService<IOptions<LoggerConfiguration>>().Value;
             return new DataProcessor(logger, config);
         });
-        
+
         // Add storage
         services.AddSingleton<IInfluxDbStorage>(provider =>
         {
@@ -46,17 +46,17 @@ public static class ServiceCollectionExtensions
             var settings = provider.GetRequiredService<IOptions<InfluxDbSettings>>().Value;
             return new InfluxDbStorage(logger, settings);
         });
-        
+
         // Add main service
         services.AddHostedService<AdamLoggerService>();
         services.AddSingleton<AdamLoggerService>(provider =>
             provider.GetServices<IHostedService>()
                 .OfType<AdamLoggerService>()
                 .First());
-        
+
         return services;
     }
-    
+
     /// <summary>
     /// Add ADAM logger with custom configuration
     /// </summary>
@@ -68,11 +68,11 @@ public static class ServiceCollectionExtensions
         // Add configuration with actions
         services.Configure(configureLogger);
         services.Configure(configureInflux);
-        
+
         // Add core services
         services.AddSingleton<DeviceHealthTracker>();
         services.AddSingleton<ModbusDevicePool>();
-        
+
         // Add data processing
         services.AddSingleton<IDataProcessor>(provider =>
         {
@@ -80,7 +80,7 @@ public static class ServiceCollectionExtensions
             var config = provider.GetRequiredService<IOptions<LoggerConfiguration>>().Value;
             return new DataProcessor(logger, config);
         });
-        
+
         // Add storage
         services.AddSingleton<IInfluxDbStorage>(provider =>
         {
@@ -88,17 +88,17 @@ public static class ServiceCollectionExtensions
             var settings = provider.GetRequiredService<IOptions<InfluxDbSettings>>().Value;
             return new InfluxDbStorage(logger, settings);
         });
-        
+
         // Add main service
         services.AddHostedService<AdamLoggerService>();
         services.AddSingleton<AdamLoggerService>(provider =>
             provider.GetServices<IHostedService>()
                 .OfType<AdamLoggerService>()
                 .First());
-        
+
         return services;
     }
-    
+
     /// <summary>
     /// Add ADAM logger with demo/test configuration
     /// </summary>

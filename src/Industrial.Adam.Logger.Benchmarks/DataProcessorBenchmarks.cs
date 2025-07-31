@@ -13,7 +13,7 @@ public class DataProcessorBenchmarks
     private DataProcessor _processor = null!;
     private List<DeviceReading> _readings = null!;
     private DeviceReading _previousReading = null!;
-    
+
     [GlobalSetup]
     public void Setup()
     {
@@ -46,9 +46,9 @@ public class DataProcessorBenchmarks
                 }
             }
         };
-        
+
         _processor = new DataProcessor(NullLogger<DataProcessor>.Instance, config);
-        
+
         // Create test readings
         _readings = new List<DeviceReading>();
         var timestamp = DateTimeOffset.UtcNow;
@@ -64,7 +64,7 @@ public class DataProcessorBenchmarks
                 Quality = DataQuality.Good
             });
         }
-        
+
         _previousReading = new DeviceReading
         {
             DeviceId = "Device001",
@@ -75,19 +75,19 @@ public class DataProcessorBenchmarks
             Quality = DataQuality.Good
         };
     }
-    
+
     [Benchmark]
     public void ProcessSingleReading()
     {
         _ = _processor.ProcessReading(_readings[50]);
     }
-    
+
     [Benchmark]
     public void ProcessReadingWithRate()
     {
         _ = _processor.ProcessReading(_readings[50], _previousReading);
     }
-    
+
     [Benchmark]
     public void ProcessBatchOfReadings()
     {
@@ -98,7 +98,7 @@ public class DataProcessorBenchmarks
             prev = reading;
         }
     }
-    
+
     [Benchmark]
     public void ValidateReadings()
     {
@@ -107,7 +107,7 @@ public class DataProcessorBenchmarks
             _ = _processor.ValidateReading(reading);
         }
     }
-    
+
     [Benchmark]
     public void ChannelKeyLookup()
     {

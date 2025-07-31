@@ -16,7 +16,6 @@
     <!-- Build Properties -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,6 +37,12 @@
     
     <!-- Required for data annotations -->
     <PackageReference Include="System.ComponentModel.Annotations" Version="5.0.0" />
+    
+    <!-- Code Analysis (using built-in .NET 9 analyzers) -->
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

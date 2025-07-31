@@ -18,7 +18,7 @@ public class Adam6051ModbusServer : IDisposable
     private ISlaveDataStore? _dataStore;
     private CancellationTokenSource? _serverCts;
     private Task? _serverTask;
-    
+
     public Adam6051ModbusServer(
         Adam6051RegisterMap registerMap,
         ILogger<Adam6051ModbusServer> logger,
@@ -28,7 +28,7 @@ public class Adam6051ModbusServer : IDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _port = port;
     }
-    
+
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -36,29 +36,29 @@ public class Adam6051ModbusServer : IDisposable
             // Create TCP listener
             _tcpListener = new TcpListener(IPAddress.Any, _port);
             _tcpListener.Start();
-            
+
             // Create Modbus factory and slave network
             var factory = new ModbusFactory();
             _slaveNetwork = factory.CreateSlaveNetwork(_tcpListener);
-            
+
             // Create data store for registers
             _dataStore = new SlaveDataStore();
-            
+
             // Create Modbus slave that responds to Unit ID 1 (what the logger expects)  
             var slave = factory.CreateSlave(1, _dataStore);
-            
+
             // Add slave to network
             _slaveNetwork.AddSlave(slave);
-            
+
             _logger.LogInformation("NModbus TCP server started on port {Port} with Unit ID 1", _port);
-            
+
             // Start server tasks
             _serverCts = new CancellationTokenSource();
             _serverTask = _slaveNetwork.ListenAsync(_serverCts.Token);
-            
+
             // Start register update task
             Task.Run(() => UpdateRegistersLoop(_serverCts.Token));
-            
+
             return Task.CompletedTask;
         }
         catch (Exception ex)
@@ -67,7 +67,7 @@ public class Adam6051ModbusServer : IDisposable
             throw;
         }
     }
-    
+
     /// <summary>
     /// Continuously updates register values from the register map
     /// </summary>
@@ -76,7 +76,7 @@ public class Adam6051ModbusServer : IDisposable
         try
         {
             _logger.LogInformation("Register update loop started");
-            
+
             while (!cancellationToken.IsCancellationRequested)
             {
                 try
@@ -85,10 +85,10 @@ public class Adam6051ModbusServer : IDisposable
                     {
                         // Get fresh data from register map
                         var mapData = _registerMap.ReadHoldingRegisters(0, 4); // Get first 4 registers (2 counters)
-                        
+
                         // Update the NModbus data store with register values using WritePoints
                         _dataStore.HoldingRegisters.WritePoints(0, mapData);
-                        
+
                         // Log the values we're syncing
                         if (mapData.Length >= 4)
                         {
@@ -102,7 +102,7 @@ public class Adam6051ModbusServer : IDisposable
                 {
                     _logger.LogError(ex, "Error in register update cycle");
                 }
-                
+
                 // Update every 1 second for now (less frequent for easier debugging)
                 await Task.Delay(1000, cancellationToken);
             }
@@ -116,14 +116,14 @@ public class Adam6051ModbusServer : IDisposable
             _logger.LogError(ex, "Fatal error in register update loop");
         }
     }
-    
+
     public async Task StopAsync()
     {
         try
         {
             // Cancel server task
             _serverCts?.Cancel();
-            
+
             // Wait for server task to complete
             if (_serverTask != null)
             {
@@ -136,13 +136,13 @@ public class Adam6051ModbusServer : IDisposable
                     // Expected when cancelling
                 }
             }
-            
+
             // Stop TCP listener
             _tcpListener?.Stop();
-            
+
             // Dispose slave network
             _slaveNetwork?.Dispose();
-            
+
             _logger.LogInformation("NModbus TCP server stopped");
         }
         catch (Exception ex)
@@ -150,13 +150,13 @@ public class Adam6051ModbusServer : IDisposable
             _logger.LogError(ex, "Error stopping Modbus TCP server");
         }
     }
-    
+
     public void Dispose()
     {
         try
         {
             _serverCts?.Cancel();
-            
+
             if (_serverTask != null)
             {
                 try
@@ -168,7 +168,7 @@ public class Adam6051ModbusServer : IDisposable
                     // Expected when cancelling
                 }
             }
-            
+
             _serverCts?.Dispose();
             _tcpListener?.Stop();
             _slaveNetwork?.Dispose();

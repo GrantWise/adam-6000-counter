@@ -14,21 +14,21 @@ public class SimpleBenchmarks
     private Dictionary<string, string> _channelKeys = null!;
     private ConcurrentDictionary<string, DeviceReading> _readings = null!;
     private DataProcessor _processor = null!;
-    
+
     [GlobalSetup]
     public void Setup()
     {
         // Setup test data
         _channelKeys = new Dictionary<string, string>();
         _readings = new ConcurrentDictionary<string, DeviceReading>();
-        
+
         for (int i = 0; i < 100; i++)
         {
             var deviceId = $"Device{i:000}";
             var channel = i % 4;
             var key = $"{deviceId}:{channel}";
             _channelKeys[key] = $"Config_{i}";
-            
+
             _readings[key] = new DeviceReading
             {
                 DeviceId = deviceId,
@@ -39,7 +39,7 @@ public class SimpleBenchmarks
                 Quality = DataQuality.Good
             };
         }
-        
+
         // Setup processor
         var config = new LoggerConfiguration
         {
@@ -67,10 +67,10 @@ public class SimpleBenchmarks
                 }
             }
         };
-        
+
         _processor = new DataProcessor(NullLogger<DataProcessor>.Instance, config);
     }
-    
+
     [Benchmark(Baseline = true)]
     public void StringConcatenation()
     {
@@ -82,7 +82,7 @@ public class SimpleBenchmarks
             _ = _channelKeys.TryGetValue(key, out _);
         }
     }
-    
+
     [Benchmark]
     public void ConcurrentDictionaryLookup()
     {
@@ -92,7 +92,7 @@ public class SimpleBenchmarks
             _ = _readings.TryGetValue(key, out _);
         }
     }
-    
+
     [Benchmark]
     public DeviceReading ProcessReading()
     {
@@ -105,7 +105,7 @@ public class SimpleBenchmarks
             Timestamp = DateTimeOffset.UtcNow,
             Quality = DataQuality.Good
         };
-        
+
         return _processor.ProcessReading(reading);
     }
 }

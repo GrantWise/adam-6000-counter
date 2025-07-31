@@ -13,7 +13,7 @@ public class DataProcessorTests
     private readonly Mock<ILogger<DataProcessor>> _loggerMock;
     private readonly LoggerConfiguration _testConfig;
     private readonly DataProcessor _processor;
-    
+
     public DataProcessorTests()
     {
         _loggerMock = new Mock<ILogger<DataProcessor>>();
@@ -52,10 +52,10 @@ public class DataProcessorTests
                 }
             }
         };
-        
+
         _processor = new DataProcessor(_loggerMock.Object, _testConfig);
     }
-    
+
     [Fact]
     public void ProcessReading_WithValidReading_ReturnsProcessedReading()
     {
@@ -67,16 +67,16 @@ public class DataProcessorTests
             RawValue = 12345,
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         // Act
         var result = _processor.ProcessReading(reading);
-        
+
         // Assert
         result.ProcessedValue.Should().Be(12345.0); // ScaleFactor = 1.0
         result.Quality.Should().Be(DataQuality.Good);
         result.Rate.Should().BeNull(); // No previous reading
     }
-    
+
     [Fact]
     public void ProcessReading_WithScaleFactor_AppliesScaling()
     {
@@ -88,15 +88,15 @@ public class DataProcessorTests
             RawValue = 500,
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         // Act
         var result = _processor.ProcessReading(reading);
-        
+
         // Assert
         result.ProcessedValue.Should().Be(50.0); // 500 * 0.1
         result.Quality.Should().Be(DataQuality.Good);
     }
-    
+
     [Fact]
     public void ProcessReading_WithPreviousReading_CalculatesRate()
     {
@@ -108,7 +108,7 @@ public class DataProcessorTests
             RawValue = 1000,
             Timestamp = DateTimeOffset.UtcNow.AddSeconds(-10)
         };
-        
+
         var current = new DeviceReading
         {
             DeviceId = "TEST001",
@@ -116,16 +116,16 @@ public class DataProcessorTests
             RawValue = 1500,
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         // Act
         var result = _processor.ProcessReading(current, previous);
-        
+
         // Assert
         result.Rate.Should().NotBeNull();
         result.Rate.Should().BeApproximately(50.0, 0.01); // (1500-1000)/10 = 50 units/second
         result.Quality.Should().Be(DataQuality.Good);
     }
-    
+
     [Fact]
     public void ProcessReading_With32BitCounterOverflow_HandlesCorrectly()
     {
@@ -137,7 +137,7 @@ public class DataProcessorTests
             RawValue = 4294967290, // Near max
             Timestamp = DateTimeOffset.UtcNow.AddSeconds(-5)
         };
-        
+
         var current = new DeviceReading
         {
             DeviceId = "TEST001",
@@ -145,16 +145,16 @@ public class DataProcessorTests
             RawValue = 10, // Wrapped around
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         // Act
         var result = _processor.ProcessReading(current, previous);
-        
+
         // Assert
         result.Rate.Should().NotBeNull();
         // Overflow: ((2^32) - 4294967290 + 10) / 5 = (6 + 10) / 5 = 16 / 5 = 3.2
         result.Rate.Should().BeApproximately(3.2, 0.01);
     }
-    
+
     [Fact]
     public void ProcessReading_With16BitCounterOverflow_HandlesCorrectly()
     {
@@ -166,7 +166,7 @@ public class DataProcessorTests
             RawValue = 65530,
             Timestamp = DateTimeOffset.UtcNow.AddSeconds(-2)
         };
-        
+
         var current = new DeviceReading
         {
             DeviceId = "TEST001",
@@ -174,17 +174,17 @@ public class DataProcessorTests
             RawValue = 5, // Wrapped around
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         // Act
         var result = _processor.ProcessReading(current, previous);
-        
+
         // Assert
         result.Rate.Should().NotBeNull();
         // Overflow: (65536 - 65530 + 5) / 2 = 11 / 2 = 5.5
         // With scale factor 0.1: 5.5 * 0.1 = 0.55
         result.Rate.Should().BeApproximately(0.55, 0.01);
     }
-    
+
     [Fact]
     public void ProcessReading_ExceedsMaxValue_SetsQualityBad()
     {
@@ -196,13 +196,13 @@ public class DataProcessorTests
             RawValue = 2000000, // Exceeds max of 1000000
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         // Act
         var result = _processor.ProcessReading(reading);
-        
+
         // Assert
         result.Quality.Should().Be(DataQuality.Bad);
-        
+
         // Verify warning log
         _loggerMock.Verify(
             x => x.Log(
@@ -213,7 +213,7 @@ public class DataProcessorTests
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
     }
-    
+
     [Fact]
     public void ProcessReading_BelowMinValue_SetsQualityBad()
     {
@@ -225,17 +225,17 @@ public class DataProcessorTests
             RawValue = 0,
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         // Modify reading to have negative processed value
         reading = reading with { ProcessedValue = -10 };
-        
+
         // Act
         var result = _processor.ValidateReading(reading);
-        
+
         // Assert
         result.Should().BeFalse();
     }
-    
+
     [Fact]
     public void ProcessReading_ExceedsMaxChangeRate_SetsQualityUncertain()
     {
@@ -247,7 +247,7 @@ public class DataProcessorTests
             RawValue = 1000,
             Timestamp = DateTimeOffset.UtcNow.AddSeconds(-1)
         };
-        
+
         var current = new DeviceReading
         {
             DeviceId = "TEST001",
@@ -255,14 +255,14 @@ public class DataProcessorTests
             RawValue = 3000, // Change of 2000 in 1 second (exceeds max rate of 1000)
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         // Act
         var result = _processor.ProcessReading(current, previous);
-        
+
         // Assert
         result.Quality.Should().Be(DataQuality.Degraded);
         result.Rate.Should().BeApproximately(2000, 0.01); // Still calculated
-        
+
         // Verify warning log
         _loggerMock.Verify(
             x => x.Log(
@@ -273,7 +273,7 @@ public class DataProcessorTests
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
     }
-    
+
     [Fact]
     public void ProcessReading_WithUnknownChannel_ReturnsOriginalReading()
     {
@@ -285,13 +285,13 @@ public class DataProcessorTests
             RawValue = 12345,
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         // Act
         var result = _processor.ProcessReading(reading);
-        
+
         // Assert
         result.Should().BeEquivalentTo(reading);
-        
+
         // Verify warning log
         _loggerMock.Verify(
             x => x.Log(
@@ -302,7 +302,7 @@ public class DataProcessorTests
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
     }
-    
+
     [Fact]
     public void ValidateReading_WithValidReading_ReturnsTrue()
     {
@@ -316,14 +316,14 @@ public class DataProcessorTests
             Timestamp = DateTimeOffset.UtcNow,
             Quality = DataQuality.Good
         };
-        
+
         // Act
         var result = _processor.ValidateReading(reading);
-        
+
         // Assert
         result.Should().BeTrue();
     }
-    
+
     [Fact]
     public void ValidateReading_WithInvalidReading_ReturnsFalse()
     {
@@ -336,10 +336,10 @@ public class DataProcessorTests
             ProcessedValue = 2000000, // Exceeds max
             Timestamp = DateTimeOffset.UtcNow
         };
-        
+
         // Act
         var result = _processor.ValidateReading(reading);
-        
+
         // Assert
         result.Should().BeFalse();
     }

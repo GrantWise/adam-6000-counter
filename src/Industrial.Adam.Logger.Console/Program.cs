@@ -8,9 +8,9 @@ namespace Industrial.Adam.Logger.Console;
 /// <summary>
 /// Console application for ADAM device logging
 /// </summary>
-class Program
+internal class Program
 {
-    static async Task Main(string[] args)
+    private static async Task Main(string[] args)
     {
         // Create host builder
         var host = Host.CreateDefaultBuilder(args)
@@ -23,10 +23,10 @@ class Program
                     builder.AddConsole();
                     builder.AddFilter("Industrial.Adam.Logger.Core", LogLevel.Debug);
                 });
-                
+
                 // Add ADAM logger from configuration
                 services.AddAdamLogger(context.Configuration);
-                
+
                 // Or use demo configuration for testing
                 // services.AddAdamLoggerDemo();
             })
@@ -34,16 +34,16 @@ class Program
             {
                 logging.ClearProviders();
                 logging.AddConsole();
-                
+
                 // Configure log levels from appsettings.json
                 logging.AddConfiguration(context.Configuration.GetSection("Logging"));
             })
             .Build();
-        
+
         // Handle Ctrl+C gracefully
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
         var logger = host.Services.GetRequiredService<ILogger<Program>>();
-        
+
         lifetime.ApplicationStarted.Register(() =>
         {
             logger.LogInformation("===========================================");
@@ -51,19 +51,19 @@ class Program
             logger.LogInformation("Press Ctrl+C to stop");
             logger.LogInformation("===========================================");
         });
-        
+
         lifetime.ApplicationStopping.Register(() =>
         {
             logger.LogInformation("===========================================");
             logger.LogInformation("ADAM Logger Service Stopping...");
             logger.LogInformation("===========================================");
         });
-        
+
         lifetime.ApplicationStopped.Register(() =>
         {
             logger.LogInformation("ADAM Logger Service Stopped");
         });
-        
+
         // Run the host
         await host.RunAsync();
     }

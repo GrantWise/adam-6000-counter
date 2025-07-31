@@ -13,7 +13,7 @@ public class InfluxDbStorageBenchmarks
     private InfluxDbStorage _storage = null!;
     private List<DeviceReading> _readings = null!;
     private DeviceReading _singleReading = null!;
-    
+
     [GlobalSetup]
     public void Setup()
     {
@@ -28,9 +28,9 @@ public class InfluxDbStorageBenchmarks
             FlushIntervalMs = 1000,
             Tags = new Dictionary<string, string> { ["location"] = "test" }
         };
-        
+
         _storage = new InfluxDbStorage(NullLogger<InfluxDbStorage>.Instance, settings);
-        
+
         // Create test readings
         _readings = new List<DeviceReading>();
         var timestamp = DateTimeOffset.UtcNow;
@@ -47,16 +47,16 @@ public class InfluxDbStorageBenchmarks
                 Quality = DataQuality.Good
             });
         }
-        
+
         _singleReading = _readings[0];
     }
-    
+
     [GlobalCleanup]
     public void Cleanup()
     {
         _storage?.Dispose();
     }
-    
+
     [Benchmark]
     public async Task WriteSingleReading()
     {
@@ -71,7 +71,7 @@ public class InfluxDbStorageBenchmarks
             // Expected to fail without InfluxDB
         }
     }
-    
+
     [Benchmark]
     public async Task WriteBatch()
     {
@@ -84,14 +84,14 @@ public class InfluxDbStorageBenchmarks
             // Expected to fail without InfluxDB
         }
     }
-    
+
     [Benchmark]
     public void CreatePointData()
     {
         // Benchmark just the point creation logic using reflection
         var method = typeof(InfluxDbStorage).GetMethod("CreatePointData",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        
+
         foreach (var reading in _readings)
         {
             _ = method?.Invoke(_storage, new object[] { reading });

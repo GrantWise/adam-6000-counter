@@ -11,14 +11,14 @@ public class CollectionBenchmarks
     private Dictionary<string, string> _regularDict = null!;
     private readonly object _lockObject = new();
     private List<string> _keys = null!;
-    
+
     [GlobalSetup]
     public void Setup()
     {
         _concurrentDict = new ConcurrentDictionary<string, string>();
         _regularDict = new Dictionary<string, string>();
         _keys = new List<string>();
-        
+
         // Add test data
         for (int i = 0; i < 100; i++)
         {
@@ -29,7 +29,7 @@ public class CollectionBenchmarks
             _regularDict[key] = value;
         }
     }
-    
+
     [Benchmark]
     public void ConcurrentDictionaryLookup()
     {
@@ -39,7 +39,7 @@ public class CollectionBenchmarks
             _ = _concurrentDict.TryGetValue(key, out _);
         }
     }
-    
+
     [Benchmark]
     public void RegularDictionaryWithLock()
     {
@@ -52,7 +52,7 @@ public class CollectionBenchmarks
             }
         }
     }
-    
+
     [Benchmark]
     public string StringConcatenation()
     {
@@ -60,7 +60,7 @@ public class CollectionBenchmarks
         var channel = 1;
         return $"{deviceId}:{channel}";
     }
-    
+
     [Benchmark]
     public string StringInterpolation()
     {
@@ -68,18 +68,18 @@ public class CollectionBenchmarks
         var channel = 1;
         return string.Format("{0}:{1}", deviceId, channel);
     }
-    
+
     [Benchmark]
     public void ConcurrentQueueOperations()
     {
         var queue = new ConcurrentQueue<int>();
-        
+
         // Enqueue
         for (int i = 0; i < 100; i++)
         {
             queue.Enqueue(i);
         }
-        
+
         // Dequeue
         while (queue.TryDequeue(out _))
         {

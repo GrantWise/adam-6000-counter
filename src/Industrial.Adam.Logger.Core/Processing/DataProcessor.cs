@@ -11,16 +11,22 @@ public sealed class DataProcessor : IDataProcessor
 {
     private readonly ILogger<DataProcessor> _logger;
     private readonly Dictionary<string, ChannelConfig> _channelConfigs;
-    
+
     // Counter limits for overflow detection
     private const long Counter16BitMax = 65535;
     private const long Counter32BitMax = 4294967295;
-    
+
+    /// <summary>
+    /// Initialize the data processor
+    /// </summary>
+    /// <param name="logger">Logger instance</param>
+    /// <param name="configuration">Logger configuration</param>
     public DataProcessor(ILogger<DataProcessor> logger, LoggerConfiguration configuration)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        if (configuration == null) throw new ArgumentNullException(nameof(configuration));
-        
+        if (configuration == null)
+            throw new ArgumentNullException(nameof(configuration));
+
         // Build channel config lookup
         _channelConfigs = new Dictionary<string, ChannelConfig>();
         foreach (var device in configuration.Devices)
@@ -32,7 +38,7 @@ public sealed class DataProcessor : IDataProcessor
             }
         }
     }
-    
+
     /// <summary>
     /// Process a raw device reading with overflow detection and rate calculation
     /// </summary>
@@ -46,20 +52,20 @@ public sealed class DataProcessor : IDataProcessor
                 reading.DeviceId, reading.Channel);
             return reading;
         }
-        
+
         // Create a new reading with processed values
         var processed = reading with
         {
             ProcessedValue = reading.RawValue * channelConfig.ScaleFactor,
             Quality = DataQuality.Good
         };
-        
+
         // Calculate rate if we have a previous reading
         if (previousReading != null)
         {
             processed = CalculateRate(processed, previousReading, channelConfig);
         }
-        
+
         // Validate the processed reading
         if (!ValidateProcessedReading(processed, channelConfig))
         {
@@ -69,10 +75,10 @@ public sealed class DataProcessor : IDataProcessor
                 processed = processed with { Quality = DataQuality.Bad };
             }
         }
-        
+
         return processed;
     }
-    
+
     /// <summary>
     /// Validate a processed reading against channel limits
     /// </summary>
@@ -83,10 +89,10 @@ public sealed class DataProcessor : IDataProcessor
         {
             return false;
         }
-        
+
         return ValidateProcessedReading(reading, channelConfig);
     }
-    
+
     private DeviceReading CalculateRate(
         DeviceReading current,
         DeviceReading previous,
@@ -100,10 +106,10 @@ public sealed class DataProcessor : IDataProcessor
                 timeDiff);
             return current;
         }
-        
+
         // Handle counter overflow
         long valueDiff = (long)current.RawValue - (long)previous.RawValue;
-        
+
         // Detect overflow based on register count
         var maxValue = channelConfig.RegisterCount switch
         {
@@ -111,7 +117,7 @@ public sealed class DataProcessor : IDataProcessor
             2 => Counter32BitMax,
             _ => Counter32BitMax
         };
-        
+
         // If the difference is negative and large, assume overflow
         if (valueDiff < 0 && Math.Abs(valueDiff) > (long)(maxValue / 2))
         {
@@ -123,28 +129,28 @@ public sealed class DataProcessor : IDataProcessor
                 current.DeviceId, current.Channel,
                 previous.RawValue, current.RawValue, valueDiff);
         }
-        
+
         // Calculate rate (units per second)
         var rate = valueDiff / timeDiff * channelConfig.ScaleFactor;
-        
+
         // Apply rate limits if configured
-        if (channelConfig.MaxChangeRate.HasValue && 
+        if (channelConfig.MaxChangeRate.HasValue &&
             Math.Abs(rate) > channelConfig.MaxChangeRate.Value)
         {
             _logger.LogWarning(
                 "Rate {Rate} exceeds max change rate {MaxRate} for {DeviceId} channel {Channel}",
                 rate, channelConfig.MaxChangeRate.Value, current.DeviceId, current.Channel);
-            
-            return current with 
-            { 
+
+            return current with
+            {
                 Rate = rate,
                 Quality = DataQuality.Degraded
             };
         }
-        
+
         return current with { Rate = rate };
     }
-    
+
     private bool ValidateProcessedReading(DeviceReading reading, ChannelConfig channelConfig)
     {
         // Check min/max limits if configured
@@ -156,7 +162,7 @@ public sealed class DataProcessor : IDataProcessor
                 reading.DeviceId, reading.Channel);
             return false;
         }
-        
+
         if (channelConfig.MaxValue.HasValue && reading.ProcessedValue > channelConfig.MaxValue.Value)
         {
             _logger.LogWarning(
@@ -165,7 +171,7 @@ public sealed class DataProcessor : IDataProcessor
                 reading.DeviceId, reading.Channel);
             return false;
         }
-        
+
         // Check rate limits if available
         if (reading.Rate.HasValue && channelConfig.MaxChangeRate.HasValue)
         {
@@ -174,15 +180,15 @@ public sealed class DataProcessor : IDataProcessor
                 return false;
             }
         }
-        
+
         return true;
     }
-    
+
     private static string GetChannelKey(string deviceId, int channel)
     {
         // Use string.Create for better performance in .NET 9
-        return string.Create(deviceId.Length + 1 + channel.ToString().Length, 
-            (deviceId, channel), 
+        return string.Create(deviceId.Length + 1 + channel.ToString().Length,
+            (deviceId, channel),
             (span, state) =>
             {
                 state.deviceId.AsSpan().CopyTo(span);
