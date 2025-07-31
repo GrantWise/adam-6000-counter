@@ -49,12 +49,12 @@ public class BasicIntegrationTest
     public void Integration_BasicAssertion_ShouldWork()
     {
         // Arrange
-        const int expected = 42;
+        const int Expected = 42;
 
         // Act
-        const int actual = 42;
+        const int Actual = 42;
 
         // Assert
-        actual.Should().Be(expected);
+        Actual.Should().Be(Expected);
     }
 }

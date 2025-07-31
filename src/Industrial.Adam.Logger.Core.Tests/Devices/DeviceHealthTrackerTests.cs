@@ -21,15 +21,15 @@ public class DeviceHealthTrackerTests
     public void RecordSuccess_UpdatesHealthData()
     {
         // Arrange
-        const string deviceId = "TEST001";
+        const string DeviceId = "TEST001";
         var duration = TimeSpan.FromMilliseconds(50);
 
         // Act
-        _tracker.RecordSuccess(deviceId, duration);
-        var health = _tracker.GetDeviceHealth(deviceId);
+        _tracker.RecordSuccess(DeviceId, duration);
+        var health = _tracker.GetDeviceHealth(DeviceId);
 
         // Assert
-        health.DeviceId.Should().Be(deviceId);
+        health.DeviceId.Should().Be(DeviceId);
         health.IsConnected.Should().BeTrue();
         health.LastSuccessfulRead.Should().NotBeNull();
         health.ConsecutiveFailures.Should().Be(0);
@@ -42,18 +42,18 @@ public class DeviceHealthTrackerTests
     public void RecordFailure_UpdatesHealthData()
     {
         // Arrange
-        const string deviceId = "TEST001";
-        const string error = "Connection timeout";
+        const string DeviceId = "TEST001";
+        const string Error = "Connection timeout";
 
         // Act
-        _tracker.RecordFailure(deviceId, error);
-        var health = _tracker.GetDeviceHealth(deviceId);
+        _tracker.RecordFailure(DeviceId, Error);
+        var health = _tracker.GetDeviceHealth(DeviceId);
 
         // Assert
-        health.DeviceId.Should().Be(deviceId);
+        health.DeviceId.Should().Be(DeviceId);
         health.IsConnected.Should().BeTrue(); // Still connected until max failures
         health.ConsecutiveFailures.Should().Be(1);
-        health.LastError.Should().Be(error);
+        health.LastError.Should().Be(Error);
         health.TotalReads.Should().Be(1);
         health.SuccessfulReads.Should().Be(0);
         health.SuccessRate.Should().Be(0.0);
@@ -63,20 +63,20 @@ public class DeviceHealthTrackerTests
     public void RecordFailure_AfterMaxFailures_MarksOffline()
     {
         // Arrange
-        const string deviceId = "TEST001";
-        const int maxFailures = 5; // From Constants.MaxConsecutiveFailures
+        const string DeviceId = "TEST001";
+        const int MaxFailures = 5; // From Constants.MaxConsecutiveFailures
 
         // Act
-        for (int i = 0; i < maxFailures; i++)
+        for (int i = 0; i < MaxFailures; i++)
         {
-            _tracker.RecordFailure(deviceId, $"Error {i}");
+            _tracker.RecordFailure(DeviceId, $"Error {i}");
         }
-        var health = _tracker.GetDeviceHealth(deviceId);
+        var health = _tracker.GetDeviceHealth(DeviceId);
 
         // Assert
         health.IsConnected.Should().BeFalse();
         health.IsOffline.Should().BeTrue();
-        health.ConsecutiveFailures.Should().Be(maxFailures);
+        health.ConsecutiveFailures.Should().Be(MaxFailures);
 
         // Verify warning log
         _loggerMock.Verify(
@@ -93,13 +93,13 @@ public class DeviceHealthTrackerTests
     public void RecordSuccess_AfterFailures_ResetsConsecutiveFailures()
     {
         // Arrange
-        const string deviceId = "TEST001";
+        const string DeviceId = "TEST001";
 
         // Act
-        _tracker.RecordFailure(deviceId, "Error 1");
-        _tracker.RecordFailure(deviceId, "Error 2");
-        _tracker.RecordSuccess(deviceId, TimeSpan.FromMilliseconds(50));
-        var health = _tracker.GetDeviceHealth(deviceId);
+        _tracker.RecordFailure(DeviceId, "Error 1");
+        _tracker.RecordFailure(DeviceId, "Error 2");
+        _tracker.RecordSuccess(DeviceId, TimeSpan.FromMilliseconds(50));
+        var health = _tracker.GetDeviceHealth(DeviceId);
 
         // Assert
         health.IsConnected.Should().BeTrue();
@@ -146,13 +146,13 @@ public class DeviceHealthTrackerTests
     public void GetAverageResponseTime_WithData_ReturnsAverage()
     {
         // Arrange
-        const string deviceId = "TEST001";
-        _tracker.RecordSuccess(deviceId, TimeSpan.FromMilliseconds(50));
-        _tracker.RecordSuccess(deviceId, TimeSpan.FromMilliseconds(100));
-        _tracker.RecordSuccess(deviceId, TimeSpan.FromMilliseconds(75));
+        const string DeviceId = "TEST001";
+        _tracker.RecordSuccess(DeviceId, TimeSpan.FromMilliseconds(50));
+        _tracker.RecordSuccess(DeviceId, TimeSpan.FromMilliseconds(100));
+        _tracker.RecordSuccess(DeviceId, TimeSpan.FromMilliseconds(75));
 
         // Act
-        var avgTime = _tracker.GetAverageResponseTime(deviceId);
+        var avgTime = _tracker.GetAverageResponseTime(DeviceId);
 
         // Assert
         avgTime.Should().NotBeNull();
@@ -163,13 +163,13 @@ public class DeviceHealthTrackerTests
     public void ResetDeviceHealth_ClearsData()
     {
         // Arrange
-        const string deviceId = "TEST001";
-        _tracker.RecordSuccess(deviceId, TimeSpan.FromMilliseconds(50));
-        _tracker.RecordFailure(deviceId, "Error");
+        const string DeviceId = "TEST001";
+        _tracker.RecordSuccess(DeviceId, TimeSpan.FromMilliseconds(50));
+        _tracker.RecordFailure(DeviceId, "Error");
 
         // Act
-        _tracker.ResetDeviceHealth(deviceId);
-        var health = _tracker.GetDeviceHealth(deviceId);
+        _tracker.ResetDeviceHealth(DeviceId);
+        var health = _tracker.GetDeviceHealth(DeviceId);
 
         // Assert
         health.TotalReads.Should().Be(0);
