@@ -16,5 +16,6 @@ datasources:
       organization: adam_org
       defaultBucket: adam_counters
       tlsSkipVerify: true
+      maxSeries: 10000
     secureJsonData:
       token: adam-super-secret-token

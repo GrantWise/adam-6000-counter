@@ -1,0 +1,135 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft": "Warning",
+      "Microsoft.Hosting.Lifetime": "Information",
+      "Industrial.Adam.Logger.Core": "Information"
+    }
+  },
+  "AdamLogger": {
+    "GlobalPollIntervalMs": 1000,
+    "HealthCheckIntervalMs": 30000,
+    "DemoMode": false,
+    "Devices": [
+      {
+        "DeviceId": "ADAM_PROD_001",
+        "Name": "Production Line 1 Counter",
+        "IpAddress": "192.168.1.100",
+        "Port": 502,
+        "UnitId": 1,
+        "Enabled": true,
+        "PollIntervalMs": 1000,
+        "TimeoutMs": 3000,
+        "MaxRetries": 3,
+        "KeepAlive": true,
+        "Channels": [
+          {
+            "ChannelNumber": 0,
+            "Name": "ProductCounter",
+            "StartRegister": 0,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 10000
+          },
+          {
+            "ChannelNumber": 1,
+            "Name": "RejectCounter",
+            "StartRegister": 2,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 1000
+          }
+        ]
+      },
+      {
+        "DeviceId": "ADAM_PROD_002",
+        "Name": "Production Line 2 Counter",
+        "IpAddress": "192.168.1.101",
+        "Port": 502,
+        "UnitId": 1,
+        "Enabled": true,
+        "PollIntervalMs": 1000,
+        "TimeoutMs": 3000,
+        "MaxRetries": 3,
+        "KeepAlive": true,
+        "Channels": [
+          {
+            "ChannelNumber": 0,
+            "Name": "ProductCounter",
+            "StartRegister": 0,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 10000
+          },
+          {
+            "ChannelNumber": 1,
+            "Name": "RejectCounter",
+            "StartRegister": 2,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 1000
+          }
+        ]
+      },
+      {
+        "DeviceId": "ADAM_PROD_003",
+        "Name": "Packaging Line Counter",
+        "IpAddress": "192.168.1.102",
+        "Port": 502,
+        "UnitId": 1,
+        "Enabled": true,
+        "PollIntervalMs": 1000,
+        "TimeoutMs": 3000,
+        "MaxRetries": 3,
+        "KeepAlive": true,
+        "Channels": [
+          {
+            "ChannelNumber": 0,
+            "Name": "PackageCounter",
+            "StartRegister": 0,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "packages",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 5000
+          }
+        ]
+      }
+    ]
+  },
+  "InfluxDb": {
+    "Url": "http://influxdb:8086",
+    "Token": "adam-super-secret-token",
+    "Organization": "adam_org",
+    "Bucket": "adam_counters",
+    "MeasurementName": "counter_data",
+    "BatchSize": 100,
+    "BatchTimeoutMs": 5000,
+    "FlushIntervalMs": 5000,
+    "EnableGzip": true,
+    "TimeoutSeconds": 30,
+    "Tags": {
+      "environment": "production",
+      "source": "docker"
+    }
+  }
+}

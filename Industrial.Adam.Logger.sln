@@ -2,13 +2,7 @@
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger", "src\Industrial.Adam.Logger\Industrial.Adam.Logger.csproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Tests", "src\Industrial.Adam.Logger.Tests\Industrial.Adam.Logger.Tests.csproj", "{B1C2D3E4-F5G6-7890-BCDE-F12345678901}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.IntegrationTests", "src\Industrial.Adam.Logger.IntegrationTests\Industrial.Adam.Logger.IntegrationTests.csproj", "{C1D2E3F4-G5H6-7890-CDEF-123456789012}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Examples", "src\Industrial.Adam.Logger.Examples\Industrial.Adam.Logger.Examples.csproj", "{D1E2F3G4-H5I6-7890-DEF1-234567890123}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{E1F2G3H4-I5J6-7890-EF12-345678901234}"
 EndProject
@@ -24,28 +18,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Core
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Console", "src\Industrial.Adam.Logger.Console\Industrial.Adam.Logger.Console.csproj", "{C631BDEC-48CC-4440-B30C-7B71A55756D7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Simulator", "src\Industrial.Adam.Logger.Simulator\Industrial.Adam.Logger.Simulator.csproj", "{D631BDEC-58CC-4540-C30C-8B71A55756D8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B1C2D3E4-F5G6-7890-BCDE-F12345678901}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B1C2D3E4-F5G6-7890-BCDE-F12345678901}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B1C2D3E4-F5G6-7890-BCDE-F12345678901}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B1C2D3E4-F5G6-7890-BCDE-F12345678901}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C1D2E3F4-G5H6-7890-CDEF-123456789012}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{C1D2E3F4-G5H6-7890-CDEF-123456789012}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C1D2E3F4-G5H6-7890-CDEF-123456789012}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C1D2E3F4-G5H6-7890-CDEF-123456789012}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D1E2F3G4-H5I6-7890-DEF1-234567890123}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D1E2F3G4-H5I6-7890-DEF1-234567890123}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D1E2F3G4-H5I6-7890-DEF1-234567890123}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D1E2F3G4-H5I6-7890-DEF1-234567890123}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9631BDEC-18CC-4140-830C-4B71A55756D4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{9631BDEC-18CC-4140-830C-4B71A55756D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9631BDEC-18CC-4140-830C-4B71A55756D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -62,15 +46,17 @@ Global
 		{C631BDEC-48CC-4440-B30C-7B71A55756D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C631BDEC-48CC-4440-B30C-7B71A55756D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C631BDEC-48CC-4440-B30C-7B71A55756D7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D631BDEC-58CC-4540-C30C-8B71A55756D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D631BDEC-58CC-4540-C30C-8B71A55756D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D631BDEC-58CC-4540-C30C-8B71A55756D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D631BDEC-58CC-4540-C30C-8B71A55756D8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
-		{B1C2D3E4-F5G6-7890-BCDE-F12345678901} = {F1G2H3I4-J5K6-7890-F123-456789012345}
 		{C1D2E3F4-G5H6-7890-CDEF-123456789012} = {F1G2H3I4-J5K6-7890-F123-456789012345}
-		{D1E2F3G4-H5I6-7890-DEF1-234567890123} = {G1H2I3J4-K5L6-7890-1234-567890123456}
 		{9631BDEC-18CC-4140-830C-4B71A55756D4} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
 		{A631BDEC-28CC-4240-930C-5B71A55756D5} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
 		{B631BDEC-38CC-4340-A30C-6B71A55756D6} = {F1G2H3I4-J5K6-7890-F123-456789012345}
 		{C631BDEC-48CC-4440-B30C-7B71A55756D7} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
+		{D631BDEC-58CC-4540-C30C-8B71A55756D8} = {E1F2G3H4-I5J6-7890-EF12-345678901234}
 	EndGlobalSection
 EndGlobal

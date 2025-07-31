@@ -13,6 +13,8 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+logs/
+*.log
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
@@ -360,3 +362,19 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Test Results
+TestResults/
+TestResults-*/
+coverage.opencover.xml
+coverage.cobertura.xml
+coverage.json
+coverage.info
+
+# Coverage Reports
+CoverageReport/
+CoverageReport-*/
+
+# Temporary files
+*.tmp
+*.temp

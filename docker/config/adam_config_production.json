@@ -46,7 +46,7 @@
     "Properties": {
       "Application": "Industrial.Adam.Logger.Examples",
       "Version": "1.0.0",
-      "Environment": "Development"
+      "Environment": "Production"
     }
   },
   "AdamLogger": {
@@ -56,9 +56,9 @@
     "MaxConcurrentDevices": 4,
     "Devices": [
       {
-        "DeviceId": "SIM_ADAM_001",
-        "IpAddress": "127.0.0.1",
-        "Port": 5502,
+        "DeviceId": "PROD_ADAM_001",
+        "IpAddress": "192.168.1.100",
+        "Port": 502,
         "UnitId": 1,
         "TimeoutMs": 3000,
         "MaxRetries": 2,
@@ -90,9 +90,9 @@
         ]
       },
       {
-        "DeviceId": "SIM_ADAM_002",
-        "IpAddress": "127.0.0.1",
-        "Port": 5503,
+        "DeviceId": "PROD_ADAM_002",
+        "IpAddress": "192.168.1.101",
+        "Port": 502,
         "UnitId": 1,
         "TimeoutMs": 3000,
         "MaxRetries": 2,
@@ -124,9 +124,9 @@
         ]
       },
       {
-        "DeviceId": "SIM_ADAM_003",
-        "IpAddress": "127.0.0.1",
-        "Port": 5504,
+        "DeviceId": "PROD_ADAM_003",
+        "IpAddress": "192.168.1.102",
+        "Port": 502,
         "UnitId": 1,
         "TimeoutMs": 3000,
         "MaxRetries": 2,
@@ -159,7 +159,7 @@
       }
     ],
     "InfluxDb": {
-      "Url": "http://localhost:8086",
+      "Url": "http://influxdb:8086",
       "Token": "adam-super-secret-token",
       "Organization": "adam_org",
       "Bucket": "adam_counters",

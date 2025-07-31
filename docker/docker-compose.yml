@@ -53,6 +53,10 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_INSTALL_PLUGINS=
+      # Increase series limits for industrial data
+      - GF_DATAPROXY_MAX_IDLE_CONNECTIONS=1000
+      - GF_QUERY_MAX_SERIES=10000
+      - GF_ALERTING_MAX_ANNOTATIONS_TO_KEEP=500000
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
@@ -75,25 +79,14 @@ services:
     container_name: adam-counter-logger
     restart: unless-stopped
     environment:
-      # Device configuration
-      - ADAM_HOST=${ADAM_HOST:-192.168.1.100}
-      - ADAM_UNIT_ID=${ADAM_UNIT_ID:-1}
-      - LOG_LEVEL=${LOG_LEVEL:-Information}
-      - POLL_INTERVAL=${POLL_INTERVAL:-2000}
+      # Configuration selection
       - DEMO_MODE=${DEMO_MODE:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-Information}
       # Performance optimization settings
       - DOTNET_GCServer=1
       - DOTNET_GCConcurrent=1
       - DOTNET_GCRetainVM=1
-      - DOTNET_gcAllowVeryLargeObjects=1
-      - DOTNET_JitOptimizeType=1
       - ASPNETCORE_ENVIRONMENT=Production
-      # Memory and performance tuning
-      - MAX_CONCURRENT_DEVICES=${MAX_CONCURRENT_DEVICES:-10}
-      - DATA_BUFFER_SIZE=${DATA_BUFFER_SIZE:-10000}
-      - BATCH_SIZE=${BATCH_SIZE:-100}
-      - BATCH_TIMEOUT_MS=${BATCH_TIMEOUT_MS:-5000}
-      - ENABLE_PERFORMANCE_COUNTERS=${ENABLE_PERFORMANCE_COUNTERS:-true}
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
