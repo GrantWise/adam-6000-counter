@@ -1,27 +1,27 @@
 services:
-  # InfluxDB - Time series database for counter data (Performance Optimized)
-  influxdb:
-    image: influxdb:2.7.12
-    container_name: adam-influxdb
+  # TimescaleDB - Time series database for counter data (Performance Optimized)
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg17
+    container_name: adam-timescaledb
     restart: unless-stopped
     ports:
-      - "8086:8086"
+      - "5432:5432"
     environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
-      - DOCKER_INFLUXDB_INIT_ORG=adam_org
-      - DOCKER_INFLUXDB_INIT_BUCKET=adam_counters
-      - DOCKER_INFLUXDB_INIT_RETENTION=365d
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=adam-super-secret-token
+      - POSTGRES_DB=adam_counters
+      - POSTGRES_USER=adam_user
+      - POSTGRES_PASSWORD=adam_password
+      - TIMESCALEDB_TELEMETRY=off
       # Performance optimization settings
-      - INFLUXD_STORAGE_CACHE_MAX_MEMORY_SIZE=1g
-      - INFLUXD_STORAGE_CACHE_SNAPSHOT_MEMORY_SIZE=25m
-      - INFLUXD_STORAGE_CACHE_SNAPSHOT_WRITE_COLD_DURATION=10m
-      - INFLUXD_STORAGE_WAL_FSYNC_DELAY=0ms
+      - POSTGRES_SHARED_PRELOAD_LIBRARIES=timescaledb
+      - POSTGRES_MAX_CONNECTIONS=200
+      - POSTGRES_SHARED_BUFFERS=256MB
+      - POSTGRES_EFFECTIVE_CACHE_SIZE=1GB
+      - POSTGRES_WAL_BUFFERS=16MB
+      - POSTGRES_CHECKPOINT_COMPLETION_TARGET=0.9
+      - POSTGRES_RANDOM_PAGE_COST=1.1
     volumes:
-      - influxdb_data:/var/lib/influxdb2
-      - ./influxdb/init:/docker-entrypoint-initdb.d
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./timescaledb/init:/docker-entrypoint-initdb.d
     networks:
       - adam_network
     # Performance resource limits
@@ -37,7 +37,7 @@ services:
     tmpfs:
       - /tmp:size=100M,noexec,nosuid,nodev
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      test: ["CMD-SHELL", "pg_isready -U adam_user -d adam_counters"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -62,7 +62,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
-      - influxdb
+      - timescaledb
     networks:
       - adam_network
     healthcheck:
@@ -91,7 +91,7 @@ services:
       - ./config:/app/config
       - ./logs:/app/logs
     depends_on:
-      influxdb:
+      timescaledb:
         condition: service_healthy
     networks:
       - adam_network
@@ -176,7 +176,7 @@ services:
 
 # Persistent volumes for data storage
 volumes:
-  influxdb_data:
+  timescaledb_data:
     driver: local
   grafana_data:
     driver: local

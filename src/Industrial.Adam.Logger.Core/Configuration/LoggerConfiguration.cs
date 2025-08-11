@@ -26,10 +26,10 @@ public class LoggerConfiguration
     public int HealthCheckIntervalMs { get; set; } = Constants.DefaultHealthCheckIntervalMs;
 
     /// <summary>
-    /// InfluxDB connection settings
+    /// TimescaleDB connection settings
     /// </summary>
-    [Required(ErrorMessage = "InfluxDB configuration is required")]
-    public InfluxDbSettings InfluxDb { get; set; } = new();
+    [Required(ErrorMessage = "TimescaleDB configuration is required")]
+    public TimescaleSettings TimescaleDb { get; set; } = new();
 
     /// <summary>
     /// Enable demo mode (uses mock device manager)
@@ -68,11 +68,11 @@ public class LoggerConfiguration
             }
         }
 
-        // Validate InfluxDB settings
-        var influxErrors = InfluxDb.Validate();
-        if (!influxErrors.IsValid)
+        // Validate TimescaleDB settings
+        var timescaleErrors = TimescaleDb.Validate();
+        if (!timescaleErrors.IsValid)
         {
-            errors.AddRange(influxErrors.Errors);
+            errors.AddRange(timescaleErrors.Errors);
         }
 
         return new ValidationResult

@@ -3,12 +3,12 @@ using Industrial.Adam.Logger.Core.Models;
 namespace Industrial.Adam.Logger.Core.Storage;
 
 /// <summary>
-/// Interface for storing device readings in InfluxDB
+/// Interface for storing device readings in TimescaleDB
 /// </summary>
-public interface IInfluxDbStorage : IDisposable
+public interface ITimescaleStorage : IDisposable
 {
     /// <summary>
-    /// Write a single reading to InfluxDB
+    /// Write a single reading to TimescaleDB
     /// </summary>
     public Task WriteReadingAsync(DeviceReading reading, CancellationToken cancellationToken = default);
 
@@ -18,7 +18,7 @@ public interface IInfluxDbStorage : IDisposable
     public Task WriteBatchAsync(IEnumerable<DeviceReading> readings, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Test connection to InfluxDB
+    /// Test connection to TimescaleDB
     /// </summary>
     public Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
 
