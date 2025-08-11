@@ -81,27 +81,30 @@ public class InfluxDbSettings
 
         if (string.IsNullOrWhiteSpace(Url))
         {
-            errors.Add("InfluxDB URL cannot be empty");
+            errors.Add("InfluxDB URL cannot be empty. Configure 'AdamLogger:InfluxDb:Url' in appsettings.json (e.g., 'http://localhost:8086')");
         }
         else if (!Uri.TryCreate(Url, UriKind.Absolute, out var uri) ||
                  (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            errors.Add($"Invalid InfluxDB URL: {Url}");
+            errors.Add($"Invalid InfluxDB URL: '{Url}'. Must be http:// or https:// (e.g., 'http://localhost:8086')");
         }
 
         if (string.IsNullOrWhiteSpace(Token))
         {
-            errors.Add("InfluxDB token cannot be empty");
+            errors.Add("InfluxDB token cannot be empty. Configure 'AdamLogger:InfluxDb:Token' in appsettings.json. " +
+                      "Get token from InfluxDB UI: Data > Tokens > Generate Token");
         }
 
         if (string.IsNullOrWhiteSpace(Organization))
         {
-            errors.Add("InfluxDB organization cannot be empty");
+            errors.Add("InfluxDB organization cannot be empty. Configure 'AdamLogger:InfluxDb:Organization' in appsettings.json. " +
+                      "Find your org name in InfluxDB UI under user menu");
         }
 
         if (string.IsNullOrWhiteSpace(Bucket))
         {
-            errors.Add("InfluxDB bucket cannot be empty");
+            errors.Add("InfluxDB bucket cannot be empty. Configure 'AdamLogger:InfluxDb:Bucket' in appsettings.json. " +
+                      "Create bucket in InfluxDB UI: Data > Buckets > Create Bucket");
         }
 
         return new ValidationResult

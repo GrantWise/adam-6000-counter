@@ -129,6 +129,10 @@ dotnet run --project src/Industrial.Adam.Logger.Console -- --config myconfig.jso
 
 ## Configuration
 
+📖 **For detailed configuration information, see [Configuration Guide](docs/configuration-guide.md)**
+
+📋 **Ready-to-use templates available in [`config/`](config/) directory**
+
 Configuration uses standard .NET JSON format:
 
 ```json
@@ -264,6 +268,62 @@ docker-compose pull && docker-compose up -d
 
 ### Troubleshooting
 
+#### Configuration Issues
+
+**❌ "Configuration validation failed"**
+
+This error indicates problems with your `appsettings.json` structure:
+
+```bash
+# Symptoms
+❌ Configuration Error
+═══════════════════════
+Configuration validation failed:
+• Missing 'AdamLogger:InfluxDb' configuration section
+```
+
+**Solutions:**
+- ✅ Use configuration templates: `cp config/appsettings.local.json src/Industrial.Adam.Logger.Console/appsettings.json`
+- ✅ Ensure InfluxDB settings are nested: `AdamLogger > InfluxDb`
+- ✅ Verify all required fields are present (Token, Organization, Bucket)
+
+**❌ "Invalid IP address for device"**
+
+The application rejected your device IP address:
+
+```bash
+# Symptoms  
+Invalid IP address or hostname for device ADAM001: 'localhost'
+```
+
+**Solutions:**
+- ✅ Use `localhost` (now supported)
+- ✅ Use IP addresses: `192.168.1.100`  
+- ✅ Use hostnames: `adam-device-01`
+- ❌ Don't use invalid formats
+
+**❌ "InfluxDB connection failed"**
+
+The logger can't connect to InfluxDB:
+
+```bash
+# Check InfluxDB status
+docker ps | grep influx
+
+# Verify InfluxDB is accessible
+curl http://localhost:8086/health
+
+# Check logs for connection details
+docker logs adam-influxdb
+```
+
+**Solutions:**
+- ✅ Ensure InfluxDB is running: `docker start adam-influxdb`
+- ✅ Check token permissions in InfluxDB UI
+- ✅ Verify organization and bucket exist
+
+#### Service Issues
+
 **Services won't start:**
 ```bash
 # Check port conflicts  
@@ -271,6 +331,9 @@ netstat -tulpn | grep -E ':(3002|8086|9090)'
 
 # View detailed logs
 docker-compose logs
+
+# Check for configuration errors
+cd src/Industrial.Adam.Logger.Console && dotnet run
 ```
 
 **Can't connect to ADAM device:**
@@ -278,14 +341,54 @@ docker-compose logs
 # Check configuration
 docker-compose exec adam-logger cat /app/appsettings.json
 
-# Test with simulator
-docker-compose -f docker-compose.yml -f docker-compose.simulator.yml up
+# Test network connectivity
+ping 192.168.1.100
+
+# Try with simulator first
+./scripts/start-simulators.sh
 ```
 
 **Dashboard shows no data:**
-1. Check InfluxDB: http://localhost:8086
-2. Verify logger is running: `docker-compose logs adam-logger`
-3. Check Grafana datasource is configured
+1. ✅ Verify device connectivity: Check application logs
+2. ✅ Check InfluxDB: http://localhost:8086 → Data Explorer
+3. ✅ Verify logger is running: `docker-compose logs adam-logger`
+4. ✅ Check Grafana datasource is configured
+
+#### Quick Fixes
+
+**For Local Development:**
+```bash
+# Use working local configuration
+cp config/appsettings.local.json src/Industrial.Adam.Logger.Console/appsettings.json
+
+# Start InfluxDB with correct settings
+docker run -d --name adam-influxdb -p 8086:8086 \
+  -e DOCKER_INFLUXDB_INIT_MODE=setup \
+  -e DOCKER_INFLUXDB_INIT_USERNAME=admin \
+  -e DOCKER_INFLUXDB_INIT_PASSWORD=password123 \
+  -e DOCKER_INFLUXDB_INIT_ORG=adam_org \
+  -e DOCKER_INFLUXDB_INIT_BUCKET=adam_counters \
+  -e DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=adam-super-secret-token \
+  influxdb:2.7.12
+
+# Test with simulator
+./scripts/start-simulators.sh
+```
+
+**For Production Issues:**
+```bash  
+# Validate configuration without running
+cd src/Industrial.Adam.Logger.Console && dotnet run --validate-config
+
+# Check detailed error information  
+cd src/Industrial.Adam.Logger.Console && dotnet run --verbosity detailed
+```
+
+#### Getting Help
+
+📖 **Detailed Configuration Guide**: [`docs/configuration-guide.md`](docs/configuration-guide.md)
+📋 **Configuration Templates**: [`config/`](config/) directory  
+🔧 **Example Configurations**: See templates for different scenarios
 
 ## Key Capabilities
 

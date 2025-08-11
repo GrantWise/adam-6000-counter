@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # InfluxDB Time-Series Database
+  influxdb:
+    image: influxdb:2.7.12
+    container_name: adam-influxdb
+    hostname: influxdb
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
+      - DOCKER_INFLUXDB_INIT_ORG=adam_org
+      - DOCKER_INFLUXDB_INIT_BUCKET=adam_counters
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=adam-super-secret-token
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - ./influxdb/init:/docker-entrypoint-initdb.d
+    networks:
+      - adam_network
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # Single ADAM Device Simulator
+  adam-simulator-1:
+    build:
+      context: ../src/Industrial.Adam.Logger.Simulator
+      dockerfile: Dockerfile
+    container_name: adam-simulator-1
+    hostname: adam-simulator-1
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5502
+      - Simulator__DeviceId=TEST_DEVICE_001
+      - Simulator__BaseCounterValue=1000
+      - Simulator__CounterIncrementRate=10
+      - Simulator__RejectRate=1
+    ports:
+      - "5502:5502"
+    networks:
+      - adam_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5502/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ADAM Logger Service (waits for other services)
+  adam-logger:
+    build:
+      context: ..
+      dockerfile: docker/csharp/Dockerfile
+    image: docker-adam-logger
+    container_name: adam-counter-logger
+    hostname: adam-logger
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - DOTNET_ENVIRONMENT=Production
+    volumes:
+      - ./config/adam_config_single_test.json:/app/appsettings.json:ro
+      - ./logs:/app/logs
+    networks:
+      - adam_network
+    depends_on:
+      influxdb:
+        condition: service_healthy
+      adam-simulator-1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/Industrial.Adam.Logger.Console.dll"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  adam_network:
+    driver: bridge
+
+volumes:
+  influxdb_data:

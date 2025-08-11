@@ -23,6 +23,9 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // Validate configuration structure early
+        ValidateConfigurationStructure(configuration);
+
         // Add configuration
         services.Configure<LoggerConfiguration>(configuration.GetSection("AdamLogger"));
         services.Configure<InfluxDbSettings>(configuration.GetSection("AdamLogger:InfluxDb"));
@@ -55,6 +58,54 @@ public static class ServiceCollectionExtensions
                 .First());
 
         return services;
+    }
+
+    /// <summary>
+    /// Validates the configuration structure to provide helpful error messages
+    /// </summary>
+    private static void ValidateConfigurationStructure(IConfiguration configuration)
+    {
+        var errors = new List<string>();
+
+        // Check if AdamLogger section exists
+        var adamLoggerSection = configuration.GetSection("AdamLogger");
+        if (!adamLoggerSection.Exists())
+        {
+            errors.Add("Missing 'AdamLogger' configuration section in appsettings.json. " +
+                      "The configuration must be structured as: { \"AdamLogger\": { \"Devices\": [...], \"InfluxDb\": {...} } }");
+        }
+        else
+        {
+            // Check for common mistake: InfluxDb at root level
+            var rootInfluxDb = configuration.GetSection("InfluxDb");
+            if (rootInfluxDb.Exists() && !adamLoggerSection.GetSection("InfluxDb").Exists())
+            {
+                errors.Add("InfluxDB configuration found at root level but should be nested under 'AdamLogger'. " +
+                          "Move 'InfluxDb' section inside 'AdamLogger' section: { \"AdamLogger\": { \"InfluxDb\": {...} } }");
+            }
+
+            // Check if InfluxDb section exists under AdamLogger
+            var influxDbSection = adamLoggerSection.GetSection("InfluxDb");
+            if (!influxDbSection.Exists())
+            {
+                errors.Add("Missing 'AdamLogger:InfluxDb' configuration section. " +
+                          "Add InfluxDB settings under AdamLogger: { \"AdamLogger\": { \"InfluxDb\": { \"Url\": \"...\", \"Token\": \"...\" } } }");
+            }
+
+            // Check if Devices section exists
+            var devicesSection = adamLoggerSection.GetSection("Devices");
+            if (!devicesSection.Exists() || !devicesSection.GetChildren().Any())
+            {
+                errors.Add("Missing or empty 'AdamLogger:Devices' configuration section. " +
+                          "Add at least one device: { \"AdamLogger\": { \"Devices\": [{ \"DeviceId\": \"...\", \"IpAddress\": \"...\" }] } }");
+            }
+        }
+
+        if (errors.Any())
+        {
+            var message = "Configuration validation failed:\n" + string.Join("\n", errors.Select(e => "  • " + e));
+            throw new InvalidOperationException(message);
+        }
     }
 
     /// <summary>

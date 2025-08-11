@@ -84,16 +84,70 @@ public class DeviceConfig
     public int SendBufferSize { get; set; } = Constants.DefaultSendBufferSize;
 
     /// <summary>
+    /// Validates if the given string is a valid IP address or resolvable hostname
+    /// </summary>
+    private static bool IsValidIpAddressOrHostname(string address)
+    {
+        if (string.IsNullOrWhiteSpace(address))
+            return false;
+
+        // First try to parse as IP address
+        if (IPAddress.TryParse(address, out _))
+            return true;
+
+        // Check if it's a valid hostname format
+        if (!IsValidHostnameFormat(address))
+            return false;
+
+        // For hostnames, we accept them as valid without DNS resolution
+        // The actual connection will fail later if the hostname can't be resolved
+        return true;
+    }
+
+    /// <summary>
+    /// Validates hostname format according to RFC standards
+    /// </summary>
+    private static bool IsValidHostnameFormat(string hostname)
+    {
+        if (string.IsNullOrWhiteSpace(hostname) || hostname.Length > 253)
+            return false;
+
+        // Hostname can contain letters, digits, hyphens, and dots
+        // Must not start or end with hyphen or dot
+        if (hostname.StartsWith('-') || hostname.EndsWith('-') ||
+            hostname.StartsWith('.') || hostname.EndsWith('.'))
+            return false;
+
+        // Split by dots and validate each label
+        var labels = hostname.Split('.');
+        foreach (var label in labels)
+        {
+            if (string.IsNullOrEmpty(label) || label.Length > 63)
+                return false;
+
+            if (label.StartsWith('-') || label.EndsWith('-'))
+                return false;
+
+            // Each label should contain only alphanumeric characters and hyphens
+            if (!label.All(c => char.IsLetterOrDigit(c) || c == '-'))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Validate device configuration
     /// </summary>
     public ValidationResult Validate()
     {
         var errors = new List<string>();
 
-        // Validate IP address
-        if (!IPAddress.TryParse(IpAddress, out _))
+        // Validate IP address or hostname
+        if (!IsValidIpAddressOrHostname(IpAddress))
         {
-            errors.Add($"Invalid IP address for device {DeviceId}: {IpAddress}");
+            errors.Add($"Invalid IP address or hostname for device {DeviceId}: '{IpAddress}'. " +
+                      "Use a valid IP address (e.g., '192.168.1.100'), 'localhost', or hostname (e.g., 'adam-device-01')");
         }
 
         // Validate channels
