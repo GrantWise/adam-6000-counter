@@ -16,14 +16,14 @@ public class DeviceHealthTests
             TotalReads = 0,
             SuccessfulReads = 0
         };
-        
+
         // Act
         var rate = health.SuccessRate;
-        
+
         // Assert
         rate.Should().Be(0);
     }
-    
+
     [Fact]
     public void SuccessRate_WithReads_CalculatesCorrectly()
     {
@@ -34,14 +34,14 @@ public class DeviceHealthTests
             TotalReads = 1000,
             SuccessfulReads = 950
         };
-        
+
         // Act
         var rate = health.SuccessRate;
-        
+
         // Assert
         rate.Should().Be(95.0);
     }
-    
+
     [Theory]
     [InlineData(0, false)]
     [InlineData(3, false)]
@@ -55,10 +55,10 @@ public class DeviceHealthTests
             DeviceId = "TEST001",
             ConsecutiveFailures = failures
         };
-        
+
         // Act
         var isOffline = health.IsOffline;
-        
+
         // Assert
         isOffline.Should().Be(expectedOffline);
     }

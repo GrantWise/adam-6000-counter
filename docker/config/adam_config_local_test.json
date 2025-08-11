@@ -1,0 +1,71 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft": "Warning",
+      "Microsoft.Hosting.Lifetime": "Information",
+      "Industrial.Adam.Logger.Core": "Debug"
+    }
+  },
+  "AdamLogger": {
+    "GlobalPollIntervalMs": 5000,
+    "HealthCheckIntervalMs": 10000,
+    "DemoMode": false,
+    "Devices": [
+      {
+        "DeviceId": "SIM-6051-01",
+        "Name": "Local Test Simulator",
+        "IpAddress": "localhost",
+        "Port": 5502,
+        "UnitId": 1,
+        "Enabled": true,
+        "PollIntervalMs": 5000,
+        "TimeoutMs": 3000,
+        "MaxRetries": 2,
+        "KeepAlive": true,
+        "Channels": [
+          {
+            "ChannelNumber": 0,
+            "Name": "ProductionCounter",
+            "StartRegister": 0,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 1000
+          },
+          {
+            "ChannelNumber": 1,
+            "Name": "RejectCounter",
+            "StartRegister": 2,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 100
+          }
+        ]
+      }
+    ]
+  },
+  "InfluxDb": {
+    "Url": "http://localhost:8086",
+    "Token": "adam-super-secret-token",
+    "Organization": "adam_org",
+    "Bucket": "adam_counters",
+    "MeasurementName": "counter_data",
+    "BatchSize": 5,
+    "BatchTimeoutMs": 10000,
+    "FlushIntervalMs": 10000,
+    "EnableGzip": false,
+    "TimeoutSeconds": 30,
+    "Tags": {
+      "environment": "local_test",
+      "source": "direct_simulator"
+    }
+  }
+}

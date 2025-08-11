@@ -14,15 +14,15 @@ public class LoggerConfigurationTests
         {
             Devices = new List<DeviceConfig>()
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain("At least one device must be configured");
     }
-    
+
     [Fact]
     public void Validate_WithDuplicateDeviceIds_ReturnsInvalid()
     {
@@ -36,15 +36,15 @@ public class LoggerConfigurationTests
             },
             InfluxDb = CreateValidInfluxSettings()
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain("Duplicate device ID: ADAM001");
     }
-    
+
     [Fact]
     public void Validate_WithValidConfiguration_ReturnsValid()
     {
@@ -60,15 +60,15 @@ public class LoggerConfigurationTests
             GlobalPollIntervalMs = 1000,
             HealthCheckIntervalMs = 30000
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().BeTrue();
         result.Errors.Should().BeEmpty();
     }
-    
+
     private static DeviceConfig CreateValidDevice(string deviceId)
     {
         return new DeviceConfig
@@ -89,7 +89,7 @@ public class LoggerConfigurationTests
             }
         };
     }
-    
+
     private static InfluxDbSettings CreateValidInfluxSettings()
     {
         return new InfluxDbSettings

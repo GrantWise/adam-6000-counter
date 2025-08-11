@@ -7,12 +7,12 @@ public class ProductionSimulator
 {
     private readonly ILogger<ProductionSimulator> _logger;
     private readonly Random _random = new();
-    
+
     // State management
     private ProductionState _currentState = ProductionState.Idle;
     private DateTime _stateChangeTime = DateTime.UtcNow;
     private DateTime _lastProductionTime = DateTime.UtcNow;
-    
+
     // Production parameters
     public string DeviceId { get; }
     public double BaseRate { get; set; } = 120.0;        // units per minute
@@ -22,36 +22,36 @@ public class ProductionSimulator
     public TimeSpan SetupDuration { get; set; } = TimeSpan.FromMinutes(15);
     public TimeSpan RampUpDuration { get; set; } = TimeSpan.FromSeconds(30);
     public TimeSpan RampDownDuration { get; set; } = TimeSpan.FromSeconds(10);
-    
+
     // Stoppage probabilities (per minute)
     public double MinorStoppageProbability { get; set; } = 0.02;
     public double MajorStoppageProbability { get; set; } = 0.005;
-    
+
     // Current job tracking
     public int CurrentJobSize { get; private set; }
     public int UnitsProducedInJob { get; private set; }
     public int TotalUnitsProduced { get; private set; }
-    
+
     // Events
     public event EventHandler<ProductionStateChangedEventArgs>? StateChanged;
     public event EventHandler<UnitProducedEventArgs>? UnitProduced;
-    
+
     public ProductionSimulator(string deviceId, ILogger<ProductionSimulator> logger)
     {
         DeviceId = deviceId ?? throw new ArgumentNullException(nameof(deviceId));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
-    
+
     /// <summary>
     /// Get the current production state
     /// </summary>
     public ProductionState CurrentState => _currentState;
-    
+
     /// <summary>
     /// Get time in current state
     /// </summary>
     public TimeSpan TimeInCurrentState => DateTime.UtcNow - _stateChangeTime;
-    
+
     /// <summary>
     /// Start a new production job
     /// </summary>
@@ -60,10 +60,10 @@ public class ProductionSimulator
         CurrentJobSize = _random.Next(JobSizeMin, JobSizeMax);
         UnitsProducedInJob = 0;
         TransitionTo(ProductionState.Setup);
-        
+
         _logger.LogInformation("Starting new job on {DeviceId}: {JobSize} units", DeviceId, CurrentJobSize);
     }
-    
+
     /// <summary>
     /// Update the simulation state
     /// </summary>
@@ -71,20 +71,20 @@ public class ProductionSimulator
     {
         var now = DateTime.UtcNow;
         var timeInState = now - _stateChangeTime;
-        
+
         switch (_currentState)
         {
             case ProductionState.Idle:
                 // Wait for external trigger to start
                 break;
-                
+
             case ProductionState.Setup:
                 if (timeInState >= SetupDuration)
                 {
                     TransitionTo(ProductionState.RampUp);
                 }
                 break;
-                
+
             case ProductionState.RampUp:
                 ProduceUnitsAtRate(GetRampUpRate(timeInState));
                 if (timeInState >= RampUpDuration)
@@ -92,13 +92,13 @@ public class ProductionSimulator
                     TransitionTo(ProductionState.Running);
                 }
                 break;
-                
+
             case ProductionState.Running:
                 ProduceUnitsAtRate(GetRunningRate());
                 CheckForStoppages();
                 CheckJobCompletion();
                 break;
-                
+
             case ProductionState.RampDown:
                 ProduceUnitsAtRate(GetRampDownRate(timeInState));
                 if (timeInState >= RampDownDuration)
@@ -106,27 +106,27 @@ public class ProductionSimulator
                     TransitionTo(ProductionState.Idle);
                 }
                 break;
-                
+
             case ProductionState.MinorStoppage:
                 if (timeInState >= TimeSpan.FromSeconds(_random.Next(30, 120)))
                 {
                     TransitionTo(ProductionState.RampUp);
                 }
                 break;
-                
+
             case ProductionState.MajorStoppage:
                 if (timeInState >= TimeSpan.FromMinutes(_random.Next(10, 30)))
                 {
                     TransitionTo(ProductionState.RampUp);
                 }
                 break;
-                
+
             case ProductionState.ScheduledBreak:
                 // Handled externally by schedule
                 break;
         }
     }
-    
+
     /// <summary>
     /// Force a transition to a specific state
     /// </summary>
@@ -134,14 +134,14 @@ public class ProductionSimulator
     {
         TransitionTo(newState);
     }
-    
+
     /// <summary>
     /// Take a scheduled break
     /// </summary>
     public void TakeScheduledBreak(TimeSpan duration)
     {
         TransitionTo(ProductionState.ScheduledBreak);
-        Task.Delay(duration).ContinueWith(_ => 
+        Task.Delay(duration).ContinueWith(_ =>
         {
             if (_currentState == ProductionState.ScheduledBreak)
             {
@@ -149,66 +149,68 @@ public class ProductionSimulator
             }
         });
     }
-    
+
     private void TransitionTo(ProductionState newState)
     {
         var oldState = _currentState;
         _currentState = newState;
         _stateChangeTime = DateTime.UtcNow;
-        
-        _logger.LogInformation("{DeviceId} state changed: {OldState} -> {NewState}", 
+
+        _logger.LogInformation("{DeviceId} state changed: {OldState} -> {NewState}",
             DeviceId, oldState, newState);
-        
+
         StateChanged?.Invoke(this, new ProductionStateChangedEventArgs(oldState, newState));
     }
-    
+
     private double GetRampUpRate(TimeSpan timeInRampUp)
     {
         // Linear ramp from 20% to 100% of base rate
         var progress = Math.Min(1.0, timeInRampUp.TotalSeconds / RampUpDuration.TotalSeconds);
         return BaseRate * (0.2 + 0.8 * progress);
     }
-    
+
     private double GetRunningRate()
     {
         // Base rate with random variation
         var variation = (_random.NextDouble() - 0.5) * 2 * RateVariation;
         return BaseRate * (1 + variation);
     }
-    
+
     private double GetRampDownRate(TimeSpan timeInRampDown)
     {
         // Linear ramp from 100% to 10% of base rate
         var progress = Math.Min(1.0, timeInRampDown.TotalSeconds / RampDownDuration.TotalSeconds);
         return BaseRate * (1 - 0.9 * progress);
     }
-    
+
     private void ProduceUnitsAtRate(double unitsPerMinute)
     {
-        if (unitsPerMinute <= 0) return;
-        
+        if (unitsPerMinute <= 0)
+            return;
+
         var now = DateTime.UtcNow;
         var timeSinceLastProduction = now - _lastProductionTime;
         var secondsPerUnit = 60.0 / unitsPerMinute;
-        
+
         if (timeSinceLastProduction.TotalSeconds >= secondsPerUnit)
         {
             UnitsProducedInJob++;
             TotalUnitsProduced++;
             _lastProductionTime = now;
-            
+
             UnitProduced?.Invoke(this, new UnitProducedEventArgs(1));
         }
     }
-    
+
     private void CheckForStoppages()
     {
         // Check once per minute
         var now = DateTime.UtcNow;
-        if ((now - _lastProductionTime).TotalSeconds < 60) return;
-        
+        if ((now - _lastProductionTime).TotalSeconds < 60)
+            return;
+
         var roll = _random.NextDouble();
-        
+
         if (roll < MajorStoppageProbability)
         {
             _logger.LogWarning("{DeviceId} major stoppage occurred", DeviceId);
@@ -220,12 +222,12 @@ public class ProductionSimulator
             TransitionTo(ProductionState.MinorStoppage);
         }
     }
-    
+
     private void CheckJobCompletion()
     {
         if (UnitsProducedInJob >= CurrentJobSize)
         {
-            _logger.LogInformation("{DeviceId} completed job: {Units} units produced", 
+            _logger.LogInformation("{DeviceId} completed job: {Units} units produced",
                 DeviceId, UnitsProducedInJob);
             TransitionTo(ProductionState.RampDown);
         }
@@ -236,7 +238,7 @@ public class ProductionStateChangedEventArgs : EventArgs
 {
     public ProductionState OldState { get; }
     public ProductionState NewState { get; }
-    
+
     public ProductionStateChangedEventArgs(ProductionState oldState, ProductionState newState)
     {
         OldState = oldState;
@@ -247,7 +249,7 @@ public class ProductionStateChangedEventArgs : EventArgs
 public class UnitProducedEventArgs : EventArgs
 {
     public int Count { get; }
-    
+
     public UnitProducedEventArgs(int count)
     {
         Count = count;

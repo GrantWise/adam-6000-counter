@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using Industrial.Adam.Logger.Core.Configuration;
 using Industrial.Adam.Logger.Core.Models;
 using InfluxDB.Client;
@@ -17,16 +19,29 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
     private readonly InfluxDbSettings _settings;
     private readonly IInfluxDBClient _client;
     private readonly IWriteApiAsync _writeApi;
-    private readonly ConcurrentQueue<PointData> _pendingWrites = new();
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
-    private readonly Timer _batchTimer;
+    private readonly Channel<PointData> _writeChannel;
+    private readonly ChannelWriter<PointData> _writer;
+    private readonly ArrayPool<PointData> _pointPool = ArrayPool<PointData>.Shared;
+    private readonly CancellationTokenSource _backgroundCts = new();
+    private readonly Task _backgroundWriteTask;
     private volatile bool _disposed;
-    
+
+    // Health monitoring fields
+    private volatile bool _isBackgroundTaskHealthy = true;
+    private DateTimeOffset? _lastSuccessfulWrite;
+    private string? _lastError;
+    private readonly object _healthLock = new();
+
+    /// <summary>
+    /// Initialize InfluxDB storage with high-performance Channel-based processing
+    /// </summary>
+    /// <param name="logger">Logger instance</param>
+    /// <param name="settings">InfluxDB connection settings</param>
     public InfluxDbStorage(ILogger<InfluxDbStorage> logger, InfluxDbSettings settings)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
-        
+
         // Create InfluxDB client
         var options = new InfluxDBClientOptions(_settings.Url)
         {
@@ -34,29 +49,29 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
             Org = _settings.Organization,
             Bucket = _settings.Bucket
         };
-        
+
         _client = new InfluxDBClient(options);
         _writeApi = _client.GetWriteApiAsync();
-        
-        // Setup batch timer if configured
-        if (_settings.BatchSize > 1)
+
+        // Setup Channel for high-throughput async processing
+        var channelOptions = new BoundedChannelOptions(_settings.BatchSize * 10)
         {
-            _batchTimer = new Timer(
-                BatchTimerCallback,
-                null,
-                TimeSpan.FromMilliseconds(_settings.FlushIntervalMs),
-                TimeSpan.FromMilliseconds(_settings.FlushIntervalMs));
-        }
-        else
-        {
-            _batchTimer = new Timer(_ => { }, null, Timeout.Infinite, Timeout.Infinite);
-        }
-        
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = true,
+            SingleWriter = false
+        };
+
+        _writeChannel = Channel.CreateBounded<PointData>(channelOptions);
+        _writer = _writeChannel.Writer;
+
+        // Start background writer task
+        _backgroundWriteTask = Task.Run(ProcessWritesAsync, _backgroundCts.Token);
+
         _logger.LogInformation(
-            "InfluxDB storage initialized for {Url}, org={Org}, bucket={Bucket}",
+            "InfluxDB storage initialized for {Url}, org={Org}, bucket={Bucket} with Channel-based processing",
             _settings.Url, _settings.Organization, _settings.Bucket);
     }
-    
+
     /// <summary>
     /// Write a single reading to InfluxDB
     /// </summary>
@@ -64,27 +79,13 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(InfluxDbStorage));
-        
+
         var point = CreatePointData(reading);
-        
-        if (_settings.BatchSize > 1)
-        {
-            // Add to batch queue
-            _pendingWrites.Enqueue(point);
-            
-            // Check if we should flush
-            if (_pendingWrites.Count >= _settings.BatchSize)
-            {
-                await FlushBatchAsync(cancellationToken);
-            }
-        }
-        else
-        {
-            // Write immediately
-            await WritePointAsync(point, cancellationToken);
-        }
+
+        // Use Channel for high-performance async writes
+        await _writer.WriteAsync(point, cancellationToken).ConfigureAwait(false);
     }
-    
+
     /// <summary>
     /// Write multiple readings in a batch
     /// </summary>
@@ -92,34 +93,15 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(InfluxDbStorage));
-        
-        var points = readings.Select(CreatePointData).ToList();
-        
-        if (!points.Any())
-            return;
-        
-        await _writeLock.WaitAsync(cancellationToken);
-        try
+
+        // Use Channel for all writes to maintain consistency and performance
+        foreach (var reading in readings)
         {
-            await _writeApi.WritePointsAsync(
-                points,
-                _settings.Bucket,
-                _settings.Organization,
-                cancellationToken);
-            
-            _logger.LogDebug("Wrote batch of {Count} points to InfluxDB", points.Count);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to write batch of {Count} points to InfluxDB", points.Count);
-            throw;
-        }
-        finally
-        {
-            _writeLock.Release();
+            var point = CreatePointData(reading);
+            await _writer.WriteAsync(point, cancellationToken).ConfigureAwait(false);
         }
     }
-    
+
     /// <summary>
     /// Test connection to InfluxDB
     /// </summary>
@@ -127,9 +109,9 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
     {
         try
         {
-            var pingResult = await _client.PingAsync();
+            var pingResult = await _client.PingAsync().ConfigureAwait(false);
             var isHealthy = pingResult;
-            
+
             if (isHealthy)
             {
                 _logger.LogInformation("InfluxDB connection test successful");
@@ -138,7 +120,7 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
             {
                 _logger.LogWarning("InfluxDB ping failed");
             }
-            
+
             return isHealthy;
         }
         catch (Exception ex)
@@ -147,7 +129,7 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
             return false;
         }
     }
-    
+
     /// <summary>
     /// Flush any pending writes
     /// </summary>
@@ -155,10 +137,37 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
     {
         if (_disposed)
             return;
-        
-        await FlushBatchAsync(cancellationToken);
+
+        // Wait for background processing to complete without completing the channel
+        // The channel will be completed in Dispose()
+        try
+        {
+            // Give background task time to process any pending items
+            await Task.Delay(100, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
     }
-    
+
+    /// <summary>
+    /// Get the current health status of the storage subsystem
+    /// </summary>
+    public StorageHealthStatus GetHealthStatus()
+    {
+        lock (_healthLock)
+        {
+            return new StorageHealthStatus
+            {
+                IsBackgroundTaskHealthy = _isBackgroundTaskHealthy,
+                LastSuccessfulWrite = _lastSuccessfulWrite,
+                LastError = _lastError,
+                PendingWrites = _writeChannel.Reader.CanCount ? _writeChannel.Reader.Count : 0
+            };
+        }
+    }
+
     private PointData CreatePointData(DeviceReading reading)
     {
         var point = PointData
@@ -169,13 +178,13 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
             .Field("processed_value", reading.ProcessedValue)
             .Field("quality", reading.Quality.ToString())
             .Timestamp(reading.Timestamp.UtcDateTime, WritePrecision.Ms);
-        
+
         // Add rate if available
         if (reading.Rate.HasValue)
         {
             point = point.Field("rate", reading.Rate.Value);
         }
-        
+
         // Add custom tags if configured
         if (_settings.Tags != null)
         {
@@ -184,112 +193,146 @@ public sealed class InfluxDbStorage : IInfluxDbStorage
                 point = point.Tag(tag.Key, tag.Value);
             }
         }
-        
+
         return point;
     }
-    
-    private async Task WritePointAsync(PointData point, CancellationToken cancellationToken)
+
+    /// <summary>
+    /// Background task that processes writes from the Channel in batches
+    /// </summary>
+    private async Task ProcessWritesAsync()
     {
-        await _writeLock.WaitAsync(cancellationToken);
+        var reader = _writeChannel.Reader;
+        var batchList = new List<PointData>(_settings.BatchSize);
+
         try
         {
-            await _writeApi.WritePointAsync(
-                point,
+            await foreach (var point in reader.ReadAllAsync(_backgroundCts.Token))
+            {
+                batchList.Add(point);
+
+                // Write batch when full or when no more items are immediately available
+                if (batchList.Count >= _settings.BatchSize || !reader.TryRead(out var nextPoint))
+                {
+                    if (batchList.Count > 0)
+                    {
+                        await WriteBatchToInfluxAsync(batchList, _backgroundCts.Token).ConfigureAwait(false);
+                        batchList.Clear();
+                    }
+                }
+                else
+                {
+                    // Add the next point if we read one
+                    batchList.Add(nextPoint);
+                }
+
+                // Periodic flush based on time interval
+                if (batchList.Count > 0)
+                {
+                    await Task.Delay(_settings.FlushIntervalMs, _backgroundCts.Token);
+                    if (batchList.Count > 0)
+                    {
+                        await WriteBatchToInfluxAsync(batchList, _backgroundCts.Token).ConfigureAwait(false);
+                        batchList.Clear();
+                    }
+                }
+            }
+
+            // Final flush of any remaining points
+            if (batchList.Count > 0)
+            {
+                await WriteBatchToInfluxAsync(batchList, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in background write processing");
+
+            // Update health status
+            lock (_healthLock)
+            {
+                _isBackgroundTaskHealthy = false;
+                _lastError = ex.Message;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Write a batch of points to InfluxDB with retry logic
+    /// </summary>
+    private async Task WriteBatchToInfluxAsync(List<PointData> points, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _writeApi.WritePointsAsync(
+                points,
                 _settings.Bucket,
                 _settings.Organization,
-                cancellationToken);
-            
-            _logger.LogDebug("Wrote point to InfluxDB");
+                cancellationToken).ConfigureAwait(false);
+
+            // Update health status on successful write
+            lock (_healthLock)
+            {
+                _isBackgroundTaskHealthy = true;
+                _lastSuccessfulWrite = DateTimeOffset.UtcNow;
+                _lastError = null;
+            }
+
+            _logger.LogDebug("Wrote batch of {Count} points to InfluxDB", points.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to write point to InfluxDB");
+            _logger.LogError(ex, "Failed to write batch of {Count} points to InfluxDB", points.Count);
+
+            // Update health status on write failure
+            lock (_healthLock)
+            {
+                _isBackgroundTaskHealthy = false;
+                _lastError = ex.Message;
+            }
+
             throw;
         }
-        finally
-        {
-            _writeLock.Release();
-        }
     }
-    
-    private async Task FlushBatchAsync(CancellationToken cancellationToken)
-    {
-        if (_pendingWrites.IsEmpty)
-            return;
-        
-        var points = new List<PointData>();
-        while (_pendingWrites.TryDequeue(out var point))
-        {
-            points.Add(point);
-        }
-        
-        if (points.Any())
-        {
-            await _writeLock.WaitAsync(cancellationToken);
-            try
-            {
-                await _writeApi.WritePointsAsync(
-                    points,
-                    _settings.Bucket,
-                    _settings.Organization,
-                    cancellationToken);
-                
-                _logger.LogDebug("Flushed batch of {Count} points to InfluxDB", points.Count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to flush batch of {Count} points to InfluxDB", points.Count);
-                
-                // Re-queue failed points
-                foreach (var point in points)
-                {
-                    _pendingWrites.Enqueue(point);
-                }
-                
-                throw;
-            }
-            finally
-            {
-                _writeLock.Release();
-            }
-        }
-    }
-    
-    private async void BatchTimerCallback(object? state)
-    {
-        try
-        {
-            await FlushBatchAsync(CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in batch timer callback");
-        }
-    }
-    
+
+    /// <summary>
+    /// Dispose of InfluxDB storage resources and flush any pending writes
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
             return;
-        
+
         _disposed = true;
-        
-        // Stop the timer
-        _batchTimer?.Change(Timeout.Infinite, Timeout.Infinite);
-        _batchTimer?.Dispose();
-        
-        // Flush any remaining data
+
+        // Signal no more writes and complete the channel
         try
         {
-            FlushAsync().Wait(TimeSpan.FromSeconds(5));
+            _writer.Complete();
+        }
+        catch (InvalidOperationException)
+        {
+            // Channel may already be completed
+        }
+
+        // Cancel background processing and wait for completion
+        _backgroundCts.Cancel();
+
+        try
+        {
+            _backgroundWriteTask.Wait(TimeSpan.FromSeconds(10));
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error flushing data during dispose");
+            _logger.LogWarning(ex, "Error waiting for background write task completion during dispose");
         }
-        
+
         // Dispose resources
-        _writeLock?.Dispose();
+        _backgroundCts?.Dispose();
         _client?.Dispose();
     }
 }

@@ -13,12 +13,12 @@ public interface IDataProcessor
     /// <param name="reading">Raw reading from device</param>
     /// <param name="previousReading">Previous reading for the same channel (if available)</param>
     /// <returns>Processed reading with calculated values</returns>
-    DeviceReading ProcessReading(DeviceReading reading, DeviceReading? previousReading = null);
-    
+    public DeviceReading ProcessReading(DeviceReading reading, DeviceReading? previousReading = null);
+
     /// <summary>
     /// Validate a processed reading
     /// </summary>
     /// <param name="reading">Reading to validate</param>
     /// <returns>True if reading is valid</returns>
-    bool ValidateReading(DeviceReading reading);
+    public bool ValidateReading(DeviceReading reading);
 }

@@ -16,15 +16,15 @@ public class DeviceConfigTests
             IpAddress = "not.an.ip",
             Channels = new List<ChannelConfig> { CreateValidChannel() }
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("Invalid IP address"));
     }
-    
+
     [Fact]
     public void Validate_WithNoChannels_ReturnsInvalid()
     {
@@ -35,15 +35,15 @@ public class DeviceConfigTests
             IpAddress = "192.168.1.100",
             Channels = new List<ChannelConfig>()
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("at least one channel"));
     }
-    
+
     [Fact]
     public void Validate_WithDuplicateChannels_ReturnsInvalid()
     {
@@ -58,15 +58,15 @@ public class DeviceConfigTests
                 CreateValidChannel(0)
             }
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Contains("duplicate channel number: 0"));
     }
-    
+
     [Fact]
     public void Validate_WithValidConfig_ReturnsValid()
     {
@@ -86,15 +86,15 @@ public class DeviceConfigTests
                 CreateValidChannel(1)
             }
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().BeTrue();
         result.Errors.Should().BeEmpty();
     }
-    
+
     private static ChannelConfig CreateValidChannel(int channelNumber = 0)
     {
         return new ChannelConfig

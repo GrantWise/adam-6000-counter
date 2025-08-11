@@ -18,15 +18,15 @@ public class ChannelConfigTests
             RegisterCount = 2,
             ScaleFactor = 0 // Invalid
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain("ScaleFactor must be greater than 0");
     }
-    
+
     [Fact]
     public void Validate_WithInvalidMinMaxValues_ReturnsInvalid()
     {
@@ -40,15 +40,15 @@ public class ChannelConfigTests
             MinValue = 100,
             MaxValue = 50 // Invalid: less than MinValue
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain("MinValue must be less than MaxValue");
     }
-    
+
     [Theory]
     [InlineData(0, false)]
     [InlineData(1, true)]
@@ -65,14 +65,14 @@ public class ChannelConfigTests
             StartRegister = 0,
             RegisterCount = registerCount
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().Be(expectedValid);
     }
-    
+
     [Fact]
     public void Validate_WithValidConfig_ReturnsValid()
     {
@@ -96,10 +96,10 @@ public class ChannelConfigTests
                 ["product"] = "WidgetA"
             }
         };
-        
+
         // Act
         var result = config.Validate();
-        
+
         // Assert
         result.IsValid.Should().BeTrue();
         result.Errors.Should().BeEmpty();

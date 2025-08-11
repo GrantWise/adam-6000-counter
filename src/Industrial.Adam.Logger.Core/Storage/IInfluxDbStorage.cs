@@ -10,20 +10,51 @@ public interface IInfluxDbStorage : IDisposable
     /// <summary>
     /// Write a single reading to InfluxDB
     /// </summary>
-    Task WriteReadingAsync(DeviceReading reading, CancellationToken cancellationToken = default);
-    
+    public Task WriteReadingAsync(DeviceReading reading, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Write multiple readings in a batch
     /// </summary>
-    Task WriteBatchAsync(IEnumerable<DeviceReading> readings, CancellationToken cancellationToken = default);
-    
+    public Task WriteBatchAsync(IEnumerable<DeviceReading> readings, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Test connection to InfluxDB
     /// </summary>
-    Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
-    
+    public Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Flush any pending writes
     /// </summary>
-    Task FlushAsync(CancellationToken cancellationToken = default);
+    public Task FlushAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get the current health status of the storage background task
+    /// </summary>
+    public StorageHealthStatus GetHealthStatus();
+}
+
+/// <summary>
+/// Health status of the storage subsystem
+/// </summary>
+public class StorageHealthStatus
+{
+    /// <summary>
+    /// Whether the background write task is healthy
+    /// </summary>
+    public bool IsBackgroundTaskHealthy { get; init; }
+
+    /// <summary>
+    /// Timestamp of the last successful write batch
+    /// </summary>
+    public DateTimeOffset? LastSuccessfulWrite { get; init; }
+
+    /// <summary>
+    /// Last error message if any
+    /// </summary>
+    public string? LastError { get; init; }
+
+    /// <summary>
+    /// Number of pending writes in the queue
+    /// </summary>
+    public int PendingWrites { get; init; }
 }

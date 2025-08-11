@@ -1,5 +1,5 @@
-using Microsoft.Data.Sqlite;
 using Industrial.Adam.Logger.Simulator.Simulation;
+using Microsoft.Data.Sqlite;
 
 namespace Industrial.Adam.Logger.Simulator.Storage;
 
@@ -11,25 +11,25 @@ public class SimulatorDatabase : IDisposable
     private readonly string _connectionString;
     private readonly ILogger<SimulatorDatabase> _logger;
     private SqliteConnection? _connection;
-    
+
     public SimulatorDatabase(string databasePath, ILogger<SimulatorDatabase> logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionString = $"Data Source={databasePath}";
-        
+
         InitializeDatabase();
     }
-    
+
     private void InitializeDatabase()
     {
         try
         {
             _connection = new SqliteConnection(_connectionString);
             _connection.Open();
-            
+
             // Create tables if they don't exist
             using var cmd = _connection.CreateCommand();
-            
+
             cmd.CommandText = @"
                 CREATE TABLE IF NOT EXISTS simulator_state (
                     device_id TEXT NOT NULL,
@@ -54,9 +54,9 @@ public class SimulatorDatabase : IDisposable
                 
                 CREATE INDEX IF NOT EXISTS idx_events_device_time 
                 ON production_events(device_id, timestamp);";
-            
+
             cmd.ExecuteNonQuery();
-            
+
             _logger.LogInformation("Database initialized at {Path}", _connectionString);
         }
         catch (Exception ex)
@@ -65,13 +65,13 @@ public class SimulatorDatabase : IDisposable
             throw;
         }
     }
-    
+
     /// <summary>
     /// Save channel state
     /// </summary>
     public async Task SaveChannelStateAsync(
-        string deviceId, 
-        int channelNumber, 
+        string deviceId,
+        int channelNumber,
         uint counterValue,
         ProductionState? productionState = null,
         int? jobSize = null,
@@ -86,7 +86,7 @@ public class SimulatorDatabase : IDisposable
                  job_size, units_produced, last_update)
                 VALUES (@deviceId, @channel, @counter, @state, @jobSize, 
                         @unitsProduced, @timestamp)";
-            
+
             cmd.Parameters.AddWithValue("@deviceId", deviceId);
             cmd.Parameters.AddWithValue("@channel", channelNumber);
             cmd.Parameters.AddWithValue("@counter", (long)counterValue);
@@ -94,7 +94,7 @@ public class SimulatorDatabase : IDisposable
             cmd.Parameters.AddWithValue("@jobSize", jobSize ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@unitsProduced", unitsProduced ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@timestamp", DateTime.UtcNow);
-            
+
             await cmd.ExecuteNonQueryAsync();
         }
         catch (Exception ex)
@@ -102,14 +102,14 @@ public class SimulatorDatabase : IDisposable
             _logger.LogError(ex, "Failed to save channel state");
         }
     }
-    
+
     /// <summary>
     /// Load channel states
     /// </summary>
     public async Task<Dictionary<int, uint>> LoadChannelStatesAsync(string deviceId)
     {
         var states = new Dictionary<int, uint>();
-        
+
         try
         {
             using var cmd = _connection!.CreateCommand();
@@ -117,9 +117,9 @@ public class SimulatorDatabase : IDisposable
                 SELECT channel_number, counter_value 
                 FROM simulator_state 
                 WHERE device_id = @deviceId";
-            
+
             cmd.Parameters.AddWithValue("@deviceId", deviceId);
-            
+
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -127,18 +127,18 @@ public class SimulatorDatabase : IDisposable
                 var counter = (uint)reader.GetInt64(1);
                 states[channel] = counter;
             }
-            
-            _logger.LogInformation("Loaded {Count} channel states for {DeviceId}", 
+
+            _logger.LogInformation("Loaded {Count} channel states for {DeviceId}",
                 states.Count, deviceId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load channel states");
         }
-        
+
         return states;
     }
-    
+
     /// <summary>
     /// Record a production event
     /// </summary>
@@ -156,13 +156,13 @@ public class SimulatorDatabase : IDisposable
                 INSERT INTO production_events 
                 (device_id, channel_number, event_type, duration_seconds, details)
                 VALUES (@deviceId, @channel, @eventType, @duration, @details)";
-            
+
             cmd.Parameters.AddWithValue("@deviceId", deviceId);
             cmd.Parameters.AddWithValue("@channel", channelNumber ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@eventType", eventType);
             cmd.Parameters.AddWithValue("@duration", durationSeconds ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@details", details ?? (object)DBNull.Value);
-            
+
             await cmd.ExecuteNonQueryAsync();
         }
         catch (Exception ex)
@@ -170,14 +170,14 @@ public class SimulatorDatabase : IDisposable
             _logger.LogError(ex, "Failed to record event");
         }
     }
-    
+
     /// <summary>
     /// Get recent events
     /// </summary>
     public async Task<List<ProductionEvent>> GetRecentEventsAsync(string deviceId, int hours = 24)
     {
         var events = new List<ProductionEvent>();
-        
+
         try
         {
             using var cmd = _connection!.CreateCommand();
@@ -188,10 +188,10 @@ public class SimulatorDatabase : IDisposable
                 WHERE device_id = @deviceId 
                   AND timestamp > datetime('now', @hours)
                 ORDER BY timestamp DESC";
-            
+
             cmd.Parameters.AddWithValue("@deviceId", deviceId);
             cmd.Parameters.AddWithValue("@hours", $"-{hours} hours");
-            
+
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -210,10 +210,10 @@ public class SimulatorDatabase : IDisposable
         {
             _logger.LogError(ex, "Failed to get recent events");
         }
-        
+
         return events;
     }
-    
+
     public void Dispose()
     {
         _connection?.Dispose();

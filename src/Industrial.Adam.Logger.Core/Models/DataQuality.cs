@@ -9,12 +9,12 @@ public enum DataQuality
     /// Data is valid and within expected parameters
     /// </summary>
     Good = 0,
-    
+
     /// <summary>
     /// Data is questionable (e.g., high rate detected)
     /// </summary>
     Degraded = 1,
-    
+
     /// <summary>
     /// Data is invalid (timeout, overflow, error)
     /// </summary>

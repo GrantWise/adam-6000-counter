@@ -11,19 +11,23 @@ public sealed class DeviceHealthTracker
 {
     private readonly ConcurrentDictionary<string, DeviceHealthData> _healthData = new();
     private readonly ILogger<DeviceHealthTracker> _logger;
-    
+
+    /// <summary>
+    /// Initialize the device health tracker
+    /// </summary>
+    /// <param name="logger">Logger instance</param>
     public DeviceHealthTracker(ILogger<DeviceHealthTracker> logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
-    
+
     /// <summary>
     /// Record a successful read operation
     /// </summary>
     public void RecordSuccess(string deviceId, TimeSpan duration)
     {
         var data = _healthData.AddOrUpdate(deviceId,
-            _ => 
+            _ =>
             {
                 var newData = new DeviceHealthData
                 {
@@ -44,12 +48,12 @@ public sealed class DeviceHealthTracker
                 existing.AddDuration(duration);
                 return existing;
             });
-        
+
         _logger.LogDebug(
             "Device {DeviceId}: Read successful in {Duration}ms, success rate: {Rate:F1}%",
             deviceId, duration.TotalMilliseconds, data.SuccessRate);
     }
-    
+
     /// <summary>
     /// Record a failed read operation
     /// </summary>
@@ -71,7 +75,7 @@ public sealed class DeviceHealthTracker
                 existing.ConsecutiveFailures++;
                 return existing;
             });
-        
+
         if (data.ConsecutiveFailures == Constants.MaxConsecutiveFailures)
         {
             _logger.LogWarning(
@@ -79,7 +83,7 @@ public sealed class DeviceHealthTracker
                 deviceId, data.ConsecutiveFailures);
         }
     }
-    
+
     /// <summary>
     /// Get current health status for a device
     /// </summary>
@@ -96,7 +100,7 @@ public sealed class DeviceHealthTracker
                 SuccessfulReads = 0
             };
         }
-        
+
         return new DeviceHealth
         {
             DeviceId = deviceId,
@@ -108,7 +112,7 @@ public sealed class DeviceHealthTracker
             SuccessfulReads = data.SuccessfulReads
         };
     }
-    
+
     /// <summary>
     /// Get health status for all devices
     /// </summary>
@@ -118,7 +122,7 @@ public sealed class DeviceHealthTracker
             kvp => kvp.Key,
             kvp => GetDeviceHealth(kvp.Key));
     }
-    
+
     /// <summary>
     /// Get average response time for a device
     /// </summary>
@@ -126,13 +130,13 @@ public sealed class DeviceHealthTracker
     {
         if (!_healthData.TryGetValue(deviceId, out var data) || data.RecentDurations.Count == 0)
             return null;
-        
+
         lock (data.DurationLock)
         {
             return data.RecentDurations.Average(d => d.TotalMilliseconds);
         }
     }
-    
+
     /// <summary>
     /// Reset health data for a device
     /// </summary>
@@ -141,14 +145,14 @@ public sealed class DeviceHealthTracker
         _healthData.TryRemove(deviceId, out _);
         _logger.LogInformation("Reset health data for device {DeviceId}", deviceId);
     }
-    
+
     /// <summary>
     /// Internal health data storage
     /// </summary>
     private class DeviceHealthData
     {
         private const int MaxDurationHistory = 100;
-        
+
         public DateTimeOffset? LastSuccessfulRead { get; set; }
         public DateTimeOffset? LastErrorTime { get; set; }
         public string? LastError { get; set; }
@@ -157,9 +161,9 @@ public sealed class DeviceHealthTracker
         public int ConsecutiveFailures { get; set; }
         public List<TimeSpan> RecentDurations { get; } = new();
         public object DurationLock { get; } = new();
-        
+
         public double SuccessRate => TotalReads > 0 ? (double)SuccessfulReads / TotalReads * 100 : 0;
-        
+
         public void AddDuration(TimeSpan duration)
         {
             lock (DurationLock)
