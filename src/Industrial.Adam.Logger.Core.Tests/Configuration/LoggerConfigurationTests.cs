@@ -96,10 +96,10 @@ public class LoggerConfigurationTests
         {
             Host = "localhost",
             Port = 5432,
-            Database = "test_db",
-            Username = "test_user",
-            Password = "test_password",
-            TableName = "counter_data"
+            Database = "adam_counters",
+            Username = "adam_user",
+            Password = "adam_password",
+            TableName = "counter_data_config_test"
         };
     }
 }

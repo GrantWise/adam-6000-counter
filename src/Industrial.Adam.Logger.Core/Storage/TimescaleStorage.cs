@@ -43,15 +43,6 @@ public sealed class TimescaleStorage : ITimescaleStorage
             unit TEXT DEFAULT 'counts',
             PRIMARY KEY (timestamp, device_id, channel)
         );
-        
-        -- Create hypertable if it doesn't exist (TimescaleDB extension)
-        SELECT CASE 
-            WHEN NOT EXISTS (
-                SELECT 1 FROM _timescaledb_catalog.hypertable 
-                WHERE table_name = '{0}' AND schema_name = 'public'
-            ) THEN create_hypertable('public.{0}', 'timestamp', chunk_time_interval => INTERVAL '1 hour')
-            ELSE NULL 
-        END;
         """;
 
     private readonly string _insertSql;
@@ -211,9 +202,31 @@ public sealed class TimescaleStorage : ITimescaleStorage
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync().ConfigureAwait(false);
 
-            var sql = string.Format(_createTableSql, _settings.TableName);
-            using var command = new NpgsqlCommand(sql, connection);
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+            // Create the table first
+            var createTableSql = string.Format(_createTableSql, _settings.TableName);
+            using var createCommand = new NpgsqlCommand(createTableSql, connection);
+            await createCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
+
+            // Check if hypertable already exists, and create it if not
+            var checkHypertableSql = $"""
+                SELECT EXISTS (
+                    SELECT 1 FROM _timescaledb_catalog.hypertable 
+                    WHERE table_name = '{_settings.TableName}' AND schema_name = 'public'
+                );
+                """;
+
+            using var checkCommand = new NpgsqlCommand(checkHypertableSql, connection);
+            var result = await checkCommand.ExecuteScalarAsync().ConfigureAwait(false);
+            var hypertableExists = result != null && (bool)result;
+
+            if (!hypertableExists)
+            {
+                var createHypertableSql = $"SELECT create_hypertable('public.{_settings.TableName}', 'timestamp', chunk_time_interval => INTERVAL '1 hour');";
+                using var hypertableCommand = new NpgsqlCommand(createHypertableSql, connection);
+                await hypertableCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
+
+                _logger.LogInformation("TimescaleDB hypertable created for table {TableName}", _settings.TableName);
+            }
 
             _logger.LogInformation("TimescaleDB schema initialized successfully");
         }

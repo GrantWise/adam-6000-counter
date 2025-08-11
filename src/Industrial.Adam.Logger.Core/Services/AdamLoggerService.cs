@@ -68,11 +68,11 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
                 throw new InvalidOperationException($"Invalid configuration: {errors}");
             }
 
-            // Test InfluxDB connection
-            _logger.LogInformation("Testing InfluxDB connection");
+            // Test TimescaleDB connection
+            _logger.LogInformation("Testing TimescaleDB connection");
             if (!await _timescaleStorage.TestConnectionAsync(cancellationToken).ConfigureAwait(false))
             {
-                throw new InvalidOperationException("Failed to connect to InfluxDB");
+                throw new InvalidOperationException("Failed to connect to TimescaleDB");
             }
 
             // Create cancellation token for stopping

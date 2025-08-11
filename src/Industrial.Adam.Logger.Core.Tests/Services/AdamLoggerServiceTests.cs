@@ -70,6 +70,15 @@ public class AdamLoggerServiceTests : IDisposable
                         }
                     }
                 }
+            },
+            TimescaleDb = new TimescaleSettings
+            {
+                Host = "localhost",
+                Port = 5432,
+                Database = "adam_counters",
+                Username = "adam_user",
+                Password = "adam_password",
+                TableName = "counter_data_test"
             }
         };
 

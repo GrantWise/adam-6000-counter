@@ -20,10 +20,10 @@ public class TimescaleStorageTests : IDisposable
         {
             Host = "localhost",
             Port = 5432,
-            Database = "test_db",
-            Username = "test_user",
-            Password = "test_password",
-            TableName = "counter_data",
+            Database = "adam_counters",
+            Username = "adam_user",
+            Password = "adam_password",
+            TableName = "counter_data_unit_test",
             BatchSize = 10,
             FlushIntervalMs = 1000,
             Tags = new Dictionary<string, string>
