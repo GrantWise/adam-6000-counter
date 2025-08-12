@@ -21,4 +21,12 @@ public interface IDataProcessor
     /// <param name="reading">Reading to validate</param>
     /// <returns>True if reading is valid</returns>
     public bool ValidateReading(DeviceReading reading);
+
+    /// <summary>
+    /// Get windowed rate statistics for a specific channel
+    /// </summary>
+    /// <param name="deviceId">Device identifier</param>
+    /// <param name="channel">Channel number</param>
+    /// <returns>Rate calculation statistics</returns>
+    public WindowedRateStatistics? GetRateStatistics(string deviceId, int channel);
 }

@@ -23,7 +23,8 @@ Get the Industrial ADAM Logger running in 5 minutes!
 
 3. **Access the dashboards**
    - Grafana: http://localhost:3002 (admin/admin)
-   - InfluxDB: http://localhost:8086 (admin/admin123)
+   - TimescaleDB: postgresql://localhost:5433 (adam_user/adam_password)
+   - Prometheus: http://localhost:9090
 
 4. **View real-time data**
    ```bash

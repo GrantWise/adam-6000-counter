@@ -65,7 +65,41 @@ public class TimescaleSettings
     /// Flush interval in milliseconds for batch writes
     /// </summary>
     [Range(100, 60000, ErrorMessage = "FlushIntervalMs must be between 100ms and 60 seconds")]
-    public int FlushIntervalMs { get; set; } = 5000;
+    public int FlushIntervalMs { get; set; } = Constants.DefaultFlushIntervalMs;
+
+    /// <summary>
+    /// Maximum retry attempts for database operations
+    /// </summary>
+    [Range(0, 10, ErrorMessage = "MaxRetryAttempts must be between 0 and 10")]
+    public int MaxRetryAttempts { get; set; } = Constants.DefaultDatabaseRetryAttempts;
+
+    /// <summary>
+    /// Base delay for retry operations in milliseconds
+    /// </summary>
+    [Range(100, 10000, ErrorMessage = "RetryDelayMs must be between 100ms and 10 seconds")]
+    public int RetryDelayMs { get; set; } = Constants.DefaultDatabaseRetryDelayMs;
+
+    /// <summary>
+    /// Maximum delay for retry operations in milliseconds
+    /// </summary>
+    [Range(1000, 120000, ErrorMessage = "MaxRetryDelayMs must be between 1 second and 2 minutes")]
+    public int MaxRetryDelayMs { get; set; } = Constants.MaxDatabaseRetryDelayMs;
+
+    /// <summary>
+    /// Enable dead letter queue for failed batches
+    /// </summary>
+    public bool EnableDeadLetterQueue { get; set; } = true;
+
+    /// <summary>
+    /// Path for dead letter queue storage (null for default)
+    /// </summary>
+    public string? DeadLetterQueuePath { get; set; }
+
+    /// <summary>
+    /// Graceful shutdown timeout in seconds
+    /// </summary>
+    [Range(5, 300, ErrorMessage = "ShutdownTimeoutSeconds must be between 5 and 300 seconds")]
+    public int ShutdownTimeoutSeconds { get; set; } = Constants.DefaultShutdownTimeoutSeconds;
 
     /// <summary>
     /// Enable SSL/TLS for the connection

@@ -40,16 +40,8 @@ scrape_configs:
         target_label: instance
         replacement: 'adam-counter-system'
 
-  # InfluxDB metrics
-  - job_name: 'influxdb'
-    static_configs:
-      - targets: ['influxdb:8086']
-    scrape_interval: 30s
-    metrics_path: /metrics
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: 'adam-influxdb'
+  # TimescaleDB metrics - Disabled (PostgreSQL doesn't expose /metrics by default)
+  # Note: To monitor TimescaleDB, would need postgres_exporter sidecar container
 
   # Grafana metrics
   - job_name: 'grafana'
@@ -62,46 +54,12 @@ scrape_configs:
         target_label: instance
         replacement: 'adam-grafana'
 
-  # ADAM Counter Logger application metrics (when implemented)
-  - job_name: 'adam-counter-logger'
-    static_configs:
-      - targets: ['adam-logger:8080']  # Assuming metrics endpoint on port 8080
-    scrape_interval: 15s
-    metrics_path: /metrics
-    honor_labels: true
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: 'adam-counter-logger'
-    # Custom metric relabeling for industrial applications
-    metric_relabel_configs:
-      # Relabel device-specific metrics
-      - source_labels: [device_id]
-        target_label: adam_device
-      - source_labels: [channel_number]
-        target_label: adam_channel
-      # Add industrial-specific labels
-      - target_label: application
-        replacement: 'industrial-counter'
-      - target_label: component
-        replacement: 'data-acquisition'
+  # ADAM Counter Logger - Disabled (application doesn't expose /metrics endpoint)
+  # Note: To monitor the logger application, would need to implement custom metrics endpoint
 
-  # Custom application health checks
-  - job_name: 'adam-health-checks'
-    static_configs:
-      - targets: ['adam-logger:8080']
-    scrape_interval: 30s
-    metrics_path: /health/prometheus
-    honor_labels: true
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: 'adam-health'
+  # Custom health checks - Disabled (application doesn't expose /health/prometheus endpoint)
+  # Note: Application health is monitored via Docker health checks
 
 # Remote write configuration (optional - for long-term storage)
-# remote_write:
-#   - url: "http://influxdb:8086/api/v1/prom/write?db=prometheus"
-#     write_relabel_configs:
-#       - source_labels: [__name__]
-#         regex: 'adam_.*'
-#         action: keep
+# Note: TimescaleDB integration would require a different approach
+# Could use postgres_exporter or direct SQL writes for custom metrics

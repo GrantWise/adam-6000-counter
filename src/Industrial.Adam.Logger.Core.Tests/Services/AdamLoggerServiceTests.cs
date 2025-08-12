@@ -175,6 +175,8 @@ public class AdamLoggerServiceTests : IDisposable
         _service = CreateService();
         _timescaleStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+        _timescaleStorageMock.Setup(x => x.ForceFlushAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         await _service.StartAsync(CancellationToken.None);
 
@@ -184,7 +186,7 @@ public class AdamLoggerServiceTests : IDisposable
         // Assert
         // Since we're using a real device pool, we check its state after stop
         _devicePool.DeviceCount.Should().Be(1); // Devices remain registered but stopped
-        _timescaleStorageMock.Verify(x => x.FlushAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _timescaleStorageMock.Verify(x => x.ForceFlushAsync(It.IsAny<CancellationToken>()), Times.Once);
 
         // Verify info logs
         _loggerMock.Verify(

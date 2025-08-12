@@ -5,7 +5,7 @@ services:
     container_name: adam-timescaledb
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       - POSTGRES_DB=adam_counters
       - POSTGRES_USER=adam_user
@@ -78,6 +78,7 @@ services:
       dockerfile: docker/csharp/Dockerfile
     container_name: adam-counter-logger
     restart: unless-stopped
+    network_mode: host
     environment:
       # Configuration selection
       - DEMO_MODE=${DEMO_MODE:-false}
@@ -90,11 +91,6 @@ services:
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-    networks:
-      - adam_network
     # Performance resource limits and optimization
     deploy:
       resources:

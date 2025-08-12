@@ -1,6 +1,6 @@
 # Configuration Guide
 
-This guide provides comprehensive information about configuring the Industrial ADAM Logger application.
+This guide provides comprehensive information about configuring the Industrial ADAM Logger application with TimescaleDB integration and advanced features like windowed rate calculation and dead letter queue.
 
 ## Quick Start Configuration
 
@@ -34,11 +34,13 @@ The minimal configuration required to get started:
         ]
       }
     ],
-    "InfluxDb": {
-      "Url": "http://localhost:8086",
-      "Token": "your-influxdb-token",
-      "Organization": "your-org",
-      "Bucket": "adam_counters"
+    "TimescaleDb": {
+      "Host": "localhost",
+      "Port": 5433,
+      "Database": "adam_counters",
+      "Username": "adam_user",
+      "Password": "adam_password",
+      "TableName": "counter_data"
     }
   }
 }
@@ -48,16 +50,16 @@ The minimal configuration required to get started:
 
 ### Important: Configuration Nesting
 
-⚠️ **Critical**: InfluxDB settings must be nested under `AdamLogger:InfluxDb`, not at the root level.
+⚠️ **Critical**: TimescaleDB settings must be nested under `AdamLogger:TimescaleDb`, not at the root level.
 
 **✅ Correct Structure:**
 ```json
 {
   "AdamLogger": {
     "Devices": [...],
-    "InfluxDb": {
-      "Url": "...",
-      "Token": "..."
+    "TimescaleDb": {
+      "Host": "...",
+      "Database": "..."
     }
   }
 }
@@ -69,9 +71,9 @@ The minimal configuration required to get started:
   "AdamLogger": {
     "Devices": [...]
   },
-  "InfluxDb": {
-    "Url": "...",
-    "Token": "..."
+  "TimescaleDb": {
+    "Host": "...",
+    "Database": "..."
   }
 }
 ```
@@ -115,6 +117,7 @@ The application supports multiple address formats:
 | `MinValue` | ❌ | long | 0 | Minimum expected value |
 | `MaxValue` | ❌ | long | 4294967295 | Maximum expected value |
 | `MaxChangeRate` | ❌ | double | 1000 | Maximum rate change per second |
+| `RateWindowSeconds` | ❌ | int | 60 | Time window for rate calculation (NEW) |
 
 ### Channel Register Mapping
 
@@ -137,49 +140,125 @@ ADAM-6051 devices use 32-bit counters that span 2 consecutive 16-bit Modbus regi
 }
 ```
 
-## InfluxDB Configuration
+## TimescaleDB Configuration
 
 ### Required Settings
 
-| Property | Required | Description | How to Get |
-|----------|----------|-------------|------------|
-| `Url` | ✅ | InfluxDB server URL | Usually `http://localhost:8086` for local setup |
-| `Token` | ✅ | Authentication token | InfluxDB UI → Data → Tokens → Generate Token |
-| `Organization` | ✅ | Organization name | InfluxDB UI → User menu → About |
-| `Bucket` | ✅ | Data bucket name | InfluxDB UI → Data → Buckets → Create Bucket |
+| Property | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `Host` | ✅ | TimescaleDB server hostname | `localhost` or `timescaledb` |
+| `Port` | ✅ | PostgreSQL port | `5433` for Docker, `5432` for standard |
+| `Database` | ✅ | Database name | `adam_counters` |
+| `Username` | ✅ | Database username | `adam_user` |
+| `Password` | ✅ | Database password | Use environment variable in production |
+| `TableName` | ❌ | Table name for counter data | Default: `counter_data` |
 
 ### Optional Settings
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `MeasurementName` | "counter_data" | InfluxDB measurement name |
-| `BatchSize` | 100 | Number of points per batch |
-| `BatchTimeoutMs` | 5000 | Maximum time to wait before sending batch |
+| `BatchSize` | 50 | Number of readings per batch |
+| `BatchTimeoutMs` | 5000 | Maximum time before sending partial batch |
 | `FlushIntervalMs` | 5000 | Force flush interval |
-| `EnableGzip` | true | Enable compression |
+| `MaxRetryAttempts` | 3 | Retry attempts for failed writes |
+| `RetryDelayMs` | 1000 | Initial retry delay (exponential backoff) |
+| `MaxRetryDelayMs` | 30000 | Maximum retry delay |
+| `EnableDeadLetterQueue` | true | Save failed batches for retry |
+| `DeadLetterQueuePath` | null | Custom path for dead letter storage |
+| `ShutdownTimeoutSeconds` | 30 | Graceful shutdown timeout |
+| `EnableSsl` | false | Enable SSL connection |
 | `TimeoutSeconds` | 30 | Connection timeout |
+| `MaxPoolSize` | 20 | Maximum database connections |
+| `MinPoolSize` | 2 | Minimum database connections |
 | `Tags` | {} | Additional tags for all measurements |
 
-### Example InfluxDB Configuration
+### Example TimescaleDB Configuration
 
 ```json
 {
-  "InfluxDb": {
-    "Url": "http://localhost:8086",
-    "Token": "your-super-secret-admin-token",
-    "Organization": "my_company",
-    "Bucket": "production_counters",
-    "MeasurementName": "adam_counters",
+  "TimescaleDb": {
+    "Host": "localhost",
+    "Port": 5433,
+    "Database": "adam_counters",
+    "Username": "adam_user",
+    "Password": "${TIMESCALE_PASSWORD}",
+    "TableName": "counter_data",
     "BatchSize": 50,
-    "BatchTimeoutMs": 10000,
-    "FlushIntervalMs": 10000,
-    "EnableGzip": true,
-    "TimeoutSeconds": 30,
+    "FlushIntervalMs": 5000,
+    "EnableDeadLetterQueue": true,
+    "MaxRetryAttempts": 3,
+    "RetryDelayMs": 1000,
     "Tags": {
       "location": "factory_floor",
       "environment": "production",
       "plant": "plant_01"
     }
+  }
+}
+```
+
+## Windowed Rate Calculation (NEW)
+
+The application now uses windowed rate calculation for more stable and reliable rate metrics:
+
+### How It Works
+
+1. **Circular Buffer**: Stores recent readings for each channel (up to 200 readings)
+2. **Time Window**: Calculates rate over a configurable time period (e.g., 60 seconds)
+3. **Smooth Metrics**: Eliminates spikes from brief stoppages or single-point calculations
+4. **Overflow Detection**: Automatically handles 16-bit and 32-bit counter wraparounds
+
+### Configuration
+
+Configure the rate window per channel:
+
+```json
+{
+  "Channels": [
+    {
+      "ChannelNumber": 0,
+      "Name": "ProductionCounter",
+      "RateWindowSeconds": 60,  // 1-minute window for production
+      "MaxChangeRate": 1000      // Alert if rate exceeds 1000/sec
+    },
+    {
+      "ChannelNumber": 1,
+      "Name": "RejectCounter",
+      "RateWindowSeconds": 180, // 3-minute window for rejects
+      "MaxChangeRate": 100       // Alert if reject rate exceeds 100/sec
+    }
+  ]
+}
+```
+
+### Benefits
+
+- **Stability**: Rate doesn't drop to zero during brief stoppages
+- **Accuracy**: Better represents actual production throughput
+- **Flexibility**: Different windows for different metrics
+- **Reliability**: Handles counter overflows seamlessly
+
+## Dead Letter Queue (NEW)
+
+Ensures no data loss during database outages:
+
+### Features
+
+- **Automatic Retry**: Failed writes are queued and retried
+- **Persistent Storage**: Survives application restarts
+- **Exponential Backoff**: Intelligent retry timing
+- **Recovery Mode**: Processes queued data when connection restored
+
+### Configuration
+
+```json
+{
+  "TimescaleDb": {
+    "EnableDeadLetterQueue": true,
+    "DeadLetterQueuePath": "/app/data/dead-letter",
+    "MaxRetryAttempts": 3,
+    "RetryDelayMs": 1000,
+    "MaxRetryDelayMs": 30000
   }
 }
 ```

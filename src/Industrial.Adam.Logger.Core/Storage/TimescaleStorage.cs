@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Data;
+using System.Diagnostics;
+using System.Net.Sockets;
 using System.Text;
 using System.Threading.Channels;
 using Industrial.Adam.Logger.Core.Configuration;
@@ -7,6 +9,8 @@ using Industrial.Adam.Logger.Core.Models;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
+using Polly;
+using Polly.Retry;
 
 namespace Industrial.Adam.Logger.Core.Storage;
 
@@ -22,6 +26,8 @@ public sealed class TimescaleStorage : ITimescaleStorage
     private readonly ChannelWriter<DeviceReading> _writer;
     private readonly CancellationTokenSource _backgroundCts = new();
     private readonly Task _backgroundWriteTask;
+    private readonly DeadLetterQueue? _deadLetterQueue;
+    private readonly AsyncRetryPolicy _retryPolicy;
     private volatile bool _disposed;
 
     // Health monitoring fields
@@ -29,6 +35,13 @@ public sealed class TimescaleStorage : ITimescaleStorage
     private DateTimeOffset? _lastSuccessfulWrite;
     private string? _lastError;
     private readonly object _healthLock = new();
+
+    // Performance metrics
+    private long _totalRetryAttempts;
+    private long _totalSuccessfulBatches;
+    private long _totalFailedBatches;
+    private readonly ConcurrentQueue<double> _batchLatencies = new();
+    private const int MaxLatencyTracking = 100;
 
     // SQL statements
     private static readonly string _createTableSql = """
@@ -72,8 +85,9 @@ public sealed class TimescaleStorage : ITimescaleStorage
                 unit = EXCLUDED.unit
             """;
 
-        // Setup Channel for high-throughput async processing
-        var channelOptions = new BoundedChannelOptions(_settings.BatchSize * 10)
+        // Setup Channel for high-throughput async processing with increased capacity
+        var channelCapacity = _settings.BatchSize * Constants.DefaultChannelCapacityMultiplier;
+        var channelOptions = new BoundedChannelOptions(channelCapacity)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
@@ -83,15 +97,46 @@ public sealed class TimescaleStorage : ITimescaleStorage
         _writeChannel = Channel.CreateBounded<DeviceReading>(channelOptions);
         _writer = _writeChannel.Writer;
 
+        // Initialize dead letter queue if enabled
+        if (_settings.EnableDeadLetterQueue)
+        {
+            _deadLetterQueue = new DeadLetterQueue(_logger, _settings.DeadLetterQueuePath);
+        }
+
+        // Setup retry policy using Polly
+        _retryPolicy = Policy
+            .Handle<NpgsqlException>()
+            .Or<TimeoutException>()
+            .Or<InvalidOperationException>()
+            .Or<SocketException>()
+            .WaitAndRetryAsync(
+                _settings.MaxRetryAttempts,
+                retryAttempt => CalculateRetryDelay(retryAttempt),
+                onRetry: (exception, timeSpan, retryCount, context) =>
+                {
+                    Interlocked.Increment(ref _totalRetryAttempts);
+                    _logger.LogWarning(exception,
+                        "Database write retry {RetryCount}/{MaxRetries} after {Delay}ms: {Error}",
+                        retryCount, _settings.MaxRetryAttempts, timeSpan.TotalMilliseconds, exception.Message);
+                });
+
         // Initialize database schema
         InitializeDatabaseAsync().GetAwaiter().GetResult();
 
         // Start background writer task
         _backgroundWriteTask = Task.Run(ProcessWritesAsync, _backgroundCts.Token);
 
+        // Start background dead letter queue processing if enabled
+        if (_deadLetterQueue != null)
+        {
+            _ = Task.Run(ProcessDeadLetterQueueAsync, _backgroundCts.Token);
+        }
+
         _logger.LogInformation(
-            "TimescaleDB storage initialized for {Host}:{Port}/{Database}, table={TableName} with Channel-based processing",
-            _settings.Host, _settings.Port, _settings.Database, _settings.TableName);
+            "TimescaleDB storage initialized for {Host}:{Port}/{Database}, table={TableName} with Channel-based processing. " +
+            "BatchSize={BatchSize}, ChannelCapacity={ChannelCapacity}, RetryAttempts={RetryAttempts}, DeadLetterQueue={DeadLetterEnabled}",
+            _settings.Host, _settings.Port, _settings.Database, _settings.TableName,
+            _settings.BatchSize, channelCapacity, _settings.MaxRetryAttempts, _settings.EnableDeadLetterQueue);
     }
 
     /// <summary>
@@ -182,12 +227,22 @@ public sealed class TimescaleStorage : ITimescaleStorage
     {
         lock (_healthLock)
         {
+            // Calculate average latency
+            var latencies = _batchLatencies.ToArray();
+            var avgLatency = latencies.Length > 0 ? latencies.Average() : 0.0;
+
             return new StorageHealthStatus
             {
                 IsBackgroundTaskHealthy = _isBackgroundTaskHealthy,
                 LastSuccessfulWrite = _lastSuccessfulWrite,
                 LastError = _lastError,
-                PendingWrites = _writeChannel.Reader.CanCount ? _writeChannel.Reader.Count : 0
+                PendingWrites = _writeChannel.Reader.CanCount ? _writeChannel.Reader.Count : 0,
+                TotalRetryAttempts = Interlocked.Read(ref _totalRetryAttempts),
+                DeadLetterQueueSize = _deadLetterQueue?.GetQueueSizeAsync().GetAwaiter().GetResult() ?? 0,
+                TotalSuccessfulBatches = Interlocked.Read(ref _totalSuccessfulBatches),
+                TotalFailedBatches = Interlocked.Read(ref _totalFailedBatches),
+                AverageBatchLatencyMs = avgLatency,
+                IsDeadLetterQueueEnabled = _deadLetterQueue != null
             };
         }
     }
@@ -244,86 +299,122 @@ public sealed class TimescaleStorage : ITimescaleStorage
     {
         var reader = _writeChannel.Reader;
         var batchList = new List<DeviceReading>(_settings.BatchSize);
+        var lastFlushTime = DateTimeOffset.UtcNow;
 
-        try
+        while (!_backgroundCts.Token.IsCancellationRequested)
         {
-            await foreach (var reading in reader.ReadAllAsync(_backgroundCts.Token))
+            try
             {
-                batchList.Add(reading);
-
-                // Write batch when full or when no more items are immediately available
-                if (batchList.Count >= _settings.BatchSize || !reader.TryRead(out var nextReading))
+                var hasMoreData = true;
+                while (hasMoreData && !_backgroundCts.Token.IsCancellationRequested)
                 {
-                    if (batchList.Count > 0)
+                    // Try to read available data with a short timeout to enable periodic flushing
+                    var readTimeout = TimeSpan.FromMilliseconds(Math.Min(_settings.FlushIntervalMs / 4, 1000));
+                    using var timeoutCts = new CancellationTokenSource(readTimeout);
+                    using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(_backgroundCts.Token, timeoutCts.Token);
+
+                    try
+                    {
+                        if (await reader.WaitToReadAsync(combinedCts.Token).ConfigureAwait(false))
+                        {
+                            // Read all immediately available items up to batch size
+                            while (reader.TryRead(out var reading) && batchList.Count < _settings.BatchSize)
+                            {
+                                batchList.Add(reading);
+                            }
+
+                            // Write batch if it's full
+                            if (batchList.Count >= _settings.BatchSize)
+                            {
+                                await WriteBatchToTimescaleAsync(batchList, _backgroundCts.Token).ConfigureAwait(false);
+                                batchList.Clear();
+                                lastFlushTime = DateTimeOffset.UtcNow;
+                            }
+                        }
+                        else
+                        {
+                            hasMoreData = false; // Channel completed
+                        }
+                    }
+                    catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested && !_backgroundCts.Token.IsCancellationRequested)
+                    {
+                        // Timeout occurred - check if we need to flush based on time
+                    }
+
+                    // Time-based flush if we have accumulated data and enough time has passed
+                    var timeSinceLastFlush = DateTimeOffset.UtcNow - lastFlushTime;
+                    if (batchList.Count > 0 && timeSinceLastFlush.TotalMilliseconds >= _settings.FlushIntervalMs)
                     {
                         await WriteBatchToTimescaleAsync(batchList, _backgroundCts.Token).ConfigureAwait(false);
                         batchList.Clear();
+                        lastFlushTime = DateTimeOffset.UtcNow;
                     }
                 }
-                else
-                {
-                    // Add the next reading if we read one
-                    batchList.Add(nextReading);
-                }
 
-                // Periodic flush based on time interval
+                // Final flush of any remaining readings
                 if (batchList.Count > 0)
                 {
-                    await Task.Delay(_settings.FlushIntervalMs, _backgroundCts.Token);
-                    if (batchList.Count > 0)
-                    {
-                        await WriteBatchToTimescaleAsync(batchList, _backgroundCts.Token).ConfigureAwait(false);
-                        batchList.Clear();
-                    }
+                    await WriteBatchToTimescaleAsync(batchList, CancellationToken.None).ConfigureAwait(false);
                 }
+                break; // Exit loop normally when channel is complete
             }
-
-            // Final flush of any remaining readings
-            if (batchList.Count > 0)
+            catch (OperationCanceledException)
             {
-                await WriteBatchToTimescaleAsync(batchList, CancellationToken.None).ConfigureAwait(false);
+                // Expected during shutdown
+                break;
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected during shutdown
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in background write processing");
-
-            // Update health status
-            lock (_healthLock)
+            catch (Exception ex)
             {
-                _isBackgroundTaskHealthy = false;
-                _lastError = ex.Message;
+                _logger.LogError(ex, "Error in background write processing");
+
+                // Update health status
+                lock (_healthLock)
+                {
+                    _isBackgroundTaskHealthy = false;
+                    _lastError = ex.Message;
+                }
             }
         }
     }
 
+
     /// <summary>
-    /// Write a batch of readings to TimescaleDB with optimized bulk insert
+    /// Write a batch of readings to TimescaleDB with retry logic and dead letter queue
     /// </summary>
     private async Task WriteBatchToTimescaleAsync(List<DeviceReading> readings, CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
+        var retryAttempts = 0;
+
         try
         {
-            using var connection = new NpgsqlConnection(_connectionString);
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-            using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-
-            // Use COPY for optimal performance with large batches
-            if (readings.Count > 10)
+            await _retryPolicy.ExecuteAsync(async () =>
             {
-                await WriteBatchUsingCopyAsync(connection, readings, cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                await WriteBatchUsingParametersAsync(connection, readings, cancellationToken).ConfigureAwait(false);
-            }
+                retryAttempts++;
 
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                using var connection = new NpgsqlConnection(_connectionString);
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+                using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+                // Use COPY for optimal performance with large batches
+                if (readings.Count > 10)
+                {
+                    await WriteBatchUsingCopyAsync(connection, readings, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await WriteBatchUsingParametersAsync(connection, readings, cancellationToken).ConfigureAwait(false);
+                }
+
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            });
+
+            stopwatch.Stop();
+
+            // Track performance metrics
+            Interlocked.Increment(ref _totalSuccessfulBatches);
+            TrackBatchLatency(stopwatch.Elapsed.TotalMilliseconds);
 
             // Update health status on successful write
             lock (_healthLock)
@@ -333,11 +424,16 @@ public sealed class TimescaleStorage : ITimescaleStorage
                 _lastError = null;
             }
 
-            _logger.LogDebug("Wrote batch of {Count} readings to TimescaleDB", readings.Count);
+            _logger.LogDebug("Successfully wrote batch of {Count} readings to TimescaleDB in {LatencyMs}ms (attempts: {Attempts})",
+                readings.Count, stopwatch.ElapsedMilliseconds, retryAttempts);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to write batch of {Count} readings to TimescaleDB", readings.Count);
+            stopwatch.Stop();
+            Interlocked.Increment(ref _totalFailedBatches);
+
+            _logger.LogError(ex, "Failed to write batch of {Count} readings to TimescaleDB after {Attempts} attempts",
+                readings.Count, retryAttempts);
 
             // Update health status on write failure
             lock (_healthLock)
@@ -346,7 +442,17 @@ public sealed class TimescaleStorage : ITimescaleStorage
                 _lastError = ex.Message;
             }
 
-            throw;
+            // Add to dead letter queue if enabled
+            if (_deadLetterQueue != null)
+            {
+                _deadLetterQueue.AddFailedBatch(readings, ex, retryAttempts - 1);
+                _logger.LogWarning("Added failed batch of {Count} readings to dead letter queue", readings.Count);
+            }
+            else
+            {
+                // If dead letter queue is disabled, still throw to maintain existing behavior
+                throw;
+            }
         }
     }
 
@@ -408,6 +514,96 @@ public sealed class TimescaleStorage : ITimescaleStorage
     }
 
     /// <summary>
+    /// Calculate retry delay using exponential backoff with jitter
+    /// </summary>
+    private TimeSpan CalculateRetryDelay(int retryAttempt)
+    {
+        var baseDelayMs = _settings.RetryDelayMs;
+        var maxDelayMs = _settings.MaxRetryDelayMs;
+
+        // Exponential backoff: baseDelay * 2^(retryAttempt-1)
+        var delayMs = Math.Min(baseDelayMs * Math.Pow(2, retryAttempt - 1), maxDelayMs);
+
+        // Add jitter (±10% randomness) to prevent thundering herd
+        var jitterRange = delayMs * 0.1;
+        var jitter = (Random.Shared.NextDouble() - 0.5) * 2 * jitterRange;
+        delayMs = Math.Max(100, delayMs + jitter); // Minimum 100ms delay
+
+        return TimeSpan.FromMilliseconds(delayMs);
+    }
+
+    /// <summary>
+    /// Track batch write latency for performance monitoring
+    /// </summary>
+    private void TrackBatchLatency(double latencyMs)
+    {
+        _batchLatencies.Enqueue(latencyMs);
+
+        // Keep only the last N measurements to prevent unbounded growth
+        while (_batchLatencies.Count > MaxLatencyTracking)
+        {
+            _batchLatencies.TryDequeue(out _);
+        }
+    }
+
+    /// <summary>
+    /// Background task to process failed batches from dead letter queue
+    /// </summary>
+    private async Task ProcessDeadLetterQueueAsync()
+    {
+        if (_deadLetterQueue == null)
+            return;
+
+        while (!_backgroundCts.Token.IsCancellationRequested)
+        {
+            try
+            {
+                var failedBatches = await _deadLetterQueue.GetFailedBatchesAsync();
+                var processedCount = 0;
+
+                foreach (var failedBatch in failedBatches.Where(b => b.ShouldRetry))
+                {
+                    try
+                    {
+                        // Attempt to retry the failed batch
+                        await WriteBatchToTimescaleAsync(failedBatch.Readings, _backgroundCts.Token);
+
+                        // Mark as processed if successful
+                        await _deadLetterQueue.MarkBatchProcessedAsync(failedBatch.Id);
+                        processedCount++;
+
+                        _logger.LogInformation("Successfully recovered failed batch {BatchId} with {Count} readings",
+                            failedBatch.Id, failedBatch.Readings.Count);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to recover batch {BatchId} from dead letter queue", failedBatch.Id);
+                        // Batch will remain in dead letter queue for future attempts
+                    }
+                }
+
+                if (processedCount > 0)
+                {
+                    _logger.LogInformation("Processed {ProcessedCount} batches from dead letter queue", processedCount);
+                }
+
+                // Wait before next processing cycle
+                await Task.Delay(TimeSpan.FromMinutes(1), _backgroundCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected during shutdown
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing dead letter queue");
+                await Task.Delay(TimeSpan.FromMinutes(5), _backgroundCts.Token); // Back off on error
+            }
+        }
+    }
+
+    /// <summary>
     /// Dispose resources
     /// </summary>
     public void Dispose()
@@ -417,6 +613,9 @@ public sealed class TimescaleStorage : ITimescaleStorage
 
         _disposed = true;
 
+        _logger.LogInformation("Disposing TimescaleDB storage with graceful shutdown (timeout: {TimeoutSeconds}s)",
+            _settings.ShutdownTimeoutSeconds);
+
         // Complete the channel to stop accepting new writes
         _writer.Complete();
 
@@ -425,18 +624,77 @@ public sealed class TimescaleStorage : ITimescaleStorage
 
         try
         {
-            // Wait for background task to complete
-            _backgroundWriteTask.Wait(TimeSpan.FromSeconds(5));
+            // Wait for background task to complete with configurable timeout
+            var shutdownTimeout = TimeSpan.FromSeconds(_settings.ShutdownTimeoutSeconds);
+            if (!_backgroundWriteTask.Wait(shutdownTimeout))
+            {
+                _logger.LogWarning("Background write task did not complete within {TimeoutSeconds}s shutdown timeout",
+                    _settings.ShutdownTimeoutSeconds);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error waiting for background write task to complete during disposal");
         }
 
+        // Dispose dead letter queue
+        _deadLetterQueue?.Dispose();
+
         // Dispose resources
         _backgroundCts.Dispose();
         _backgroundWriteTask.Dispose();
 
-        _logger.LogInformation("TimescaleDB storage disposed");
+        var healthStatus = GetHealthStatus();
+        _logger.LogInformation(
+            "TimescaleDB storage disposed. Final stats: Successful={SuccessfulBatches}, Failed={FailedBatches}, " +
+            "Retries={Retries}, DeadLetterQueue={DeadLetterSize}",
+            healthStatus.TotalSuccessfulBatches, healthStatus.TotalFailedBatches,
+            healthStatus.TotalRetryAttempts, healthStatus.DeadLetterQueueSize);
+    }
+
+    /// <summary>
+    /// Force flush all pending writes and process dead letter queue
+    /// Used for graceful shutdown or emergency flush
+    /// </summary>
+    public async Task<bool> ForceFlushAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // First flush normal pending writes
+            await FlushAsync(cancellationToken);
+
+            // Then attempt to process any items in dead letter queue
+            if (_deadLetterQueue != null)
+            {
+                var failedBatches = await _deadLetterQueue.GetFailedBatchesAsync();
+                var recoveredCount = 0;
+
+                foreach (var batch in failedBatches.Where(b => b.ShouldRetry))
+                {
+                    try
+                    {
+                        await WriteBatchToTimescaleAsync(batch.Readings, cancellationToken);
+                        await _deadLetterQueue.MarkBatchProcessedAsync(batch.Id);
+                        recoveredCount++;
+                    }
+                    catch
+                    {
+                        // Continue processing other batches
+                    }
+                }
+
+                if (recoveredCount > 0)
+                {
+                    _logger.LogInformation("Force flush recovered {Count} batches from dead letter queue", recoveredCount);
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during force flush operation");
+            return false;
+        }
     }
 }

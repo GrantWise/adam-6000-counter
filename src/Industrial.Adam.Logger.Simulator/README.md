@@ -1,6 +1,10 @@
 # ADAM-6051 Counter Module Simulator
 
-A realistic simulator for ADAM-6051 16-channel counter modules with production line simulation capabilities.
+A realistic simulator for ADAM-6051 16-channel counter modules with advanced production line simulation capabilities.
+
+## 📖 Complete Configuration Guide
+
+**For comprehensive setup and configuration instructions, see [Simulator Configuration Guide](../../docs/simulator-configuration-guide.md)**
 
 ## Features
 
@@ -10,12 +14,17 @@ A realistic simulator for ADAM-6051 16-channel counter modules with production l
   - Digital input status simulation
   - Counter overflow handling
 
-- **Realistic Production Patterns**
-  - State machine with Setup, RampUp, Running, Stoppage states
-  - Configurable production rates and variations
-  - Random minor/major stoppages
-  - Scheduled breaks
-  - Job-based production cycles
+- **Advanced Production Simulation**
+  - **Continuous Operation**: Automatic job restart with configurable idle periods
+  - **Counter Reset Logic**: Counters reset on new job start (not during breakdowns)
+  - **Realistic State Transitions**: Setup → RampUp → Running → RampDown → Idle cycle
+  - **Configurable Stoppages**: Minor and major breakdowns with realistic timing
+  - **Production Profiles**: Separate configuration files for technical vs production settings
+
+- **Dual Configuration System**
+  - **Technical Settings** (appsettings.json): Ports, IDs, channels
+  - **Production Settings** (config/production-profile.json): Rates, timing, behavior
+  - **Backward Compatibility**: Legacy configuration structure still supported
 
 - **Persistence & History**
   - SQLite database for state persistence
@@ -64,22 +73,18 @@ This starts:
 
 ## Configuration
 
-### appsettings.json
+The simulator uses a **dual configuration system** for maximum flexibility:
+
+### Technical Configuration (appsettings.json)
+Deployment-specific settings like ports, IDs, and channel definitions:
 
 ```json
 {
   "SimulatorSettings": {
     "DeviceId": "SIM-6051-01",
-    "ModbusPort": 502,
+    "ModbusPort": 5502,
+    "ApiPort": 8081,
     "DatabasePath": "data/simulator.db"
-  },
-  "ProductionSettings": {
-    "BaseRate": 120,              // Units per minute
-    "RateVariation": 0.1,         // ±10% variation
-    "JobSizeMin": 1000,
-    "JobSizeMax": 5000,
-    "MinorStoppageProbability": 0.02,  // 2% per minute
-    "MajorStoppageProbability": 0.005   // 0.5% per minute
   },
   "Channels": [
     {
@@ -93,11 +98,45 @@ This starts:
       "Name": "Reject Counter",
       "Type": "RejectCounter",
       "Enabled": true,
-      "RejectRate": 0.05        // 5% of production
+      "RejectRate": 0.05
     }
   ]
 }
 ```
+
+### Production Configuration (config/production-profile.json)
+Production behavior settings that can be easily modified:
+
+```json
+{
+  "ProductionProfile": {
+    "BaseRate": 120.0,
+    "RateVariation": 0.1,
+    "JobSizeMin": 1000,
+    "JobSizeMax": 5000,
+    "TimingSettings": {
+      "SetupDurationMinutes": 0.25,
+      "IdleBetweenJobsSeconds": 45.0
+    },
+    "StoppageSettings": {
+      "MinorStoppageProbability": 0.02,
+      "MajorStoppageProbability": 0.005
+    },
+    "ContinuousOperation": {
+      "Enabled": true,
+      "AutoRestartAfterJob": true,
+      "ResetCountersOnNewJob": true
+    }
+  }
+}
+```
+
+### Key Configuration Features
+
+- **Continuous Operation**: Automatic job restart after completion
+- **Counter Reset Logic**: Reset counters when new jobs start (not during breakdowns)
+- **Configurable Timing**: All durations, rates, and probabilities configurable
+- **Backward Compatibility**: Legacy appsettings.json structure still works
 
 ### Environment Variables
 
@@ -105,8 +144,10 @@ Override any setting with environment variables:
 ```bash
 SimulatorSettings__DeviceId=SIM002
 SimulatorSettings__ModbusPort=5502
-ProductionSettings__BaseRate=200
+ProductionProfile__BaseRate=200
 ```
+
+📖 **For detailed configuration options and examples, see [Simulator Configuration Guide](../../docs/simulator-configuration-guide.md)**
 
 ## REST API Endpoints
 

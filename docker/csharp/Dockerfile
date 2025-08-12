@@ -29,8 +29,8 @@ RUN dotnet publish ./src/Industrial.Adam.Logger.Console/Industrial.Adam.Logger.C
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# Install curl and postgresql-client for health checks
+RUN apt-get update && apt-get install -y curl postgresql-client && rm -rf /var/lib/apt/lists/*
 
 # Copy published application
 COPY --from=build /app/publish ./
@@ -45,6 +45,7 @@ RUN mkdir -p /app/config /app/logs
 # Copy configuration files (V2 format)
 COPY docker/config/adam_config_v2.json /app/config/
 COPY docker/config/adam_config_production_v2.json /app/config/
+COPY docker/config/adam_config_docker.json /app/config/
 
 # Set environment variables
 ENV DOTNET_ENVIRONMENT=Production

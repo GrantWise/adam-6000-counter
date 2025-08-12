@@ -53,7 +53,8 @@ public class DataProcessorTests
             }
         };
 
-        _processor = new DataProcessor(_loggerMock.Object, _testConfig);
+        // Use simple rate calculation for tests (not windowed)
+        _processor = new DataProcessor(_loggerMock.Object, _testConfig, useWindowedCalculation: false);
     }
 
     [Fact]

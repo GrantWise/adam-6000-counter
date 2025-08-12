@@ -137,8 +137,12 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
             // Stop all device polling
             await _devicePool.StopAllAsync().ConfigureAwait(false);
 
-            // Flush any pending data
-            await _timescaleStorage.FlushAsync(cancellationToken).ConfigureAwait(false);
+            // Force flush any pending data and process dead letter queue
+            var flushResult = await _timescaleStorage.ForceFlushAsync(cancellationToken).ConfigureAwait(false);
+            if (!flushResult)
+            {
+                _logger.LogWarning("Force flush operation completed with errors during shutdown");
+            }
 
             // Reset start time on stop
             _actualStartTime = null;
