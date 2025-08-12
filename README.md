@@ -40,14 +40,55 @@ adam-6000-counter/
 ├── python/                       # Python implementation
 │   ├── adam_counter_logger.py    # Python logger
 │   └── adam_config_json.json     # Configuration example
+├── scripts/                      # Development and testing scripts
+│   ├── setup-dev-environment.sh  # One-click development setup
+│   ├── start-simulators.sh       # Start ADAM device simulators
+│   ├── test-simulators.sh        # Test simulator connectivity
+│   └── install-dotnet9.sh        # Install .NET 9 SDK
 └── docs/                         # Documentation
 ```
 
+## 🚀 New Features in V2
+
+### Windowed Rate Calculation
+- **Configurable Time Windows**: Set per-channel rate calculation windows (e.g., 60 seconds for production, 180 seconds for rejects)
+- **Smooth Rate Metrics**: Eliminates spikes from brief stoppages or single-point calculations
+- **Counter Overflow Detection**: Automatic handling of 16-bit and 32-bit counter wraparounds
+- **Circular Buffer Storage**: Efficient memory usage with automatic cleanup of old readings
+
+### Data Reliability
+- **Dead Letter Queue**: Failed database writes are queued and retried automatically
+- **Persistent Storage**: Failed batches saved to disk to survive application restarts
+- **Automatic Recovery**: Processes queued data when database connection is restored
+- **No Data Loss**: Ensures critical production data is never lost
+
+### Development Tools
+- **One-Click Setup**: Run `./scripts/setup-dev-environment.sh` for complete environment
+- **Simulator Testing**: Built-in ADAM device simulators for development without hardware
+- **Test Coverage**: Comprehensive unit tests with isolated test mode for components
+- **.NET 9 Performance**: Latest runtime optimizations for industrial workloads
+
 ## Quick Start
 
-### 🐳 Docker Deployment (Recommended)
+### 🎯 Automated Development Setup (New!)
 
-**Complete monitoring stack with InfluxDB + Grafana:**
+```bash
+# One-command setup for complete development environment
+./scripts/setup-dev-environment.sh
+
+# This script will:
+# ✅ Install .NET 9 SDK if needed
+# ✅ Start TimescaleDB and create database/tables
+# ✅ Start Grafana with pre-configured dashboards
+# ✅ Start Prometheus for metrics monitoring
+# ✅ Launch 3 ADAM device simulators
+# ✅ Build and start the logger application
+# ✅ Verify everything is working
+```
+
+### 🐳 Docker Deployment (Production)
+
+**Complete monitoring stack with TimescaleDB + Grafana + Prometheus:**
 
 ```bash
 # 1. Clone the repository
@@ -63,7 +104,8 @@ docker-compose ps
 
 # 4. Access the dashboards
 # - Grafana: http://localhost:3002 (admin/admin)
-# - InfluxDB: http://localhost:8086 (admin/admin123)
+# - TimescaleDB: postgresql://localhost:5433 (adam_user/adam_password)
+# - Prometheus: http://localhost:9090
 ```
 
 ### 🎮 **Demo Mode with Simulator (No Hardware Required)**
@@ -133,18 +175,18 @@ dotnet run --project src/Industrial.Adam.Logger.Console -- --config myconfig.jso
 
 📋 **Ready-to-use templates available in [`config/`](config/) directory**
 
-Configuration uses standard .NET JSON format:
+Configuration uses standard .NET JSON format with new windowed rate calculation settings:
 
 ```json
 {
   "Logging": {
     "LogLevel": {
       "Default": "Information",
-      "Industrial.Adam.Logger.Core": "Information"
+      "Industrial.Adam.Logger.Core": "Debug"
     }
   },
   "AdamLogger": {
-    "GlobalPollIntervalMs": 2000,
+    "GlobalPollIntervalMs": 5000,
     "Devices": [
       {
         "DeviceId": "Device001",
@@ -152,33 +194,47 @@ Configuration uses standard .NET JSON format:
         "Port": 502,
         "UnitId": 1,
         "Enabled": true,
-        "PollIntervalMs": 2000,
+        "PollIntervalMs": 5000,
         "TimeoutMs": 3000,
         "Channels": [
           {
             "ChannelNumber": 0,
             "Name": "ProductionCounter",
-            "RegisterAddress": 0,
+            "StartRegister": 0,
             "RegisterCount": 2,
-            "Enabled": true
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 1000,
+            "RateWindowSeconds": 60  // NEW: Windowed rate calculation
           },
           {
             "ChannelNumber": 1,
-            "Name": "QualityCounter",
-            "RegisterAddress": 2,
+            "Name": "RejectCounter",
+            "StartRegister": 2,
             "RegisterCount": 2,
-            "Enabled": true
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "MaxChangeRate": 100,
+            "RateWindowSeconds": 180  // NEW: Longer window for reject analysis
           }
         ]
       }
-    ]
-  },
-  "InfluxDb": {
-    "Url": "http://localhost:8086",
-    "Token": "your-token",
-    "Organization": "adam_org",
-    "Bucket": "adam_counters",
-    "Measurement": "counter_data"
+    ],
+    "TimescaleDb": {  // NEW: Replaced InfluxDB with TimescaleDB
+      "Host": "localhost",
+      "Port": 5433,
+      "Database": "adam_counters",
+      "Username": "adam_user",
+      "Password": "adam_password",
+      "TableName": "counter_data",
+      "BatchSize": 50,
+      "FlushIntervalMs": 5000,
+      "EnableDeadLetterQueue": true,  // NEW: Automatic retry for failed writes
+      "MaxRetryAttempts": 3,
+      "RetryDelayMs": 1000
+    }
   }
 }
 ```
@@ -195,11 +251,24 @@ Configuration uses standard .NET JSON format:
 
 The Docker stack includes:
 
-- **InfluxDB 2.7**: Time-series database for counter data storage
-- **Grafana 12.0**: Real-time dashboard and visualization  
-- **ADAM Logger**: C# .NET 9 application using Core library (V2)
-- **Prometheus**: Metrics collection and monitoring
-- **ADAM Simulator**: Device simulator for testing without hardware
+- **TimescaleDB 2.17**: PostgreSQL-based time-series database optimized for industrial data
+  - Hypertables for automatic data partitioning
+  - Compression for efficient storage
+  - Continuous aggregates for real-time analytics
+- **Grafana 12.0**: Real-time dashboard and visualization
+  - Pre-configured dashboards for counter metrics
+  - Rate calculations and production analytics
+- **ADAM Logger**: C# .NET 9 application with advanced features
+  - Windowed rate calculation with configurable windows
+  - Dead letter queue for data reliability
+  - Circular buffer for efficient memory usage
+- **Prometheus 2.47**: Metrics collection and monitoring
+  - Application health metrics
+  - System resource monitoring
+- **ADAM Simulator**: Full-featured device simulator
+  - Realistic production patterns
+  - Configurable production profiles
+  - Multiple simulator support
 
 ### Setup Instructions
 
@@ -419,8 +488,10 @@ docker-compose -f docker-compose.yml -f docker-compose.simulator.yml up
 
 - **[README.md](README.md)**: This overview document
 - **[CLAUDE.md](CLAUDE.md)**: AI assistant development guidelines
+- **[Configuration Guide](docs/configuration-guide.md)**: Detailed system configuration
+- **[Simulator Configuration Guide](docs/simulator-configuration-guide.md)**: Complete simulator setup and configuration
 - **[docker/README.md](docker/README.md)**: Docker deployment guide
-- **[src/Industrial.Adam.Logger.Simulator/README.md](src/Industrial.Adam.Logger.Simulator/README.md)**: Simulator documentation
+- **[src/Industrial.Adam.Logger.Simulator/README.md](src/Industrial.Adam.Logger.Simulator/README.md)**: Simulator technical documentation
 - **[python/README.md](python/README.md)**: Python implementation guide
 
 ## Architecture

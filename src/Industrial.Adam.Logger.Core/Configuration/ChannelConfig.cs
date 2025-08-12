@@ -74,6 +74,16 @@ public class ChannelConfig
     public double? MaxChangeRate { get; set; }
 
     /// <summary>
+    /// Rate calculation window in seconds (default: 60s for operational monitoring)
+    /// - Real-time monitoring (alarms, HMI): 30 seconds
+    /// - Operational monitoring (dashboards): 60 seconds (default)  
+    /// - Production planning (KPIs, reports): 180 seconds
+    /// - Process optimization (trend analysis): 300-900 seconds
+    /// </summary>
+    [Range(10, 1800, ErrorMessage = "RateWindowSeconds must be between 10 seconds and 30 minutes")]
+    public int RateWindowSeconds { get; set; } = Constants.DefaultRateWindowSeconds;
+
+    /// <summary>
     /// Additional tags for this channel
     /// </summary>
     public Dictionary<string, string> Tags { get; set; } = [];

@@ -8,21 +8,22 @@ using Xunit;
 
 namespace Industrial.Adam.Logger.Core.Tests.Storage;
 
-public class InfluxDbStorageTests : IDisposable
+public class TimescaleStorageTests : IDisposable
 {
-    private readonly Mock<ILogger<InfluxDbStorage>> _loggerMock;
-    private readonly InfluxDbSettings _testSettings;
+    private readonly Mock<ILogger<TimescaleStorage>> _loggerMock;
+    private readonly TimescaleSettings _testSettings;
 
-    public InfluxDbStorageTests()
+    public TimescaleStorageTests()
     {
-        _loggerMock = new Mock<ILogger<InfluxDbStorage>>();
-        _testSettings = new InfluxDbSettings
+        _loggerMock = new Mock<ILogger<TimescaleStorage>>();
+        _testSettings = new TimescaleSettings
         {
-            Url = "http://localhost:8086",
-            Token = "test-token",
-            Organization = "test-org",
-            Bucket = "test-bucket",
-            MeasurementName = "counter_data",
+            Host = "localhost",
+            Port = 5432,
+            Database = "adam_counters",
+            Username = "adam_user",
+            Password = "adam_password",
+            TableName = "counter_data_unit_test",
             BatchSize = 10,
             FlushIntervalMs = 1000,
             Tags = new Dictionary<string, string>
@@ -37,14 +38,14 @@ public class InfluxDbStorageTests : IDisposable
     public void Constructor_WithValidSettings_InitializesSuccessfully()
     {
         // Act
-        using var storage = new InfluxDbStorage(_loggerMock.Object, _testSettings);
+        using var storage = new TimescaleStorage(_loggerMock.Object, _testSettings);
 
         // Assert
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("InfluxDB storage initialized")),
+                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains("TimescaleDB storage initialized")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
@@ -54,7 +55,7 @@ public class InfluxDbStorageTests : IDisposable
     public void Constructor_WithNullLogger_ThrowsArgumentNullException()
     {
         // Act & Assert
-        var act = () => new InfluxDbStorage(null!, _testSettings);
+        var act = () => new TimescaleStorage(null!, _testSettings);
         act.Should().Throw<ArgumentNullException>().WithParameterName("logger");
     }
 
@@ -62,7 +63,7 @@ public class InfluxDbStorageTests : IDisposable
     public void Constructor_WithNullSettings_ThrowsArgumentNullException()
     {
         // Act & Assert
-        var act = () => new InfluxDbStorage(_loggerMock.Object, null!);
+        var act = () => new TimescaleStorage(_loggerMock.Object, null!);
         act.Should().Throw<ArgumentNullException>().WithParameterName("settings");
     }
 
@@ -70,7 +71,7 @@ public class InfluxDbStorageTests : IDisposable
     public async Task WriteReadingAsync_AfterDispose_ThrowsObjectDisposedException()
     {
         // Arrange
-        var storage = new InfluxDbStorage(_loggerMock.Object, _testSettings);
+        var storage = new TimescaleStorage(_loggerMock.Object, _testSettings);
         storage.Dispose();
 
         var reading = CreateTestReading();
@@ -84,7 +85,7 @@ public class InfluxDbStorageTests : IDisposable
     public async Task WriteBatchAsync_AfterDispose_ThrowsObjectDisposedException()
     {
         // Arrange
-        var storage = new InfluxDbStorage(_loggerMock.Object, _testSettings);
+        var storage = new TimescaleStorage(_loggerMock.Object, _testSettings);
         storage.Dispose();
 
         var readings = new[] { CreateTestReading() };
@@ -98,7 +99,7 @@ public class InfluxDbStorageTests : IDisposable
     public async Task WriteBatchAsync_WithEmptyBatch_DoesNothing()
     {
         // Arrange
-        using var storage = new InfluxDbStorage(_loggerMock.Object, _testSettings);
+        using var storage = new TimescaleStorage(_loggerMock.Object, _testSettings);
         var readings = Enumerable.Empty<DeviceReading>();
 
         // Act
@@ -119,7 +120,7 @@ public class InfluxDbStorageTests : IDisposable
     public void Dispose_CalledMultipleTimes_DoesNotThrow()
     {
         // Arrange
-        var storage = new InfluxDbStorage(_loggerMock.Object, _testSettings);
+        var storage = new TimescaleStorage(_loggerMock.Object, _testSettings);
 
         // Act & Assert
         var act = () =>
@@ -134,18 +135,18 @@ public class InfluxDbStorageTests : IDisposable
     [Fact]
     public async Task TestConnectionAsync_WithMockClient_HandlesResponse()
     {
-        // Note: This test is limited because we can't easily mock InfluxDBClient
-        // In a real scenario, you would use integration tests with a test InfluxDB instance
+        // Note: This test is limited because we can't easily mock NpgsqlConnection
+        // In a real scenario, you would use integration tests with a test TimescaleDB instance
 
         // Arrange
-        using var storage = new InfluxDbStorage(_loggerMock.Object, _testSettings);
+        using var storage = new TimescaleStorage(_loggerMock.Object, _testSettings);
 
         // Act
-        // This test has limited value without a real InfluxDB connection
+        // This test has limited value without a real TimescaleDB connection
         var result = await storage.TestConnectionAsync();
 
         // Assert
-        // Result depends on whether InfluxDB client can be created
+        // Result depends on whether TimescaleDB connection can be established
         // In CI/test environment, this may succeed or fail
         _ = result; // We don't assert on the result since it depends on test environment
     }

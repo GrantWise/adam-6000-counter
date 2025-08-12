@@ -27,6 +27,18 @@ public class ProductionSimulator
     public double MinorStoppageProbability { get; set; } = 0.02;
     public double MajorStoppageProbability { get; set; } = 0.005;
 
+    // Stoppage duration ranges
+    public int MinorStoppageMinSeconds { get; set; } = 30;
+    public int MinorStoppageMaxSeconds { get; set; } = 120;
+    public int MajorStoppageMinMinutes { get; set; } = 10;
+    public int MajorStoppageMaxMinutes { get; set; } = 30;
+
+    // Ramp rate percentages
+    public double RampUpStartPercent { get; set; } = 20.0;
+    public double RampUpEndPercent { get; set; } = 100.0;
+    public double RampDownStartPercent { get; set; } = 100.0;
+    public double RampDownEndPercent { get; set; } = 10.0;
+
     // Current job tracking
     public int CurrentJobSize { get; private set; }
     public int UnitsProducedInJob { get; private set; }
@@ -35,6 +47,13 @@ public class ProductionSimulator
     // Events
     public event EventHandler<ProductionStateChangedEventArgs>? StateChanged;
     public event EventHandler<UnitProducedEventArgs>? UnitProduced;
+    public event EventHandler? CounterResetRequested;
+
+    // Continuous operation settings
+    public bool ContinuousOperationEnabled { get; set; } = true;
+    public bool AutoRestartAfterJob { get; set; } = true;
+    public bool ResetCountersOnNewJob { get; set; } = true;
+    public TimeSpan IdleBetweenJobs { get; set; } = TimeSpan.FromSeconds(45);
 
     public ProductionSimulator(string deviceId, ILogger<ProductionSimulator> logger)
     {
@@ -59,8 +78,15 @@ public class ProductionSimulator
     {
         CurrentJobSize = _random.Next(JobSizeMin, JobSizeMax);
         UnitsProducedInJob = 0;
-        TransitionTo(ProductionState.Setup);
 
+        // Trigger counter reset if enabled
+        if (ResetCountersOnNewJob)
+        {
+            _logger.LogInformation("Resetting counters for new job on {DeviceId}", DeviceId);
+            CounterResetRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        TransitionTo(ProductionState.Setup);
         _logger.LogInformation("Starting new job on {DeviceId}: {JobSize} units", DeviceId, CurrentJobSize);
     }
 
@@ -75,7 +101,13 @@ public class ProductionSimulator
         switch (_currentState)
         {
             case ProductionState.Idle:
-                // Wait for external trigger to start
+                // Check for continuous operation auto-restart
+                if (ContinuousOperationEnabled && AutoRestartAfterJob &&
+                    timeInState >= IdleBetweenJobs)
+                {
+                    _logger.LogInformation("{DeviceId} auto-starting new job after idle period", DeviceId);
+                    StartNewJob();
+                }
                 break;
 
             case ProductionState.Setup:
@@ -108,14 +140,14 @@ public class ProductionSimulator
                 break;
 
             case ProductionState.MinorStoppage:
-                if (timeInState >= TimeSpan.FromSeconds(_random.Next(30, 120)))
+                if (timeInState >= TimeSpan.FromSeconds(_random.Next(MinorStoppageMinSeconds, MinorStoppageMaxSeconds)))
                 {
                     TransitionTo(ProductionState.RampUp);
                 }
                 break;
 
             case ProductionState.MajorStoppage:
-                if (timeInState >= TimeSpan.FromMinutes(_random.Next(10, 30)))
+                if (timeInState >= TimeSpan.FromMinutes(_random.Next(MajorStoppageMinMinutes, MajorStoppageMaxMinutes)))
                 {
                     TransitionTo(ProductionState.RampUp);
                 }
@@ -164,9 +196,11 @@ public class ProductionSimulator
 
     private double GetRampUpRate(TimeSpan timeInRampUp)
     {
-        // Linear ramp from 20% to 100% of base rate
+        // Linear ramp from start% to end% of base rate
         var progress = Math.Min(1.0, timeInRampUp.TotalSeconds / RampUpDuration.TotalSeconds);
-        return BaseRate * (0.2 + 0.8 * progress);
+        var startFraction = RampUpStartPercent / 100.0;
+        var endFraction = RampUpEndPercent / 100.0;
+        return BaseRate * (startFraction + (endFraction - startFraction) * progress);
     }
 
     private double GetRunningRate()
@@ -178,9 +212,11 @@ public class ProductionSimulator
 
     private double GetRampDownRate(TimeSpan timeInRampDown)
     {
-        // Linear ramp from 100% to 10% of base rate
+        // Linear ramp from start% to end% of base rate
         var progress = Math.Min(1.0, timeInRampDown.TotalSeconds / RampDownDuration.TotalSeconds);
-        return BaseRate * (1 - 0.9 * progress);
+        var startFraction = RampDownStartPercent / 100.0;
+        var endFraction = RampDownEndPercent / 100.0;
+        return BaseRate * (startFraction + (endFraction - startFraction) * progress);
     }
 
     private void ProduceUnitsAtRate(double unitsPerMinute)

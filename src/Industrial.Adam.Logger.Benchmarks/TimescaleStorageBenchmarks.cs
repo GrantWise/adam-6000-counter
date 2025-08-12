@@ -8,28 +8,29 @@ namespace Industrial.Adam.Logger.Benchmarks;
 
 [MemoryDiagnoser]
 [SimpleJob(warmupCount: 3, iterationCount: 10)]
-public class InfluxDbStorageBenchmarks
+public class TimescaleStorageBenchmarks
 {
-    private InfluxDbStorage _storage = null!;
+    private TimescaleStorage _storage = null!;
     private List<DeviceReading> _readings = null!;
     private DeviceReading _singleReading = null!;
 
     [GlobalSetup]
     public void Setup()
     {
-        var settings = new InfluxDbSettings
+        var settings = new TimescaleSettings
         {
-            Url = "http://localhost:8086",
-            Token = "test-token",
-            Organization = "test-org",
-            Bucket = "test-bucket",
-            MeasurementName = "counter_data",
+            Host = "localhost",
+            Port = 5432,
+            Database = "test_db",
+            Username = "test_user",
+            Password = "test_password",
+            TableName = "counter_data",
             BatchSize = 100,
             FlushIntervalMs = 1000,
             Tags = new Dictionary<string, string> { ["location"] = "test" }
         };
 
-        _storage = new InfluxDbStorage(NullLogger<InfluxDbStorage>.Instance, settings);
+        _storage = new TimescaleStorage(NullLogger<TimescaleStorage>.Instance, settings);
 
         // Create test readings
         _readings = new List<DeviceReading>();
@@ -60,7 +61,7 @@ public class InfluxDbStorageBenchmarks
     [Benchmark]
     public async Task WriteSingleReading()
     {
-        // Note: This will fail without actual InfluxDB connection
+        // Note: This will fail without actual TimescaleDB connection
         // but we can still measure the overhead of preparing the write
         try
         {
@@ -68,7 +69,7 @@ public class InfluxDbStorageBenchmarks
         }
         catch
         {
-            // Expected to fail without InfluxDB
+            // Expected to fail without TimescaleDB
         }
     }
 
@@ -81,20 +82,28 @@ public class InfluxDbStorageBenchmarks
         }
         catch
         {
-            // Expected to fail without InfluxDB
+            // Expected to fail without TimescaleDB
         }
     }
 
     [Benchmark]
-    public void CreatePointData()
+    public void CreateParameterData()
     {
-        // Benchmark just the point creation logic using reflection
-        var method = typeof(InfluxDbStorage).GetMethod("CreatePointData",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
+        // Benchmark the parameter mapping logic for TimescaleDB
         foreach (var reading in _readings)
         {
-            _ = method?.Invoke(_storage, new object[] { reading });
+            // Simulate parameter preparation overhead
+            var parameters = new object[]
+            {
+                reading.Timestamp.UtcDateTime,
+                reading.DeviceId,
+                reading.Channel,
+                reading.RawValue,
+                reading.ProcessedValue,
+                reading.Rate ?? (object)DBNull.Value,
+                reading.Quality.ToString(),
+                reading.Unit
+            };
         }
     }
 }

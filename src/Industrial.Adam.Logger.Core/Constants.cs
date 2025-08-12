@@ -105,23 +105,73 @@ public static class Constants
     public const int DefaultSendBufferSize = 8192;
 
     /// <summary>
-    /// Default batch size for InfluxDB writes
+    /// Default batch size for database writes (optimized for reliability)
     /// </summary>
-    public const int DefaultBatchSize = 100;
+    public const int DefaultBatchSize = 50;
 
     /// <summary>
     /// Default batch timeout in milliseconds
     /// </summary>
     public const int DefaultBatchTimeoutMs = 5000;
 
+    /// <summary>
+    /// Default flush interval in milliseconds for batch writes
+    /// </summary>
+    public const int DefaultFlushIntervalMs = 5000;
+
+    /// <summary>
+    /// Maximum retry attempts for database operations
+    /// </summary>
+    public const int DefaultDatabaseRetryAttempts = 3;
+
+    /// <summary>
+    /// Base delay for database retry operations in milliseconds
+    /// </summary>
+    public const int DefaultDatabaseRetryDelayMs = 1000;
+
+    /// <summary>
+    /// Maximum delay for database retry operations in milliseconds
+    /// </summary>
+    public const int MaxDatabaseRetryDelayMs = 30000;
+
+    /// <summary>
+    /// Graceful shutdown timeout in seconds
+    /// </summary>
+    public const int DefaultShutdownTimeoutSeconds = 30;
+
+    /// <summary>
+    /// Default channel capacity multiplier (BatchSize * Multiplier)
+    /// </summary>
+    public const int DefaultChannelCapacityMultiplier = 10;
+
     #endregion
 
     #region Data Quality
 
     /// <summary>
-    /// Default rate calculation window in seconds
+    /// Default rate calculation window in seconds (operational monitoring)
     /// </summary>
     public const int DefaultRateWindowSeconds = 60;
+
+    /// <summary>
+    /// Real-time monitoring rate window (for alarms and HMI)
+    /// </summary>
+    public const int RealTimeRateWindowSeconds = 30;
+
+    /// <summary>
+    /// Production planning rate window (for KPIs and reports)
+    /// </summary>
+    public const int ProductionRateWindowSeconds = 180;
+
+    /// <summary>
+    /// Process optimization rate window (for trend analysis)
+    /// </summary>
+    public const int TrendRateWindowSeconds = 600;
+
+    /// <summary>
+    /// Minimum rate window for valid calculations
+    /// </summary>
+    public const int MinRateWindowSeconds = 10;
 
     /// <summary>
     /// High rate threshold for anomaly detection (units per second)

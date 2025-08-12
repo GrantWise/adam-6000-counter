@@ -13,7 +13,7 @@ public class DeviceConfigTests
         var config = new DeviceConfig
         {
             DeviceId = "TEST001",
-            IpAddress = "not.an.ip",
+            IpAddress = "invalid..ip..address",
             Channels = new List<ChannelConfig> { CreateValidChannel() }
         };
 

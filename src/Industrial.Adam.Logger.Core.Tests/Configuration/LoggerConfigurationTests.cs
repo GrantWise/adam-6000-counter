@@ -34,7 +34,7 @@ public class LoggerConfigurationTests
                 CreateValidDevice("ADAM001"),
                 CreateValidDevice("ADAM001")
             },
-            InfluxDb = CreateValidInfluxSettings()
+            TimescaleDb = CreateValidTimescaleSettings()
         };
 
         // Act
@@ -56,7 +56,7 @@ public class LoggerConfigurationTests
                 CreateValidDevice("ADAM001"),
                 CreateValidDevice("ADAM002")
             },
-            InfluxDb = CreateValidInfluxSettings(),
+            TimescaleDb = CreateValidTimescaleSettings(),
             GlobalPollIntervalMs = 1000,
             HealthCheckIntervalMs = 30000
         };
@@ -90,14 +90,16 @@ public class LoggerConfigurationTests
         };
     }
 
-    private static InfluxDbSettings CreateValidInfluxSettings()
+    private static TimescaleSettings CreateValidTimescaleSettings()
     {
-        return new InfluxDbSettings
+        return new TimescaleSettings
         {
-            Url = "http://localhost:8086",
-            Token = "test-token",
-            Organization = "test-org",
-            Bucket = "test-bucket"
+            Host = "localhost",
+            Port = 5432,
+            Database = "adam_counters",
+            Username = "adam_user",
+            Password = "adam_password",
+            TableName = "counter_data_config_test"
         };
     }
 }

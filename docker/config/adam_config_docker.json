@@ -2,23 +2,26 @@
   "Logging": {
     "LogLevel": {
       "Default": "Information",
-      "Microsoft.AspNetCore": "Warning",
-      "Industrial.Adam.Logger.Core": "Debug"
+      "Microsoft": "Warning",
+      "Microsoft.Hosting.Lifetime": "Information",
+      "Industrial.Adam.Logger.Core": "Information"
     }
   },
-  "AllowedHosts": "*",
   "AdamLogger": {
+    "GlobalPollIntervalMs": 5000,
+    "HealthCheckIntervalMs": 10000,
+    "DemoMode": false,
     "Devices": [
       {
         "DeviceId": "SIM-6051-01",
-        "Name": "Production Line 1 Simulator",
-        "IpAddress": "127.0.0.1",
+        "Name": "Simulator Device 1", 
+        "IpAddress": "localhost",
         "Port": 5502,
         "UnitId": 1,
         "Enabled": true,
-        "PollIntervalMs": 1000,
+        "PollIntervalMs": 5000,
         "TimeoutMs": 3000,
-        "MaxRetries": 3,
+        "MaxRetries": 2,
         "KeepAlive": true,
         "Channels": [
           {
@@ -28,35 +31,37 @@
             "RegisterCount": 2,
             "Enabled": true,
             "ScaleFactor": 1.0,
-            "Unit": "items",
+            "Unit": "items", 
             "MinValue": 0,
             "MaxValue": 4294967295,
-            "MaxChangeRate": 1000
+            "MaxChangeRate": 10000,
+            "RateWindowSeconds": 60
           },
           {
             "ChannelNumber": 1,
             "Name": "Reject Counter",
             "StartRegister": 2,
-            "RegisterCount": 2,
+            "RegisterCount": 2, 
             "Enabled": true,
             "ScaleFactor": 1.0,
             "Unit": "items",
             "MinValue": 0,
             "MaxValue": 4294967295,
-            "MaxChangeRate": 100
+            "MaxChangeRate": 1000,
+            "RateWindowSeconds": 180
           }
         ]
       },
       {
-        "DeviceId": "SIM-6051-02",
-        "Name": "Production Line 2 Simulator",
-        "IpAddress": "127.0.0.1",
+        "DeviceId": "SIM-6051-02", 
+        "Name": "Simulator Device 2",
+        "IpAddress": "localhost",
         "Port": 5503,
         "UnitId": 1,
         "Enabled": true,
-        "PollIntervalMs": 1000,
+        "PollIntervalMs": 5000,
         "TimeoutMs": 3000,
-        "MaxRetries": 3,
+        "MaxRetries": 2,
         "KeepAlive": true,
         "Channels": [
           {
@@ -69,11 +74,12 @@
             "Unit": "items",
             "MinValue": 0,
             "MaxValue": 4294967295,
-            "MaxChangeRate": 1000
+            "MaxChangeRate": 10000,
+            "RateWindowSeconds": 60
           },
           {
             "ChannelNumber": 1,
-            "Name": "Reject Counter",
+            "Name": "Reject Counter", 
             "StartRegister": 2,
             "RegisterCount": 2,
             "Enabled": true,
@@ -81,20 +87,21 @@
             "Unit": "items",
             "MinValue": 0,
             "MaxValue": 4294967295,
-            "MaxChangeRate": 100
+            "MaxChangeRate": 1000,
+            "RateWindowSeconds": 180
           }
         ]
       },
       {
         "DeviceId": "SIM-6051-03",
-        "Name": "Packaging Line Simulator",
-        "IpAddress": "127.0.0.1",
+        "Name": "Simulator Device 3",
+        "IpAddress": "localhost", 
         "Port": 5504,
         "UnitId": 1,
         "Enabled": true,
-        "PollIntervalMs": 1000,
+        "PollIntervalMs": 5000,
         "TimeoutMs": 3000,
-        "MaxRetries": 3,
+        "MaxRetries": 2,
         "KeepAlive": true,
         "Channels": [
           {
@@ -107,7 +114,8 @@
             "Unit": "items",
             "MinValue": 0,
             "MaxValue": 4294967295,
-            "MaxChangeRate": 1000
+            "MaxChangeRate": 10000,
+            "RateWindowSeconds": 60
           },
           {
             "ChannelNumber": 1,
@@ -119,28 +127,35 @@
             "Unit": "items",
             "MinValue": 0,
             "MaxValue": 4294967295,
-            "MaxChangeRate": 100
+            "MaxChangeRate": 1000,
+            "RateWindowSeconds": 180
           }
         ]
       }
     ],
     "TimescaleDb": {
       "Host": "localhost",
-      "Port": 5432,
+      "Port": 5433,
       "Database": "adam_counters",
       "Username": "adam_user",
       "Password": "adam_password",
       "TableName": "counter_data",
-      "BatchSize": 100,
+      "BatchSize": 50,
       "BatchTimeoutMs": 5000,
       "FlushIntervalMs": 5000,
+      "MaxRetryAttempts": 3,
+      "RetryDelayMs": 1000,
+      "MaxRetryDelayMs": 30000,
+      "EnableDeadLetterQueue": true,
+      "DeadLetterQueuePath": null,
+      "ShutdownTimeoutSeconds": 30,
       "EnableSsl": false,
       "TimeoutSeconds": 30,
       "MaxPoolSize": 20,
-      "MinPoolSize": 5,
+      "MinPoolSize": 2,
       "Tags": {
-        "location": "factory_floor",
-        "environment": "production"
+        "environment": "docker",
+        "source": "host_simulators"
       }
     }
   }

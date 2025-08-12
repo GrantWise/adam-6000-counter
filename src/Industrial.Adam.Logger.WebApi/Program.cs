@@ -35,7 +35,7 @@ builder.Services.AddAdamLogger(builder.Configuration);
 
 // Add health checks
 builder.Services.AddHealthChecks()
-    .AddCheck<InfluxDbHealthCheck>("influxdb")
+    .AddCheck<TimescaleDbHealthCheck>("timescaledb")
     .AddCheck<DevicePoolHealthCheck>("device-pool");
 
 var app = builder.Build();
@@ -97,14 +97,14 @@ app.MapGet("/health", (AdamLoggerService loggerService) =>
 })
 .WithName("GetHealth");
 
-app.MapGet("/health/detailed", async (AdamLoggerService loggerService, IInfluxDbStorage influxStorage) =>
+app.MapGet("/health/detailed", async (AdamLoggerService loggerService, ITimescaleStorage timescaleStorage) =>
 {
     var status = loggerService.GetStatus();
-    var influxHealthy = await influxStorage.TestConnectionAsync();
+    var timescaleHealthy = await timescaleStorage.TestConnectionAsync();
 
     var result = new
     {
-        Status = status.IsRunning && influxHealthy ? "Healthy" : "Unhealthy",
+        Status = status.IsRunning && timescaleHealthy ? "Healthy" : "Unhealthy",
         Timestamp = DateTimeOffset.UtcNow,
         Components = new
         {
@@ -117,8 +117,8 @@ app.MapGet("/health/detailed", async (AdamLoggerService loggerService, IInfluxDb
             },
             Database = new
             {
-                Status = influxHealthy ? "Healthy" : "Unhealthy",
-                Connected = influxHealthy
+                Status = timescaleHealthy ? "Healthy" : "Unhealthy",
+                Connected = timescaleHealthy
             },
             Devices = new
             {
@@ -266,13 +266,14 @@ app.MapGet("/config", (IConfiguration configuration) =>
         Environment = app.Environment.EnvironmentName,
         LogLevel = configuration["Logging:LogLevel:Default"],
         DemoMode = configuration.GetValue<bool>("DemoMode"),
-        InfluxDb = new
+        TimescaleDb = new
         {
-            Url = configuration["InfluxDb:Url"],
-            Organization = configuration["InfluxDb:Organization"],
-            Bucket = configuration["InfluxDb:Bucket"],
-            BatchSize = configuration.GetValue<int>("InfluxDb:BatchSize"),
-            FlushIntervalMs = configuration.GetValue<int>("InfluxDb:FlushIntervalMs")
+            Host = configuration["TimescaleDb:Host"],
+            Port = configuration.GetValue<int>("TimescaleDb:Port"),
+            Database = configuration["TimescaleDb:Database"],
+            TableName = configuration["TimescaleDb:TableName"],
+            BatchSize = configuration.GetValue<int>("TimescaleDb:BatchSize"),
+            FlushIntervalMs = configuration.GetValue<int>("TimescaleDb:FlushIntervalMs")
         }
     };
 
@@ -303,23 +304,23 @@ app.Run();
 // ============================================================================
 
 /// <summary>
-/// Health check for InfluxDB connectivity
+/// Health check for TimescaleDB connectivity
 /// </summary>
-public class InfluxDbHealthCheck : Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck
+public class TimescaleDbHealthCheck : Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck
 {
-    private readonly IInfluxDbStorage _storage;
+    private readonly ITimescaleStorage _storage;
 
     /// <summary>
-    /// Initialize InfluxDB health check
+    /// Initialize TimescaleDB health check
     /// </summary>
-    /// <param name="storage">InfluxDB storage instance</param>
-    public InfluxDbHealthCheck(IInfluxDbStorage storage)
+    /// <param name="storage">TimescaleDB storage instance</param>
+    public TimescaleDbHealthCheck(ITimescaleStorage storage)
     {
         _storage = storage;
     }
 
     /// <summary>
-    /// Check InfluxDB connection health
+    /// Check TimescaleDB connection health
     /// </summary>
     public async Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult> CheckHealthAsync(
         Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext context,
@@ -329,12 +330,12 @@ public class InfluxDbHealthCheck : Microsoft.Extensions.Diagnostics.HealthChecks
         {
             var connected = await _storage.TestConnectionAsync(cancellationToken);
             return connected
-                ? Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("InfluxDB connection is healthy")
-                : Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("InfluxDB connection failed");
+                ? Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("TimescaleDB connection is healthy")
+                : Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("TimescaleDB connection failed");
         }
         catch (Exception ex)
         {
-            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy($"InfluxDB check failed: {ex.Message}");
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy($"TimescaleDB check failed: {ex.Message}");
         }
     }
 }

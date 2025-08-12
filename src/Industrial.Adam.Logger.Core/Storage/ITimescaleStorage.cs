@@ -3,12 +3,12 @@ using Industrial.Adam.Logger.Core.Models;
 namespace Industrial.Adam.Logger.Core.Storage;
 
 /// <summary>
-/// Interface for storing device readings in InfluxDB
+/// Interface for storing device readings in TimescaleDB
 /// </summary>
-public interface IInfluxDbStorage : IDisposable
+public interface ITimescaleStorage : IDisposable
 {
     /// <summary>
-    /// Write a single reading to InfluxDB
+    /// Write a single reading to TimescaleDB
     /// </summary>
     public Task WriteReadingAsync(DeviceReading reading, CancellationToken cancellationToken = default);
 
@@ -18,7 +18,7 @@ public interface IInfluxDbStorage : IDisposable
     public Task WriteBatchAsync(IEnumerable<DeviceReading> readings, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Test connection to InfluxDB
+    /// Test connection to TimescaleDB
     /// </summary>
     public Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
 
@@ -31,6 +31,11 @@ public interface IInfluxDbStorage : IDisposable
     /// Get the current health status of the storage background task
     /// </summary>
     public StorageHealthStatus GetHealthStatus();
+
+    /// <summary>
+    /// Force flush all pending writes and process dead letter queue
+    /// </summary>
+    public Task<bool> ForceFlushAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -57,4 +62,34 @@ public class StorageHealthStatus
     /// Number of pending writes in the queue
     /// </summary>
     public int PendingWrites { get; init; }
+
+    /// <summary>
+    /// Total number of retry attempts made
+    /// </summary>
+    public long TotalRetryAttempts { get; init; }
+
+    /// <summary>
+    /// Number of batches currently in dead letter queue
+    /// </summary>
+    public int DeadLetterQueueSize { get; init; }
+
+    /// <summary>
+    /// Total number of batches successfully written
+    /// </summary>
+    public long TotalSuccessfulBatches { get; init; }
+
+    /// <summary>
+    /// Total number of batches that failed permanently
+    /// </summary>
+    public long TotalFailedBatches { get; init; }
+
+    /// <summary>
+    /// Average batch write latency in milliseconds
+    /// </summary>
+    public double AverageBatchLatencyMs { get; init; }
+
+    /// <summary>
+    /// Whether dead letter queue processing is enabled
+    /// </summary>
+    public bool IsDeadLetterQueueEnabled { get; init; }
 }

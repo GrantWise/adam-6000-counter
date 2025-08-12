@@ -28,7 +28,7 @@ public static class ServiceCollectionExtensions
 
         // Add configuration
         services.Configure<LoggerConfiguration>(configuration.GetSection("AdamLogger"));
-        services.Configure<InfluxDbSettings>(configuration.GetSection("AdamLogger:InfluxDb"));
+        services.Configure<TimescaleSettings>(configuration.GetSection("AdamLogger:TimescaleDb"));
 
         // Add core services
         services.AddSingleton<DeviceHealthTracker>();
@@ -43,11 +43,11 @@ public static class ServiceCollectionExtensions
         });
 
         // Add storage
-        services.AddSingleton<IInfluxDbStorage>(provider =>
+        services.AddSingleton<ITimescaleStorage>(provider =>
         {
-            var logger = provider.GetRequiredService<ILogger<InfluxDbStorage>>();
-            var settings = provider.GetRequiredService<IOptions<InfluxDbSettings>>().Value;
-            return new InfluxDbStorage(logger, settings);
+            var logger = provider.GetRequiredService<ILogger<TimescaleStorage>>();
+            var settings = provider.GetRequiredService<IOptions<TimescaleSettings>>().Value;
+            return new TimescaleStorage(logger, settings);
         });
 
         // Add main service
@@ -72,24 +72,24 @@ public static class ServiceCollectionExtensions
         if (!adamLoggerSection.Exists())
         {
             errors.Add("Missing 'AdamLogger' configuration section in appsettings.json. " +
-                      "The configuration must be structured as: { \"AdamLogger\": { \"Devices\": [...], \"InfluxDb\": {...} } }");
+                      "The configuration must be structured as: { \"AdamLogger\": { \"Devices\": [...], \"TimescaleDb\": {...} } }");
         }
         else
         {
-            // Check for common mistake: InfluxDb at root level
-            var rootInfluxDb = configuration.GetSection("InfluxDb");
-            if (rootInfluxDb.Exists() && !adamLoggerSection.GetSection("InfluxDb").Exists())
+            // Check for common mistake: TimescaleDb at root level
+            var rootTimescaleDb = configuration.GetSection("TimescaleDb");
+            if (rootTimescaleDb.Exists() && !adamLoggerSection.GetSection("TimescaleDb").Exists())
             {
-                errors.Add("InfluxDB configuration found at root level but should be nested under 'AdamLogger'. " +
-                          "Move 'InfluxDb' section inside 'AdamLogger' section: { \"AdamLogger\": { \"InfluxDb\": {...} } }");
+                errors.Add("TimescaleDB configuration found at root level but should be nested under 'AdamLogger'. " +
+                          "Move 'TimescaleDb' section inside 'AdamLogger' section: { \"AdamLogger\": { \"TimescaleDb\": {...} } }");
             }
 
-            // Check if InfluxDb section exists under AdamLogger
-            var influxDbSection = adamLoggerSection.GetSection("InfluxDb");
-            if (!influxDbSection.Exists())
+            // Check if TimescaleDb section exists under AdamLogger
+            var timescaleDbSection = adamLoggerSection.GetSection("TimescaleDb");
+            if (!timescaleDbSection.Exists())
             {
-                errors.Add("Missing 'AdamLogger:InfluxDb' configuration section. " +
-                          "Add InfluxDB settings under AdamLogger: { \"AdamLogger\": { \"InfluxDb\": { \"Url\": \"...\", \"Token\": \"...\" } } }");
+                errors.Add("Missing 'AdamLogger:TimescaleDb' configuration section. " +
+                          "Add TimescaleDB settings under AdamLogger: { \"AdamLogger\": { \"TimescaleDb\": { \"Url\": \"...\", \"Token\": \"...\" } } }");
             }
 
             // Check if Devices section exists
@@ -114,7 +114,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddAdamLogger(
         this IServiceCollection services,
         Action<LoggerConfiguration> configureLogger,
-        Action<InfluxDbSettings> configureInflux)
+        Action<TimescaleSettings> configureInflux)
     {
         // Add configuration with actions
         services.Configure(configureLogger);
@@ -133,11 +133,11 @@ public static class ServiceCollectionExtensions
         });
 
         // Add storage
-        services.AddSingleton<IInfluxDbStorage>(provider =>
+        services.AddSingleton<ITimescaleStorage>(provider =>
         {
-            var logger = provider.GetRequiredService<ILogger<InfluxDbStorage>>();
-            var settings = provider.GetRequiredService<IOptions<InfluxDbSettings>>().Value;
-            return new InfluxDbStorage(logger, settings);
+            var logger = provider.GetRequiredService<ILogger<TimescaleStorage>>();
+            var settings = provider.GetRequiredService<IOptions<TimescaleSettings>>().Value;
+            return new TimescaleStorage(logger, settings);
         });
 
         // Add main service
@@ -155,8 +155,8 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddAdamLoggerDemo(
         this IServiceCollection services,
-        string influxUrl = "http://localhost:8086",
-        string influxToken = "demo-token")
+        string timescaleHost = "localhost",
+        string timescaleDatabase = "adam_demo")
     {
         return services.AddAdamLogger(
             logger =>
@@ -190,15 +190,15 @@ public static class ServiceCollectionExtensions
                     }
                 };
             },
-            influx =>
+            timescale =>
             {
-                influx.Url = influxUrl;
-                influx.Token = influxToken;
-                influx.Organization = "demo";
-                influx.Bucket = "adam_demo";
-                influx.MeasurementName = "counter_data";
-                influx.BatchSize = 10;
-                influx.FlushIntervalMs = 5000;
+                timescale.Host = timescaleHost;
+                timescale.Database = timescaleDatabase;
+                timescale.Username = "demo";
+                timescale.Password = "demo";
+                timescale.TableName = "counter_data";
+                timescale.BatchSize = 10;
+                timescale.FlushIntervalMs = 5000;
             });
     }
 }

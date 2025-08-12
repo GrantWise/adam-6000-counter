@@ -20,7 +20,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
     private readonly ModbusDevicePool _devicePool;
     private readonly DeviceHealthTracker _healthTracker;
     private readonly IDataProcessor _dataProcessor;
-    private readonly IInfluxDbStorage _influxStorage;
+    private readonly ITimescaleStorage _timescaleStorage;
     private readonly ConcurrentDictionary<string, DeviceReading> _lastReadings = new();
     private readonly SemaphoreSlim _startStopLock = new(1, 1);
     private CancellationTokenSource? _stoppingCts;
@@ -36,14 +36,14 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
         ModbusDevicePool devicePool,
         DeviceHealthTracker healthTracker,
         IDataProcessor dataProcessor,
-        IInfluxDbStorage influxStorage)
+        ITimescaleStorage timescaleStorage)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _devicePool = devicePool ?? throw new ArgumentNullException(nameof(devicePool));
         _healthTracker = healthTracker ?? throw new ArgumentNullException(nameof(healthTracker));
         _dataProcessor = dataProcessor ?? throw new ArgumentNullException(nameof(dataProcessor));
-        _influxStorage = influxStorage ?? throw new ArgumentNullException(nameof(influxStorage));
+        _timescaleStorage = timescaleStorage ?? throw new ArgumentNullException(nameof(timescaleStorage));
 
         // Subscribe to device readings
         _devicePool.ReadingReceived += OnReadingReceived;
@@ -68,11 +68,11 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
                 throw new InvalidOperationException($"Invalid configuration: {errors}");
             }
 
-            // Test InfluxDB connection
-            _logger.LogInformation("Testing InfluxDB connection");
-            if (!await _influxStorage.TestConnectionAsync(cancellationToken).ConfigureAwait(false))
+            // Test TimescaleDB connection
+            _logger.LogInformation("Testing TimescaleDB connection");
+            if (!await _timescaleStorage.TestConnectionAsync(cancellationToken).ConfigureAwait(false))
             {
-                throw new InvalidOperationException("Failed to connect to InfluxDB");
+                throw new InvalidOperationException("Failed to connect to TimescaleDB");
             }
 
             // Create cancellation token for stopping
@@ -137,8 +137,12 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
             // Stop all device polling
             await _devicePool.StopAllAsync().ConfigureAwait(false);
 
-            // Flush any pending data
-            await _influxStorage.FlushAsync(cancellationToken).ConfigureAwait(false);
+            // Force flush any pending data and process dead letter queue
+            var flushResult = await _timescaleStorage.ForceFlushAsync(cancellationToken).ConfigureAwait(false);
+            if (!flushResult)
+            {
+                _logger.LogWarning("Force flush operation completed with errors during shutdown");
+            }
 
             // Reset start time on stop
             _actualStartTime = null;
@@ -183,7 +187,7 @@ public sealed class AdamLoggerService : IHostedService, IDisposable
             }
 
             // Write to InfluxDB
-            await _influxStorage.WriteReadingAsync(processedReading).ConfigureAwait(false);
+            await _timescaleStorage.WriteReadingAsync(processedReading).ConfigureAwait(false);
 
             // Log high-frequency updates at debug level
             _logger.LogDebug(

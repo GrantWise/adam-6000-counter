@@ -8,9 +8,6 @@
     }
   },
   "AdamLogger": {
-    "GlobalPollIntervalMs": 5000,
-    "HealthCheckIntervalMs": 10000,
-    "DemoMode": false,
     "Devices": [
       {
         "DeviceId": "ADAM001",
@@ -49,22 +46,45 @@
             "MaxChangeRate": 100
           }
         ]
+      },
+      {
+        "DeviceId": "ADAM002",
+        "Name": "Production Line Counter 2",
+        "IpAddress": "192.168.1.101",
+        "Port": 502,
+        "UnitId": 1,
+        "Enabled": true,
+        "PollIntervalMs": 1000,
+        "TimeoutMs": 3000,
+        "MaxRetries": 3,
+        "KeepAlive": true,
+        "Channels": [
+          {
+            "ChannelNumber": 0,
+            "Name": "Product Counter",
+            "StartRegister": 0,
+            "RegisterCount": 2,
+            "Enabled": true,
+            "ScaleFactor": 1.0,
+            "Unit": "items",
+            "MinValue": 0,
+            "MaxValue": 4294967295,
+            "MaxChangeRate": 1000
+          }
+        ]
       }
     ],
-    "TimescaleDb": {
-      "Host": "localhost",
-      "Port": 5432,
-      "Database": "adam_counters",
-      "Username": "your-username-here",
-      "Password": "your-password-here",
-      "TableName": "counter_data",
+    "InfluxDb": {
+      "Url": "http://localhost:8086",
+      "Token": "adam-super-secret-token",
+      "Organization": "adam_org",
+      "Bucket": "adam_counters",
+      "MeasurementName": "counter_data",
       "BatchSize": 100,
       "BatchTimeoutMs": 5000,
       "FlushIntervalMs": 5000,
-      "EnableSsl": false,
+      "EnableGzip": true,
       "TimeoutSeconds": 30,
-      "MaxPoolSize": 20,
-      "MinPoolSize": 2,
       "Tags": {
         "location": "factory_floor",
         "environment": "production"

@@ -1,3 +1,4 @@
+using Industrial.Adam.Logger.Simulator.Configuration;
 using Industrial.Adam.Logger.Simulator.Modbus;
 
 namespace Industrial.Adam.Logger.Simulator.Simulation;
@@ -12,6 +13,7 @@ public class SimulationEngine : IHostedService, IDisposable
     private readonly List<ChannelSimulator> _channels;
     private readonly ILogger<SimulationEngine> _logger;
     private readonly IConfiguration _configuration;
+    private readonly ProductionProfileSettings _productionProfile;
 
     private Timer? _updateTimer;
     private Timer? _scheduleTimer;
@@ -27,6 +29,9 @@ public class SimulationEngine : IHostedService, IDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
 
+        // Load production profile configuration
+        _productionProfile = LoadProductionProfile();
+
         // Get device ID from configuration
         var deviceId = _configuration["SimulatorSettings:DeviceId"] ?? "SIM001";
 
@@ -34,6 +39,9 @@ public class SimulationEngine : IHostedService, IDisposable
         _productionSimulator = new ProductionSimulator(
             deviceId,
             loggerFactory.CreateLogger<ProductionSimulator>());
+
+        // Subscribe to counter reset events
+        _productionSimulator.CounterResetRequested += OnCounterResetRequested;
 
         // Configure production parameters from settings
         ConfigureProduction();
@@ -200,18 +208,39 @@ public class SimulationEngine : IHostedService, IDisposable
 
     private void ConfigureProduction()
     {
-        var settings = _configuration.GetSection("ProductionSettings");
+        // Apply production profile settings to simulator
+        _productionSimulator.BaseRate = _productionProfile.BaseRate;
+        _productionSimulator.RateVariation = _productionProfile.RateVariation;
+        _productionSimulator.JobSizeMin = _productionProfile.JobSizeMin;
+        _productionSimulator.JobSizeMax = _productionProfile.JobSizeMax;
 
-        _productionSimulator.BaseRate = double.Parse(settings["BaseRate"] ?? "120");
-        _productionSimulator.RateVariation = double.Parse(settings["RateVariation"] ?? "0.1");
-        _productionSimulator.JobSizeMin = int.Parse(settings["JobSizeMin"] ?? "1000");
-        _productionSimulator.JobSizeMax = int.Parse(settings["JobSizeMax"] ?? "5000");
-        _productionSimulator.SetupDuration = TimeSpan.FromMinutes(
-            double.Parse(settings["SetupDurationMinutes"] ?? "15"));
-        _productionSimulator.MinorStoppageProbability = double.Parse(
-            settings["MinorStoppageProbability"] ?? "0.02");
-        _productionSimulator.MajorStoppageProbability = double.Parse(
-            settings["MajorStoppageProbability"] ?? "0.005");
+        // Timing settings
+        _productionSimulator.SetupDuration = TimeSpan.FromMinutes(_productionProfile.TimingSettings.SetupDurationMinutes);
+        _productionSimulator.RampUpDuration = TimeSpan.FromSeconds(_productionProfile.TimingSettings.RampUpDurationSeconds);
+        _productionSimulator.RampDownDuration = TimeSpan.FromSeconds(_productionProfile.TimingSettings.RampDownDurationSeconds);
+        _productionSimulator.IdleBetweenJobs = TimeSpan.FromSeconds(_productionProfile.TimingSettings.IdleBetweenJobsSeconds);
+
+        // Stoppage settings
+        _productionSimulator.MinorStoppageProbability = _productionProfile.StoppageSettings.MinorStoppageProbability;
+        _productionSimulator.MajorStoppageProbability = _productionProfile.StoppageSettings.MajorStoppageProbability;
+        _productionSimulator.MinorStoppageMinSeconds = _productionProfile.StoppageSettings.MinorStoppageMinSeconds;
+        _productionSimulator.MinorStoppageMaxSeconds = _productionProfile.StoppageSettings.MinorStoppageMaxSeconds;
+        _productionSimulator.MajorStoppageMinMinutes = _productionProfile.StoppageSettings.MajorStoppageMinMinutes;
+        _productionSimulator.MajorStoppageMaxMinutes = _productionProfile.StoppageSettings.MajorStoppageMaxMinutes;
+
+        // Ramp settings
+        _productionSimulator.RampUpStartPercent = _productionProfile.RampSettings.RampUpStartPercent;
+        _productionSimulator.RampUpEndPercent = _productionProfile.RampSettings.RampUpEndPercent;
+        _productionSimulator.RampDownStartPercent = _productionProfile.RampSettings.RampDownStartPercent;
+        _productionSimulator.RampDownEndPercent = _productionProfile.RampSettings.RampDownEndPercent;
+
+        // Continuous operation settings
+        _productionSimulator.ContinuousOperationEnabled = _productionProfile.ContinuousOperation.Enabled;
+        _productionSimulator.AutoRestartAfterJob = _productionProfile.ContinuousOperation.AutoRestartAfterJob;
+        _productionSimulator.ResetCountersOnNewJob = _productionProfile.ContinuousOperation.ResetCountersOnNewJob;
+
+        _logger.LogInformation("Production configured: BaseRate={BaseRate}, ContinuousOperation={Continuous}, CounterReset={Reset}",
+            _productionProfile.BaseRate, _productionProfile.ContinuousOperation.Enabled, _productionProfile.ContinuousOperation.ResetCountersOnNewJob);
     }
 
     private void ConfigureChannels(ILoggerFactory loggerFactory)
@@ -252,8 +281,71 @@ public class SimulationEngine : IHostedService, IDisposable
         _logger.LogInformation("Configured {Count} channels", _channels.Count);
     }
 
+    private ProductionProfileSettings LoadProductionProfile()
+    {
+        var productionProfile = new ProductionProfileSettings();
+
+        try
+        {
+            // Try to load from production profile file
+            var configPath = Path.Combine(AppContext.BaseDirectory, "config", "production-profile.json");
+
+            if (File.Exists(configPath))
+            {
+                var configBuilder = new ConfigurationBuilder()
+                    .AddJsonFile(configPath, optional: true, reloadOnChange: false);
+                var profileConfig = configBuilder.Build();
+
+                profileConfig.GetSection("ProductionProfile").Bind(productionProfile);
+                _logger.LogInformation("Loaded production profile from {ConfigPath}", configPath);
+            }
+            else
+            {
+                // Fallback to existing configuration structure
+                var settings = _configuration.GetSection("ProductionSettings");
+                if (settings.Exists())
+                {
+                    productionProfile.BaseRate = double.Parse(settings["BaseRate"] ?? "120");
+                    productionProfile.RateVariation = double.Parse(settings["RateVariation"] ?? "0.1");
+                    productionProfile.JobSizeMin = int.Parse(settings["JobSizeMin"] ?? "1000");
+                    productionProfile.JobSizeMax = int.Parse(settings["JobSizeMax"] ?? "5000");
+                    productionProfile.TimingSettings.SetupDurationMinutes = double.Parse(settings["SetupDurationMinutes"] ?? "15");
+                    productionProfile.StoppageSettings.MinorStoppageProbability = double.Parse(settings["MinorStoppageProbability"] ?? "0.02");
+                    productionProfile.StoppageSettings.MajorStoppageProbability = double.Parse(settings["MajorStoppageProbability"] ?? "0.005");
+                    _logger.LogInformation("Loaded production profile from legacy appsettings");
+                }
+                else
+                {
+                    _logger.LogInformation("Using default production profile settings");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading production profile, using defaults");
+        }
+
+        return productionProfile;
+    }
+
+    private void OnCounterResetRequested(object? sender, EventArgs e)
+    {
+        lock (_lock)
+        {
+            foreach (var channel in _channels)
+            {
+                if (channel.Type == ChannelType.ProductionCounter || channel.Type == ChannelType.RejectCounter)
+                {
+                    channel.ResetCounter();
+                }
+            }
+            _logger.LogInformation("Reset counters for new job");
+        }
+    }
+
     public void Dispose()
     {
+        _productionSimulator.CounterResetRequested -= OnCounterResetRequested;
         _updateTimer?.Dispose();
         _scheduleTimer?.Dispose();
     }

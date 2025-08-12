@@ -82,7 +82,7 @@ internal class Program
             System.Console.ForegroundColor = ConsoleColor.Yellow;
             System.Console.WriteLine("💡 Quick Fix Guide:");
             System.Console.WriteLine("• Check your appsettings.json file structure");
-            System.Console.WriteLine("• Ensure InfluxDB settings are under 'AdamLogger:InfluxDb'");
+            System.Console.WriteLine("• Ensure TimescaleDB settings are under 'AdamLogger:TimescaleDb'");
             System.Console.WriteLine("• Verify all required fields are present");
             System.Console.WriteLine("• See documentation for complete examples");
             System.Console.ResetColor();

@@ -19,7 +19,7 @@ public class AdamLoggerServiceTests : IDisposable
     private readonly ModbusDevicePool _devicePool;
     private readonly DeviceHealthTracker _healthTracker;
     private readonly Mock<IDataProcessor> _dataProcessorMock;
-    private readonly Mock<IInfluxDbStorage> _influxStorageMock;
+    private readonly Mock<ITimescaleStorage> _timescaleStorageMock;
     private readonly LoggerConfiguration _testConfig;
     private readonly Mock<ILoggerFactory> _loggerFactoryMock;
     private AdamLoggerService? _service;
@@ -44,7 +44,7 @@ public class AdamLoggerServiceTests : IDisposable
             _healthTracker);
 
         _dataProcessorMock = new Mock<IDataProcessor>();
-        _influxStorageMock = new Mock<IInfluxDbStorage>();
+        _timescaleStorageMock = new Mock<ITimescaleStorage>();
 
         _testConfig = new LoggerConfiguration
         {
@@ -70,6 +70,15 @@ public class AdamLoggerServiceTests : IDisposable
                         }
                     }
                 }
+            },
+            TimescaleDb = new TimescaleSettings
+            {
+                Host = "localhost",
+                Port = 5432,
+                Database = "adam_counters",
+                Username = "adam_user",
+                Password = "adam_password",
+                TableName = "counter_data_test"
             }
         };
 
@@ -96,7 +105,7 @@ public class AdamLoggerServiceTests : IDisposable
             _devicePool,
             _healthTracker,
             _dataProcessorMock.Object,
-            _influxStorageMock.Object);
+            _timescaleStorageMock.Object);
 
         act.Should().Throw<ArgumentNullException>().WithParameterName("logger");
     }
@@ -106,7 +115,7 @@ public class AdamLoggerServiceTests : IDisposable
     {
         // Arrange
         _service = CreateService();
-        _influxStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
+        _timescaleStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         // Since we're using a real ModbusDevicePool, we need to mock the IModbusDeviceConnection
@@ -116,7 +125,7 @@ public class AdamLoggerServiceTests : IDisposable
         await _service.StartAsync(CancellationToken.None);
 
         // Assert
-        _influxStorageMock.Verify(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _timescaleStorageMock.Verify(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()), Times.Once);
 
         // Check that device was added to pool (we can't verify the method call since it's not mocked)
         _devicePool.DeviceCount.Should().Be(1);
@@ -150,13 +159,13 @@ public class AdamLoggerServiceTests : IDisposable
     {
         // Arrange
         _service = CreateService();
-        _influxStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
+        _timescaleStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         // Act & Assert
         var act = async () => await _service.StartAsync(CancellationToken.None);
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*Failed to connect to InfluxDB*");
+            .WithMessage("*Failed to connect to TimescaleDB*");
     }
 
     [Fact]
@@ -164,7 +173,9 @@ public class AdamLoggerServiceTests : IDisposable
     {
         // Arrange
         _service = CreateService();
-        _influxStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
+        _timescaleStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _timescaleStorageMock.Setup(x => x.ForceFlushAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         await _service.StartAsync(CancellationToken.None);
@@ -174,8 +185,8 @@ public class AdamLoggerServiceTests : IDisposable
 
         // Assert
         // Since we're using a real device pool, we check its state after stop
-        _devicePool.DeviceCount.Should().Be(0); // All devices should be removed
-        _influxStorageMock.Verify(x => x.FlushAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _devicePool.DeviceCount.Should().Be(1); // Devices remain registered but stopped
+        _timescaleStorageMock.Verify(x => x.ForceFlushAsync(It.IsAny<CancellationToken>()), Times.Once);
 
         // Verify info logs
         _loggerMock.Verify(
@@ -194,10 +205,10 @@ public class AdamLoggerServiceTests : IDisposable
         // Arrange
         _service = CreateService();
 
-        // Update health tracker with test data
+        // Update health tracker with test data (ensure device stays connected by ending with successes)
         for (int i = 0; i < 100; i++)
         {
-            if (i < 95) // 95 successful, 5 failed
+            if (i < 90 || i >= 95) // 95 successful (90 + last 5), 5 failed (middle failures)
                 _healthTracker.RecordSuccess("TEST001", TimeSpan.FromMilliseconds(10));
             else
                 _healthTracker.RecordFailure("TEST001", "Test failure");
@@ -254,7 +265,7 @@ public class AdamLoggerServiceTests : IDisposable
     {
         // Arrange
         _service = CreateService();
-        _influxStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
+        _timescaleStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         // Start service to add initial device
@@ -274,7 +285,7 @@ public class AdamLoggerServiceTests : IDisposable
     {
         // Arrange
         _service = CreateService();
-        _influxStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
+        _timescaleStorageMock.Setup(x => x.TestConnectionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         // Start service to add initial device
@@ -328,7 +339,7 @@ public class AdamLoggerServiceTests : IDisposable
             _devicePool,
             _healthTracker,
             _dataProcessorMock.Object,
-            _influxStorageMock.Object);
+            _timescaleStorageMock.Object);
     }
 
     public void Dispose()

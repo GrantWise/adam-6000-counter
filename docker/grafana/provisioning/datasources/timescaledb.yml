@@ -1,0 +1,25 @@
+# Grafana TimescaleDB (PostgreSQL) Datasource Configuration
+# This file automatically configures the TimescaleDB connection when Grafana starts
+
+apiVersion: 1
+
+datasources:
+  - name: TimescaleDB-ADAM
+    type: postgres
+    uid: TimescaleDB-ADAM
+    access: proxy
+    url: timescaledb:5432
+    database: adam_counters
+    user: adam_user
+    isDefault: true
+    editable: true
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 100
+      maxIdleConns: 100
+      maxIdleConnsAuto: true
+      connMaxLifetime: 14400
+      postgresVersion: 1700  # PostgreSQL 17.x
+      timescaledb: true
+    secureJsonData:
+      password: adam_password

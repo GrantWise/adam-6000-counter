@@ -10,20 +10,15 @@ echo "  LOG_LEVEL: ${LOG_LEVEL:-Information}"
 
 # Select configuration file based on demo mode
 if [ "${DEMO_MODE:-false}" = "true" ]; then
-    echo "Using demo configuration (3 simulators)"
-    cp /app/config/adam_config_v2.json /app/appsettings.json
+    echo "Using Docker demo configuration (3 host simulators)"
+    cp /app/config/adam_config_docker.json /app/appsettings.json
 else
     echo "Using production configuration (real ADAM devices)"
     cp /app/config/adam_config_production_v2.json /app/appsettings.json
 fi
 
-# Wait for InfluxDB to be ready
-echo "Waiting for InfluxDB to be ready..."
-until curl -f http://influxdb:8086/health > /dev/null 2>&1; do
-    echo "InfluxDB is not ready yet, waiting..."
-    sleep 5
-done
-echo "InfluxDB is ready!"
+# TimescaleDB should be available via localhost:5433 with host networking
+echo "Assuming TimescaleDB is ready (localhost:5433)..."
 
 # Set minimal logging configuration (let JSON config handle the rest)
 export "Logging__LogLevel__Default"=${LOG_LEVEL:-Information}

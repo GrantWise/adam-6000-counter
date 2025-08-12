@@ -21,8 +21,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Cons
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Simulator", "src\Industrial.Adam.Logger.Simulator\Industrial.Adam.Logger.Simulator.csproj", "{D631BDEC-58CC-4540-C30C-8B71A55756D8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Industrial.Adam.Logger.Benchmarks", "src\Industrial.Adam.Logger.Benchmarks\Industrial.Adam.Logger.Benchmarks.csproj", "{B70A1901-1105-4F6C-A1F4-ED17269EA210}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -101,18 +99,6 @@ Global
 		{D631BDEC-58CC-4540-C30C-8B71A55756D8}.Release|x64.Build.0 = Release|Any CPU
 		{D631BDEC-58CC-4540-C30C-8B71A55756D8}.Release|x86.ActiveCfg = Release|Any CPU
 		{D631BDEC-58CC-4540-C30C-8B71A55756D8}.Release|x86.Build.0 = Release|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Debug|x64.Build.0 = Debug|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Debug|x86.Build.0 = Debug|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Release|x64.ActiveCfg = Release|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Release|x64.Build.0 = Release|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Release|x86.ActiveCfg = Release|Any CPU
-		{B70A1901-1105-4F6C-A1F4-ED17269EA210}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
