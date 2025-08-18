@@ -1,0 +1,517 @@
+using Industrial.Adam.Oee.Domain.Entities;
+using Industrial.Adam.Oee.Domain.Interfaces;
+using Industrial.Adam.Oee.Infrastructure;
+using Industrial.Adam.Oee.Infrastructure.Repositories;
+using Industrial.Adam.Oee.Infrastructure.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Testcontainers.PostgreSql;
+using Xunit;
+using Dapper;
+
+namespace Industrial.Adam.Oee.Tests.Integration.Infrastructure;
+
+/// <summary>
+/// Integration tests for EquipmentLineRepository
+/// Tests full CRUD operations on the equipment_lines table with ADAM device mapping validation
+/// </summary>
+public sealed class EquipmentLineRepositoryTests : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _postgresContainer;
+    private IDbConnectionFactory _connectionFactory = null!;
+    private IEquipmentLineRepository _repository = null!;
+    private IServiceProvider _serviceProvider = null!;
+
+    public EquipmentLineRepositoryTests()
+    {
+        _postgresContainer = new PostgreSqlBuilder()
+            .WithImage("timescale/timescaledb:latest-pg15")
+            .WithDatabase("adam_counters")
+            .WithUsername("adam_user")
+            .WithPassword("adam_password")
+            .WithPortBinding(54322, 5432)
+            .Build();
+    }
+
+    public async Task InitializeAsync()
+    {
+        await _postgresContainer.StartAsync();
+
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
+        
+        services.AddSingleton<IDbConnectionFactory>(serviceProvider => 
+        {
+            var logger = serviceProvider.GetRequiredService<ILogger<NpgsqlConnectionFactory>>();
+            return new NpgsqlConnectionFactory(_postgresContainer.GetConnectionString(), logger);
+        });
+        
+        _serviceProvider = services.BuildServiceProvider();
+        _connectionFactory = _serviceProvider.GetRequiredService<IDbConnectionFactory>();
+        
+        var logger = _serviceProvider.GetRequiredService<ILogger<EquipmentLineRepository>>();
+        _repository = new EquipmentLineRepository(_connectionFactory, logger);
+
+        await SetupTestDatabaseAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_serviceProvider is IDisposable disposable)
+            disposable.Dispose();
+        await _postgresContainer.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithValidEquipmentLine_CreatesSuccessfully()
+    {
+        // Arrange
+        var equipmentLine = new EquipmentLine(
+            "LINE-TEST-001",
+            "Test Production Line 1",
+            "ADAM-TEST-001",
+            0,
+            true);
+
+        // Act
+        var id = await _repository.CreateAsync(equipmentLine);
+
+        // Assert
+        Assert.True(id > 0);
+
+        // Verify equipment line was created
+        var retrieved = await _repository.GetByIdAsync(id);
+        Assert.NotNull(retrieved);
+        Assert.Equal(equipmentLine.LineId, retrieved.LineId);
+        Assert.Equal(equipmentLine.LineName, retrieved.LineName);
+        Assert.Equal(equipmentLine.AdamDeviceId, retrieved.AdamDeviceId);
+        Assert.Equal(equipmentLine.AdamChannel, retrieved.AdamChannel);
+        Assert.Equal(equipmentLine.IsActive, retrieved.IsActive);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithDuplicateLineId_ThrowsException()
+    {
+        // Arrange
+        var equipmentLine1 = new EquipmentLine("LINE-DUP-001", "Line 1", "ADAM-001", 0);
+        var equipmentLine2 = new EquipmentLine("LINE-DUP-001", "Line 1 Copy", "ADAM-001", 1);
+
+        await _repository.CreateAsync(equipmentLine1);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _repository.CreateAsync(equipmentLine2));
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithDuplicateAdamMapping_ThrowsException()
+    {
+        // Arrange
+        var equipmentLine1 = new EquipmentLine("LINE-ADAM-001", "Line 1", "ADAM-DUP", 0);
+        var equipmentLine2 = new EquipmentLine("LINE-ADAM-002", "Line 2", "ADAM-DUP", 0);
+
+        await _repository.CreateAsync(equipmentLine1);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _repository.CreateAsync(equipmentLine2));
+    }
+
+    [Fact]
+    public async Task GetByLineIdAsync_WithExistingLine_ReturnsEquipmentLine()
+    {
+        // Arrange
+        var equipmentLine = new EquipmentLine("LINE-GET-001", "Test Line", "ADAM-GET-001", 5);
+        await _repository.CreateAsync(equipmentLine);
+
+        // Act
+        var result = await _repository.GetByLineIdAsync("LINE-GET-001");
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("LINE-GET-001", result.LineId);
+        Assert.Equal("Test Line", result.LineName);
+        Assert.Equal("ADAM-GET-001", result.AdamDeviceId);
+        Assert.Equal(5, result.AdamChannel);
+    }
+
+    [Fact]
+    public async Task GetByLineIdAsync_WithNonExistentLine_ReturnsNull()
+    {
+        // Act
+        var result = await _repository.GetByLineIdAsync("NON-EXISTENT-LINE");
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetByAdamDeviceAsync_WithValidMapping_ReturnsEquipmentLine()
+    {
+        // Arrange
+        var equipmentLine = new EquipmentLine("LINE-ADAM-FIND", "ADAM Test Line", "ADAM-FIND-001", 3);
+        await _repository.CreateAsync(equipmentLine);
+
+        // Act
+        var result = await _repository.GetByAdamDeviceAsync("ADAM-FIND-001", 3);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("LINE-ADAM-FIND", result.LineId);
+        Assert.Equal("ADAM-FIND-001", result.AdamDeviceId);
+        Assert.Equal(3, result.AdamChannel);
+    }
+
+    [Fact]
+    public async Task GetByAdamDeviceAsync_WithInvalidMapping_ReturnsNull()
+    {
+        // Act
+        var result = await _repository.GetByAdamDeviceAsync("NON-EXISTENT-ADAM", 0);
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetActiveAsync_WithMixedActiveStatus_ReturnsOnlyActive()
+    {
+        // Arrange
+        var activeLine1 = new EquipmentLine("LINE-ACTIVE-001", "Active Line 1", "ADAM-ACTIVE-001", 0, true);
+        var activeLine2 = new EquipmentLine("LINE-ACTIVE-002", "Active Line 2", "ADAM-ACTIVE-002", 0, true);
+        var inactiveLine = new EquipmentLine("LINE-INACTIVE-001", "Inactive Line", "ADAM-INACTIVE-001", 0, false);
+
+        await _repository.CreateAsync(activeLine1);
+        await _repository.CreateAsync(activeLine2);
+        await _repository.CreateAsync(inactiveLine);
+
+        // Act
+        var activeLines = await _repository.GetActiveAsync();
+
+        // Assert
+        var activeList = activeLines.ToList();
+        Assert.Equal(2, activeList.Count);
+        Assert.All(activeList, line => Assert.True(line.IsActive));
+        Assert.Contains(activeList, line => line.LineId == "LINE-ACTIVE-001");
+        Assert.Contains(activeList, line => line.LineId == "LINE-ACTIVE-002");
+        Assert.DoesNotContain(activeList, line => line.LineId == "LINE-INACTIVE-001");
+    }
+
+    [Fact]
+    public async Task GetAllAsync_ReturnsAllEquipmentLines()
+    {
+        // Arrange - Clear any existing data
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+        await connection.ExecuteAsync("DELETE FROM equipment_lines WHERE line_id LIKE 'LINE-ALL-%'");
+
+        var line1 = new EquipmentLine("LINE-ALL-001", "All Test Line 1", "ADAM-ALL-001", 0, true);
+        var line2 = new EquipmentLine("LINE-ALL-002", "All Test Line 2", "ADAM-ALL-002", 0, false);
+
+        await _repository.CreateAsync(line1);
+        await _repository.CreateAsync(line2);
+
+        // Act
+        var allLines = await _repository.GetAllAsync();
+
+        // Assert
+        var linesList = allLines.ToList();
+        Assert.True(linesList.Count >= 2);
+        Assert.Contains(linesList, line => line.LineId == "LINE-ALL-001");
+        Assert.Contains(linesList, line => line.LineId == "LINE-ALL-002");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithValidChanges_UpdatesSuccessfully()
+    {
+        // Arrange
+        var equipmentLine = new EquipmentLine("LINE-UPDATE-001", "Original Name", "ADAM-UPDATE-001", 0);
+        var id = await _repository.CreateAsync(equipmentLine);
+        var retrieved = await _repository.GetByIdAsync(id);
+        Assert.NotNull(retrieved);
+
+        // Update the line
+        retrieved.UpdateLineName("Updated Name");
+
+        // Act
+        var result = await _repository.UpdateAsync(retrieved);
+
+        // Assert
+        Assert.True(result);
+
+        // Verify update
+        var updated = await _repository.GetByIdAsync(id);
+        Assert.NotNull(updated);
+        Assert.Equal("Updated Name", updated.LineName);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithAdamMappingChange_UpdatesSuccessfully()
+    {
+        // Arrange
+        var equipmentLine = new EquipmentLine("LINE-ADAM-UPDATE", "ADAM Update Test", "ADAM-ORIG", 0);
+        var id = await _repository.CreateAsync(equipmentLine);
+        var retrieved = await _repository.GetByIdAsync(id);
+        Assert.NotNull(retrieved);
+
+        // Update ADAM mapping
+        retrieved.UpdateAdamMapping("ADAM-NEW", 5);
+
+        // Act
+        var result = await _repository.UpdateAsync(retrieved);
+
+        // Assert
+        Assert.True(result);
+
+        // Verify update
+        var updated = await _repository.GetByIdAsync(id);
+        Assert.NotNull(updated);
+        Assert.Equal("ADAM-NEW", updated.AdamDeviceId);
+        Assert.Equal(5, updated.AdamChannel);
+    }
+
+    [Fact]
+    public async Task IsAdamDeviceMappingAvailableAsync_WithAvailableMapping_ReturnsTrue()
+    {
+        // Act
+        var isAvailable = await _repository.IsAdamDeviceMappingAvailableAsync("ADAM-AVAILABLE", 10);
+
+        // Assert
+        Assert.True(isAvailable);
+    }
+
+    [Fact]
+    public async Task IsAdamDeviceMappingAvailableAsync_WithUsedMapping_ReturnsFalse()
+    {
+        // Arrange
+        var equipmentLine = new EquipmentLine("LINE-USED-MAPPING", "Used Mapping Test", "ADAM-USED", 7);
+        await _repository.CreateAsync(equipmentLine);
+
+        // Act
+        var isAvailable = await _repository.IsAdamDeviceMappingAvailableAsync("ADAM-USED", 7);
+
+        // Assert
+        Assert.False(isAvailable);
+    }
+
+    [Fact]
+    public async Task IsAdamDeviceMappingAvailableAsync_WithExcludeLineId_ReturnsTrue()
+    {
+        // Arrange
+        var equipmentLine = new EquipmentLine("LINE-EXCLUDE-TEST", "Exclude Test", "ADAM-EXCLUDE", 2);
+        await _repository.CreateAsync(equipmentLine);
+
+        // Act - Check if mapping is available excluding the line that uses it
+        var isAvailable = await _repository.IsAdamDeviceMappingAvailableAsync("ADAM-EXCLUDE", 2, "LINE-EXCLUDE-TEST");
+
+        // Assert
+        Assert.True(isAvailable);
+    }
+
+    [Fact]
+    public async Task GetAdamDeviceMappingsAsync_ReturnsAllMappings()
+    {
+        // Arrange
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+        await connection.ExecuteAsync("DELETE FROM equipment_lines WHERE line_id LIKE 'LINE-MAPPING-%'");
+
+        var line1 = new EquipmentLine("LINE-MAPPING-001", "Mapping Test 1", "ADAM-MAP-001", 0);
+        var line2 = new EquipmentLine("LINE-MAPPING-002", "Mapping Test 2", "ADAM-MAP-002", 1);
+
+        await _repository.CreateAsync(line1);
+        await _repository.CreateAsync(line2);
+
+        // Act
+        var mappings = await _repository.GetAdamDeviceMappingsAsync();
+
+        // Assert
+        var mappingsList = mappings.ToList();
+        Assert.True(mappingsList.Count >= 2);
+        Assert.Contains(mappingsList, m => m.AdamDeviceId == "ADAM-MAP-001" && m.AdamChannel == 0);
+        Assert.Contains(mappingsList, m => m.AdamDeviceId == "ADAM-MAP-002" && m.AdamChannel == 1);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithExistingLine_DeletesSuccessfully()
+    {
+        // Arrange
+        var equipmentLine = new EquipmentLine("LINE-DELETE-001", "Delete Test", "ADAM-DELETE-001", 0);
+        var id = await _repository.CreateAsync(equipmentLine);
+
+        // Act
+        var result = await _repository.DeleteAsync(id);
+
+        // Assert
+        Assert.True(result);
+
+        // Verify deletion
+        var deleted = await _repository.GetByIdAsync(id);
+        Assert.Null(deleted);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithNonExistentLine_ReturnsFalse()
+    {
+        // Act
+        var result = await _repository.DeleteAsync(99999);
+
+        // Assert
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task SearchAsync_WithLineIdCriteria_ReturnsMatchingLines()
+    {
+        // Arrange
+        var line1 = new EquipmentLine("LINE-SEARCH-001", "Search Test 1", "ADAM-SEARCH-001", 0);
+        var line2 = new EquipmentLine("LINE-SEARCH-002", "Search Test 2", "ADAM-SEARCH-002", 0);
+        var line3 = new EquipmentLine("LINE-OTHER-001", "Other Test", "ADAM-OTHER-001", 0);
+
+        await _repository.CreateAsync(line1);
+        await _repository.CreateAsync(line2);
+        await _repository.CreateAsync(line3);
+
+        var criteria = new EquipmentLineSearchCriteria(LineId: "LINE-SEARCH-001");
+
+        // Act
+        var results = await _repository.SearchAsync(criteria);
+
+        // Assert
+        var resultsList = results.ToList();
+        Assert.Single(resultsList);
+        Assert.Equal("LINE-SEARCH-001", resultsList[0].LineId);
+    }
+
+    [Fact]
+    public async Task SearchAsync_WithAdamDeviceCriteria_ReturnsMatchingLines()
+    {
+        // Arrange
+        var line1 = new EquipmentLine("LINE-ADAM-SEARCH-001", "ADAM Search Test 1", "ADAM-DEVICE-X", 0);
+        var line2 = new EquipmentLine("LINE-ADAM-SEARCH-002", "ADAM Search Test 2", "ADAM-DEVICE-X", 1);
+        var line3 = new EquipmentLine("LINE-ADAM-SEARCH-003", "ADAM Search Test 3", "ADAM-DEVICE-Y", 0);
+
+        await _repository.CreateAsync(line1);
+        await _repository.CreateAsync(line2);
+        await _repository.CreateAsync(line3);
+
+        var criteria = new EquipmentLineSearchCriteria(AdamDeviceId: "ADAM-DEVICE-X");
+
+        // Act
+        var results = await _repository.SearchAsync(criteria);
+
+        // Assert
+        var resultsList = results.ToList();
+        Assert.Equal(2, resultsList.Count);
+        Assert.All(resultsList, line => Assert.Equal("ADAM-DEVICE-X", line.AdamDeviceId));
+    }
+
+    [Fact]
+    public async Task ExistsByLineIdAsync_WithExistingLine_ReturnsTrue()
+    {
+        // Arrange
+        var equipmentLine = new EquipmentLine("LINE-EXISTS-001", "Exists Test", "ADAM-EXISTS-001", 0);
+        await _repository.CreateAsync(equipmentLine);
+
+        // Act
+        var exists = await _repository.ExistsByLineIdAsync("LINE-EXISTS-001");
+
+        // Assert
+        Assert.True(exists);
+    }
+
+    [Fact]
+    public async Task ExistsByLineIdAsync_WithNonExistentLine_ReturnsFalse()
+    {
+        // Act
+        var exists = await _repository.ExistsByLineIdAsync("NON-EXISTENT-LINE");
+
+        // Assert
+        Assert.False(exists);
+    }
+
+    [Fact]
+    public async Task AdamChannelConstraints_EnforceValidRange()
+    {
+        // Test valid channel range (0-15)
+        var validLine = new EquipmentLine("LINE-CHANNEL-VALID", "Valid Channel", "ADAM-CHANNEL", 15);
+        var id = await _repository.CreateAsync(validLine);
+        Assert.True(id > 0);
+
+        // Test invalid channel range should be caught by entity validation
+        Assert.Throws<ArgumentException>(() => 
+            new EquipmentLine("LINE-CHANNEL-INVALID", "Invalid Channel", "ADAM-CHANNEL", 16));
+    }
+
+    [Fact]
+    public async Task ConcurrentOperations_WithMultipleThreads_MaintainDataIntegrity()
+    {
+        // Arrange
+        var tasks = new List<Task<int>>();
+        var lineIds = new List<string>();
+
+        // Act - Create multiple equipment lines concurrently
+        for (int i = 0; i < 10; i++)
+        {
+            var lineId = $"LINE-CONCURRENT-{i:D3}";
+            lineIds.Add(lineId);
+            
+            tasks.Add(Task.Run(async () =>
+            {
+                var equipmentLine = new EquipmentLine(lineId, $"Concurrent Test Line {i}", $"ADAM-CONCURRENT-{i}", i % 16);
+                return await _repository.CreateAsync(equipmentLine);
+            }));
+        }
+
+        var ids = await Task.WhenAll(tasks);
+
+        // Assert - Verify all equipment lines were created
+        foreach (var id in ids)
+        {
+            Assert.True(id > 0);
+        }
+
+        // Verify by retrieving each line
+        foreach (var lineId in lineIds)
+        {
+            var line = await _repository.GetByLineIdAsync(lineId);
+            Assert.NotNull(line);
+            Assert.Equal(lineId, line.LineId);
+        }
+    }
+
+    /// <summary>
+    /// Set up test database with Phase 1 OEE tables
+    /// </summary>
+    private async Task SetupTestDatabaseAsync()
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+
+        // Create equipment_lines table with all constraints
+        await connection.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS equipment_lines (
+                id SERIAL PRIMARY KEY,
+                line_id VARCHAR(50) UNIQUE NOT NULL,
+                line_name VARCHAR(100) NOT NULL,
+                adam_device_id VARCHAR(50) NOT NULL,
+                adam_channel INTEGER NOT NULL,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                
+                -- Constraints
+                CONSTRAINT equipment_lines_line_id_not_empty CHECK (line_id != ''),
+                CONSTRAINT equipment_lines_line_name_not_empty CHECK (line_name != ''),
+                CONSTRAINT equipment_lines_adam_device_not_empty CHECK (adam_device_id != ''),
+                CONSTRAINT equipment_lines_adam_channel_valid CHECK (adam_channel >= 0 AND adam_channel <= 15),
+                UNIQUE(adam_device_id, adam_channel)
+            );");
+
+        // Create performance indexes
+        await connection.ExecuteAsync(@"
+            CREATE INDEX IF NOT EXISTS idx_equipment_lines_adam_device 
+            ON equipment_lines(adam_device_id, adam_channel) 
+            WHERE is_active = true;
+
+            CREATE INDEX IF NOT EXISTS idx_equipment_lines_active 
+            ON equipment_lines(is_active, line_id) 
+            WHERE is_active = true;");
+    }
+}

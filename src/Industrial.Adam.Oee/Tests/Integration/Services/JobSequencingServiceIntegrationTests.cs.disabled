@@ -1,0 +1,554 @@
+using Industrial.Adam.Oee.Domain.Entities;
+using Industrial.Adam.Oee.Domain.Interfaces;
+using Industrial.Adam.Oee.Domain.Services;
+using Industrial.Adam.Oee.Infrastructure;
+using Industrial.Adam.Oee.Infrastructure.Repositories;
+using Industrial.Adam.Oee.Infrastructure.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Testcontainers.PostgreSql;
+using Xunit;
+using Dapper;
+
+namespace Industrial.Adam.Oee.Tests.Integration.Services;
+
+/// <summary>
+/// Integration tests for JobSequencingService
+/// Tests core business rule: Only one job can run on an equipment line at any given time
+/// </summary>
+public sealed class JobSequencingServiceIntegrationTests : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _postgresContainer;
+    private IDbConnectionFactory _connectionFactory = null!;
+    private IWorkOrderRepository _workOrderRepository = null!;
+    private IEquipmentLineRepository _equipmentLineRepository = null!;
+    private JobSequencingService _jobSequencingService = null!;
+    private IServiceProvider _serviceProvider = null!;
+
+    public JobSequencingServiceIntegrationTests()
+    {
+        _postgresContainer = new PostgreSqlBuilder()
+            .WithImage("timescale/timescaledb:latest-pg15")
+            .WithDatabase("adam_counters")
+            .WithUsername("adam_user")
+            .WithPassword("adam_password")
+            .WithPortBinding(54324, 5432)
+            .Build();
+    }
+
+    public async Task InitializeAsync()
+    {
+        await _postgresContainer.StartAsync();
+
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
+        
+        services.AddSingleton<IDbConnectionFactory>(serviceProvider => 
+        {
+            var logger = serviceProvider.GetRequiredService<ILogger<NpgsqlConnectionFactory>>();
+            return new NpgsqlConnectionFactory(_postgresContainer.GetConnectionString(), logger);
+        });
+        
+        _serviceProvider = services.BuildServiceProvider();
+        _connectionFactory = _serviceProvider.GetRequiredService<IDbConnectionFactory>();
+        
+        var workOrderLogger = _serviceProvider.GetRequiredService<ILogger<WorkOrderRepository>>();
+        var equipmentLineLogger = _serviceProvider.GetRequiredService<ILogger<EquipmentLineRepository>>();
+        var serviceLogger = _serviceProvider.GetRequiredService<ILogger<JobSequencingService>>();
+        
+        _workOrderRepository = new WorkOrderRepository(_connectionFactory, workOrderLogger);
+        _equipmentLineRepository = new EquipmentLineRepository(_connectionFactory, equipmentLineLogger);
+        _jobSequencingService = new JobSequencingService(_workOrderRepository, _equipmentLineRepository, serviceLogger);
+
+        await SetupTestDatabaseAsync();
+        await SeedTestDataAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_serviceProvider is IDisposable disposable)
+            disposable.Dispose();
+        await _postgresContainer.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ValidateJobStartAsync_WithAvailableLine_ReturnsSuccess()
+    {
+        // Arrange
+        var lineId = "LINE-001";
+        var workOrderId = "WO-TEST-001";
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobStartAsync(lineId, workOrderId);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Null(result.ViolationType);
+        Assert.Null(result.ErrorMessage);
+        Assert.Null(result.ConflictingWorkOrder);
+    }
+
+    [Fact]
+    public async Task ValidateJobStartAsync_WithNonExistentLine_ReturnsFailure()
+    {
+        // Arrange
+        var lineId = "NON-EXISTENT-LINE";
+        var workOrderId = "WO-TEST-002";
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobStartAsync(lineId, workOrderId);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Equal(JobSequencingViolationType.EquipmentLineNotFound, result.ViolationType);
+        Assert.Contains("does not exist", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ValidateJobStartAsync_WithInactiveLine_ReturnsFailure()
+    {
+        // Arrange
+        var lineId = "LINE-INACTIVE";
+        var workOrderId = "WO-TEST-003";
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobStartAsync(lineId, workOrderId);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Equal(JobSequencingViolationType.EquipmentLineInactive, result.ViolationType);
+        Assert.Contains("not active", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ValidateJobStartAsync_WithExistingActiveJob_ReturnsFailure()
+    {
+        // Arrange
+        var lineId = "LINE-001";
+        var existingWorkOrderId = "WO-EXISTING-001";
+        var newWorkOrderId = "WO-NEW-001";
+
+        // Create and start an existing work order
+        var existingWorkOrder = CreateTestWorkOrder(existingWorkOrderId, "ADAM-001");
+        existingWorkOrder.Start();
+        await _workOrderRepository.CreateAsync(existingWorkOrder);
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobStartAsync(lineId, newWorkOrderId);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Equal(JobSequencingViolationType.OverlappingJob, result.ViolationType);
+        Assert.Contains("already has an active job", result.ErrorMessage);
+        Assert.NotNull(result.ConflictingWorkOrder);
+        Assert.Equal(existingWorkOrderId, result.ConflictingWorkOrder.Id);
+    }
+
+    [Fact]
+    public async Task ValidateJobStartAsync_WithExistingWorkOrderId_ReturnsFailure()
+    {
+        // Arrange
+        var lineId = "LINE-002";
+        var workOrderId = "WO-DUPLICATE-001";
+
+        // Create an existing work order (but not started)
+        var existingWorkOrder = CreateTestWorkOrder(workOrderId, "ADAM-002");
+        await _workOrderRepository.CreateAsync(existingWorkOrder);
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobStartAsync(lineId, workOrderId);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Equal(JobSequencingViolationType.WorkOrderAlreadyExists, result.ViolationType);
+        Assert.Contains("already exists", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ValidateJobEndAsync_WithActiveWorkOrder_ReturnsSuccess()
+    {
+        // Arrange
+        var workOrderId = "WO-END-TEST-001";
+        var workOrder = CreateTestWorkOrder(workOrderId, "ADAM-001");
+        workOrder.Start();
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobEndAsync(workOrderId);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Null(result.ViolationType);
+        Assert.Null(result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ValidateJobEndAsync_WithNonExistentWorkOrder_ReturnsFailure()
+    {
+        // Arrange
+        var workOrderId = "WO-NON-EXISTENT";
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobEndAsync(workOrderId);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Equal(JobSequencingViolationType.WorkOrderNotFound, result.ViolationType);
+        Assert.Contains("does not exist", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ValidateJobEndAsync_WithInactiveWorkOrder_ReturnsFailure()
+    {
+        // Arrange
+        var workOrderId = "WO-INACTIVE-TEST";
+        var workOrder = CreateTestWorkOrder(workOrderId, "ADAM-001");
+        // Don't start the work order (leave as Pending)
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobEndAsync(workOrderId);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Equal(JobSequencingViolationType.WorkOrderNotActive, result.ViolationType);
+        Assert.Contains("not active", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ValidateJobCompletionAsync_WithGoodCompletion_ReturnsSuccess()
+    {
+        // Arrange
+        var workOrderId = "WO-COMPLETION-GOOD";
+        var workOrder = CreateTestWorkOrder(workOrderId, "ADAM-001", plannedQuantity: 100);
+        workOrder.Start();
+        workOrder.UpdateFromCounterData(95, 5); // 95% completion, good quality
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobCompletionAsync(workOrderId, minimumCompletionPercentage: 80m);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.False(result.RequiresReasonCode);
+        Assert.Equal(100m, result.PlannedQuantity);
+        Assert.Equal(100m, result.ActualQuantity);
+        Assert.Equal(100m, result.CompletionPercentage);
+    }
+
+    [Fact]
+    public async Task ValidateJobCompletionAsync_WithUnderCompletion_RequiresReason()
+    {
+        // Arrange
+        var workOrderId = "WO-UNDER-COMPLETION";
+        var workOrder = CreateTestWorkOrder(workOrderId, "ADAM-001", plannedQuantity: 100);
+        workOrder.Start();
+        workOrder.UpdateFromCounterData(70, 5); // 75% completion (under 80% threshold)
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobCompletionAsync(workOrderId, minimumCompletionPercentage: 80m);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.True(result.RequiresReasonCode);
+        Assert.Equal(JobCompletionIssueType.UnderCompletion, result.IssueType);
+        Assert.Contains("75.0% complete", result.Message);
+        Assert.Contains("Minimum required: 80.0%", result.Message);
+    }
+
+    [Fact]
+    public async Task ValidateJobCompletionAsync_WithOverproduction_RequiresReason()
+    {
+        // Arrange
+        var workOrderId = "WO-OVERPRODUCTION";
+        var workOrder = CreateTestWorkOrder(workOrderId, "ADAM-001", plannedQuantity: 100);
+        workOrder.Start();
+        workOrder.UpdateFromCounterData(115, 5); // 120% completion (over 110% threshold)
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        // Act
+        var result = await _jobSequencingService.ValidateJobCompletionAsync(workOrderId);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.True(result.RequiresReasonCode);
+        Assert.Equal(JobCompletionIssueType.Overproduction, result.IssueType);
+        Assert.Contains("120.0% of planned quantity", result.Message);
+        Assert.Contains("Explain overproduction", result.Message);
+    }
+
+    [Fact]
+    public async Task GetActiveJobOnLineAsync_WithActiveJob_ReturnsWorkOrder()
+    {
+        // Arrange
+        var lineId = "LINE-001";
+        var workOrderId = "WO-ACTIVE-JOB-TEST";
+        var workOrder = CreateTestWorkOrder(workOrderId, "ADAM-001");
+        workOrder.Start();
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        // Act
+        var activeJob = await _jobSequencingService.GetActiveJobOnLineAsync(lineId);
+
+        // Assert
+        Assert.NotNull(activeJob);
+        Assert.Equal(workOrderId, activeJob.Id);
+        Assert.Equal(WorkOrderStatus.Active, activeJob.Status);
+    }
+
+    [Fact]
+    public async Task GetActiveJobOnLineAsync_WithNoActiveJob_ReturnsNull()
+    {
+        // Arrange
+        var lineId = "LINE-002";
+
+        // Act
+        var activeJob = await _jobSequencingService.GetActiveJobOnLineAsync(lineId);
+
+        // Assert
+        Assert.Null(activeJob);
+    }
+
+    [Fact]
+    public async Task IsLineAvailableForNewJobAsync_WithAvailableLine_ReturnsTrue()
+    {
+        // Arrange
+        var lineId = "LINE-002";
+
+        // Act
+        var isAvailable = await _jobSequencingService.IsLineAvailableForNewJobAsync(lineId);
+
+        // Assert
+        Assert.True(isAvailable);
+    }
+
+    [Fact]
+    public async Task IsLineAvailableForNewJobAsync_WithOccupiedLine_ReturnsFalse()
+    {
+        // Arrange
+        var lineId = "LINE-001";
+        var workOrder = CreateTestWorkOrder("WO-OCCUPY-LINE", "ADAM-001");
+        workOrder.Start();
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        // Act
+        var isAvailable = await _jobSequencingService.IsLineAvailableForNewJobAsync(lineId);
+
+        // Assert
+        Assert.False(isAvailable);
+    }
+
+    [Fact]
+    public async Task GetEquipmentLineStatusesAsync_ReturnsCorrectStatuses()
+    {
+        // Arrange - Create work orders on some lines
+        var workOrder1 = CreateTestWorkOrder("WO-STATUS-1", "ADAM-001");
+        workOrder1.Start();
+        workOrder1.UpdateFromCounterData(50, 5); // 50% completion
+        await _workOrderRepository.CreateAsync(workOrder1);
+
+        var workOrder2 = CreateTestWorkOrder("WO-STATUS-2", "ADAM-002");
+        workOrder2.Start();
+        workOrder2.UpdateFromCounterData(75, 10); // ~88% completion
+        await _workOrderRepository.CreateAsync(workOrder2);
+
+        // Act
+        var statuses = await _jobSequencingService.GetEquipmentLineStatusesAsync();
+
+        // Assert
+        var statusesList = statuses.ToList();
+        Assert.True(statusesList.Count >= 3); // At least our 3 test lines
+
+        // Check LINE-001 (should be occupied)
+        var line1Status = statusesList.FirstOrDefault(s => s.LineId == "LINE-001");
+        Assert.NotNull(line1Status);
+        Assert.False(line1Status.IsAvailable);
+        Assert.Equal("WO-STATUS-1", line1Status.ActiveWorkOrderId);
+        Assert.NotNull(line1Status.CompletionPercentage);
+
+        // Check LINE-002 (should be occupied)
+        var line2Status = statusesList.FirstOrDefault(s => s.LineId == "LINE-002");
+        Assert.NotNull(line2Status);
+        Assert.False(line2Status.IsAvailable);
+        Assert.Equal("WO-STATUS-2", line2Status.ActiveWorkOrderId);
+
+        // Check LINE-003 (should be available)
+        var line3Status = statusesList.FirstOrDefault(s => s.LineId == "LINE-003");
+        Assert.NotNull(line3Status);
+        Assert.True(line3Status.IsAvailable);
+        Assert.Null(line3Status.ActiveWorkOrderId);
+    }
+
+    [Fact]
+    public async Task JobSequencingWorkflow_CompleteJobLifecycle_EnforcesBusinessRules()
+    {
+        // Arrange
+        var lineId = "LINE-WORKFLOW";
+        var workOrderId1 = "WO-WORKFLOW-1";
+        var workOrderId2 = "WO-WORKFLOW-2";
+
+        // Act & Assert: Start first job
+        var validation1 = await _jobSequencingService.ValidateJobStartAsync(lineId, workOrderId1);
+        Assert.True(validation1.IsValid);
+
+        var workOrder1 = CreateTestWorkOrder(workOrderId1, "ADAM-WORKFLOW");
+        workOrder1.Start();
+        await _workOrderRepository.CreateAsync(workOrder1);
+
+        // Act & Assert: Try to start second job (should fail)
+        var validation2 = await _jobSequencingService.ValidateJobStartAsync(lineId, workOrderId2);
+        Assert.False(validation2.IsValid);
+        Assert.Equal(JobSequencingViolationType.OverlappingJob, validation2.ViolationType);
+
+        // Act & Assert: Complete first job
+        workOrder1.UpdateFromCounterData(100, 5);
+        var completionValidation = await _jobSequencingService.ValidateJobCompletionAsync(workOrderId1);
+        Assert.True(completionValidation.IsValid);
+
+        var endValidation = await _jobSequencingService.ValidateJobEndAsync(workOrderId1);
+        Assert.True(endValidation.IsValid);
+
+        workOrder1.Complete();
+        await _workOrderRepository.UpdateAsync(workOrder1);
+
+        // Act & Assert: Now second job should be allowed
+        var validation3 = await _jobSequencingService.ValidateJobStartAsync(lineId, workOrderId2);
+        Assert.True(validation3.IsValid);
+    }
+
+    [Fact]
+    public async Task ConcurrentJobStartValidation_WithMultipleThreads_EnforcesBusinessRules()
+    {
+        // Arrange
+        var lineId = "LINE-CONCURRENT";
+        var tasks = new List<Task<JobSequencingValidationResult>>();
+
+        // Act - Try to start multiple jobs concurrently on the same line
+        for (int i = 0; i < 5; i++)
+        {
+            var workOrderId = $"WO-CONCURRENT-{i}";
+            tasks.Add(Task.Run(() => _jobSequencingService.ValidateJobStartAsync(lineId, workOrderId)));
+        }
+
+        var results = await Task.WhenAll(tasks);
+
+        // Assert - Only one should succeed
+        var successCount = results.Count(r => r.IsValid);
+        var failureCount = results.Count(r => !r.IsValid);
+
+        Assert.Equal(1, successCount);
+        Assert.Equal(4, failureCount);
+
+        // All failures should be for equipment line not found (our test line doesn't exist)
+        Assert.All(results.Where(r => !r.IsValid), 
+            r => Assert.Equal(JobSequencingViolationType.EquipmentLineNotFound, r.ViolationType));
+    }
+
+    /// <summary>
+    /// Set up test database with required tables
+    /// </summary>
+    private async Task SetupTestDatabaseAsync()
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+
+        // Create equipment_lines table
+        await connection.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS equipment_lines (
+                id SERIAL PRIMARY KEY,
+                line_id VARCHAR(50) UNIQUE NOT NULL,
+                line_name VARCHAR(100) NOT NULL,
+                adam_device_id VARCHAR(50) NOT NULL,
+                adam_channel INTEGER NOT NULL,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                
+                CONSTRAINT equipment_lines_adam_channel_valid CHECK (adam_channel >= 0 AND adam_channel <= 15),
+                UNIQUE(adam_device_id, adam_channel)
+            );");
+
+        // Create work_orders table
+        await connection.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS work_orders (
+                work_order_id VARCHAR(50) PRIMARY KEY,
+                work_order_description TEXT NOT NULL,
+                product_id VARCHAR(50) NOT NULL,
+                product_description TEXT NOT NULL,
+                planned_quantity DECIMAL(18,3) NOT NULL,
+                unit_of_measure VARCHAR(20) NOT NULL DEFAULT 'pieces',
+                scheduled_start_time TIMESTAMPTZ NOT NULL,
+                scheduled_end_time TIMESTAMPTZ NOT NULL,
+                resource_reference VARCHAR(50) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+                actual_quantity_good DECIMAL(18,3) NOT NULL DEFAULT 0,
+                actual_quantity_scrap DECIMAL(18,3) NOT NULL DEFAULT 0,
+                actual_start_time TIMESTAMPTZ,
+                actual_end_time TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                
+                CONSTRAINT work_orders_planned_quantity_positive CHECK (planned_quantity > 0),
+                CONSTRAINT work_orders_actual_quantities_non_negative CHECK (
+                    actual_quantity_good >= 0 AND actual_quantity_scrap >= 0
+                ),
+                CONSTRAINT work_orders_scheduled_times_valid CHECK (scheduled_end_time > scheduled_start_time),
+                CONSTRAINT work_orders_status_valid CHECK (
+                    status IN ('Pending', 'Active', 'Paused', 'Completed', 'Cancelled')
+                )
+            );");
+
+        // Create indexes
+        await connection.ExecuteAsync(@"
+            CREATE INDEX IF NOT EXISTS idx_work_orders_resource_status 
+            ON work_orders(resource_reference, status) 
+            WHERE status IN ('Active', 'Paused');
+
+            CREATE INDEX IF NOT EXISTS idx_equipment_lines_adam_device 
+            ON equipment_lines(adam_device_id, adam_channel) 
+            WHERE is_active = true;");
+    }
+
+    /// <summary>
+    /// Seed test data with equipment lines
+    /// </summary>
+    private async Task SeedTestDataAsync()
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+
+        // Insert test equipment lines
+        await connection.ExecuteAsync(@"
+            INSERT INTO equipment_lines (line_id, line_name, adam_device_id, adam_channel, is_active)
+            VALUES 
+                ('LINE-001', 'Test Production Line 1', 'ADAM-001', 0, true),
+                ('LINE-002', 'Test Production Line 2', 'ADAM-002', 0, true),
+                ('LINE-003', 'Test Production Line 3', 'ADAM-003', 0, true),
+                ('LINE-INACTIVE', 'Inactive Test Line', 'ADAM-INACTIVE', 0, false),
+                ('LINE-WORKFLOW', 'Workflow Test Line', 'ADAM-WORKFLOW', 0, true)
+            ON CONFLICT (line_id) DO NOTHING");
+    }
+
+    /// <summary>
+    /// Create a test work order with default values
+    /// </summary>
+    private static WorkOrder CreateTestWorkOrder(
+        string workOrderId, 
+        string deviceId, 
+        decimal plannedQuantity = 100m)
+    {
+        var start = DateTime.UtcNow;
+        var end = start.AddHours(8);
+
+        return new WorkOrder(
+            workOrderId,
+            $"Test Work Order {workOrderId}",
+            "TEST_PRODUCT_001",
+            "Test Product Description",
+            plannedQuantity,
+            start,
+            end,
+            deviceId,
+            "pieces"
+        );
+    }
+}

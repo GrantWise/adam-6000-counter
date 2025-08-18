@@ -1,0 +1,230 @@
+using Microsoft.Extensions.Logging;
+using Npgsql;
+using Polly;
+using Polly.Extensions.Http;
+using Polly.Retry;
+using System.Net.Sockets;
+
+namespace Industrial.Adam.Oee.Infrastructure.Resilience;
+
+/// <summary>
+/// Factory for creating retry policies for OEE infrastructure operations
+/// Duplicated pattern from Industrial.Adam.Logger for independence
+/// </summary>
+public interface IRetryPolicyFactory
+{
+    /// <summary>
+    /// Get retry policy for database operations
+    /// </summary>
+    /// <returns>Database retry policy</returns>
+    IAsyncPolicy GetDatabaseRetryPolicy();
+    
+    /// <summary>
+    /// Get retry policy for HTTP operations
+    /// </summary>
+    /// <returns>HTTP retry policy</returns>
+    IAsyncPolicy<HttpResponseMessage> GetHttpRetryPolicy();
+    
+    /// <summary>
+    /// Get retry policy with custom configuration
+    /// </summary>
+    /// <param name="maxRetries">Maximum number of retries</param>
+    /// <param name="baseDelay">Base delay between retries</param>
+    /// <param name="maxDelay">Maximum delay between retries</param>
+    /// <returns>Custom retry policy</returns>
+    IAsyncPolicy GetCustomRetryPolicy(int maxRetries, TimeSpan baseDelay, TimeSpan maxDelay);
+}
+
+/// <summary>
+/// Implementation of retry policy factory for OEE operations
+/// </summary>
+public sealed class RetryPolicyFactory : IRetryPolicyFactory
+{
+    private readonly ILogger<RetryPolicyFactory> _logger;
+    private readonly ResilienceConfiguration _config;
+    
+    /// <summary>
+    /// Initialize retry policy factory
+    /// </summary>
+    /// <param name="logger">Logger instance</param>
+    /// <param name="config">Resilience configuration</param>
+    public RetryPolicyFactory(ILogger<RetryPolicyFactory> logger, ResilienceConfiguration config)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _config = config ?? throw new ArgumentNullException(nameof(config));
+    }
+    
+    /// <inheritdoc />
+    public IAsyncPolicy GetDatabaseRetryPolicy()
+    {
+        return Policy
+            .Handle<NpgsqlException>()
+            .Or<TimeoutException>()
+            .Or<SocketException>()
+            .Or<InvalidOperationException>(ex => 
+                ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase) ||
+                ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+            .WaitAndRetryAsync(
+                retryCount: _config.Database.MaxRetryAttempts,
+                sleepDurationProvider: retryAttempt => CalculateRetryDelay(retryAttempt, _config.Database.BaseDelayMs, _config.Database.MaxDelayMs),
+                onRetry: (outcome, timespan, retryCount, context) =>
+                {
+                    _logger.LogWarning(
+                        "Database operation retry {RetryCount}/{MaxRetries} after {Delay}ms. Exception: {ExceptionMessage}",
+                        retryCount, _config.Database.MaxRetryAttempts, timespan.TotalMilliseconds, outcome.Exception?.Message);
+                });
+    }
+    
+    /// <inheritdoc />
+    public IAsyncPolicy<HttpResponseMessage> GetHttpRetryPolicy()
+    {
+        return HttpPolicyExtensions
+            .HandleTransientHttpError() // Handles HttpRequestException and 5XX, 408 status codes
+            .OrResult(msg => !msg.IsSuccessStatusCode)
+            .WaitAndRetryAsync(
+                retryCount: _config.Http.MaxRetryAttempts,
+                sleepDurationProvider: retryAttempt => CalculateRetryDelay(retryAttempt, _config.Http.BaseDelayMs, _config.Http.MaxDelayMs),
+                onRetry: (outcome, timespan, retryCount, context) =>
+                {
+                    _logger.LogWarning(
+                        "HTTP operation retry {RetryCount}/{MaxRetries} after {Delay}ms. Status: {StatusCode}, Exception: {Exception}",
+                        retryCount, _config.Http.MaxRetryAttempts, timespan.TotalMilliseconds, 
+                        outcome.Result?.StatusCode, outcome.Exception?.Message);
+                });
+    }
+    
+    /// <inheritdoc />
+    public IAsyncPolicy GetCustomRetryPolicy(int maxRetries, TimeSpan baseDelay, TimeSpan maxDelay)
+    {
+        return Policy
+            .Handle<Exception>()
+            .WaitAndRetryAsync(
+                retryCount: maxRetries,
+                sleepDurationProvider: retryAttempt => CalculateRetryDelay(retryAttempt, (int)baseDelay.TotalMilliseconds, (int)maxDelay.TotalMilliseconds),
+                onRetry: (outcome, timespan, retryCount, context) =>
+                {
+                    _logger.LogWarning(
+                        "Custom operation retry {RetryCount}/{MaxRetries} after {Delay}ms. Exception: {ExceptionMessage}",
+                        retryCount, maxRetries, timespan.TotalMilliseconds, outcome.Exception?.Message);
+                });
+    }
+    
+    /// <summary>
+    /// Calculate retry delay using exponential backoff with jitter
+    /// </summary>
+    /// <param name="retryAttempt">Current retry attempt</param>
+    /// <param name="baseDelayMs">Base delay in milliseconds</param>
+    /// <param name="maxDelayMs">Maximum delay in milliseconds</param>
+    /// <returns>Calculated delay</returns>
+    private static TimeSpan CalculateRetryDelay(int retryAttempt, int baseDelayMs, int maxDelayMs)
+    {
+        // Exponential backoff: baseDelay * 2^(retryAttempt-1)
+        var delayMs = Math.Min(baseDelayMs * Math.Pow(2, retryAttempt - 1), maxDelayMs);
+        
+        // Add jitter (±20% randomness) to prevent thundering herd
+        var jitterRange = delayMs * 0.2;
+        var jitter = (Random.Shared.NextDouble() - 0.5) * 2 * jitterRange;
+        delayMs = Math.Max(100, delayMs + jitter); // Minimum 100ms delay
+        
+        return TimeSpan.FromMilliseconds(delayMs);
+    }
+}
+
+/// <summary>
+/// Resilience configuration settings
+/// </summary>
+public sealed class ResilienceConfiguration
+{
+    /// <summary>
+    /// Database resilience settings
+    /// </summary>
+    public DatabaseResilienceSettings Database { get; set; } = new();
+    
+    /// <summary>
+    /// HTTP resilience settings
+    /// </summary>
+    public HttpResilienceSettings Http { get; set; } = new();
+    
+    /// <summary>
+    /// Circuit breaker settings
+    /// </summary>
+    public CircuitBreakerSettings CircuitBreaker { get; set; } = new();
+}
+
+/// <summary>
+/// Database resilience settings
+/// </summary>
+public sealed class DatabaseResilienceSettings
+{
+    /// <summary>
+    /// Maximum number of retry attempts
+    /// </summary>
+    public int MaxRetryAttempts { get; set; } = 3;
+    
+    /// <summary>
+    /// Base delay between retries in milliseconds
+    /// </summary>
+    public int BaseDelayMs { get; set; } = 500;
+    
+    /// <summary>
+    /// Maximum delay between retries in milliseconds
+    /// </summary>
+    public int MaxDelayMs { get; set; } = 10000;
+    
+    /// <summary>
+    /// Database operation timeout in seconds
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 30;
+}
+
+/// <summary>
+/// HTTP resilience settings
+/// </summary>
+public sealed class HttpResilienceSettings
+{
+    /// <summary>
+    /// Maximum number of retry attempts
+    /// </summary>
+    public int MaxRetryAttempts { get; set; } = 3;
+    
+    /// <summary>
+    /// Base delay between retries in milliseconds
+    /// </summary>
+    public int BaseDelayMs { get; set; } = 1000;
+    
+    /// <summary>
+    /// Maximum delay between retries in milliseconds
+    /// </summary>
+    public int MaxDelayMs { get; set; } = 30000;
+    
+    /// <summary>
+    /// HTTP request timeout in seconds
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 60;
+}
+
+/// <summary>
+/// Circuit breaker settings
+/// </summary>
+public sealed class CircuitBreakerSettings
+{
+    /// <summary>
+    /// Failure threshold before opening circuit
+    /// </summary>
+    public int FailureThreshold { get; set; } = 5;
+    
+    /// <summary>
+    /// Duration to keep circuit open in seconds
+    /// </summary>
+    public int DurationOfBreakSeconds { get; set; } = 30;
+    
+    /// <summary>
+    /// Minimum throughput required for circuit breaker evaluation
+    /// </summary>
+    public int MinimumThroughput { get; set; } = 10;
+    
+    /// <summary>
+    /// Sampling duration for evaluating failures in seconds
+    /// </summary>
+    public int SamplingDurationSeconds { get; set; } = 60;
+}

@@ -1,0 +1,54 @@
+import { type NextRequest, NextResponse } from "next/server"
+
+// GET /api/metrics/current - Get current performance metrics
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const deviceId = searchParams.get("deviceId")
+
+    if (!deviceId) {
+      return NextResponse.json({ error: "Device ID is required" }, { status: 400 })
+    }
+
+    // In a real implementation, this would query the database:
+    /*
+    const currentRateQuery = `
+      SELECT 
+        rate * 60 as units_per_minute,
+        time
+      FROM counter_data 
+      WHERE 
+        device_id = $1 
+        AND channel = 0
+        AND time > NOW() - INTERVAL '2 minutes'
+      ORDER BY time DESC 
+      LIMIT 1;
+    `
+    */
+
+    // Mock real-time metrics with realistic variations
+    const baseRate = 120
+    const variation = (Math.random() - 0.5) * 20
+    const actualRate = Math.max(0, Math.round((baseRate + variation) * 10) / 10)
+    const performance = Math.min(100, Math.round((actualRate / baseRate) * 1000) / 10)
+    const quality = Math.round((92 + Math.random() * 6) * 10) / 10
+    const availability = Math.round((82 + Math.random() * 13) * 10) / 10
+    const oee = Math.round((performance * quality * availability) / 100) / 100
+
+    const metrics = {
+      currentRate: actualRate,
+      targetRate: baseRate,
+      performancePercent: performance,
+      qualityPercent: quality,
+      availabilityPercent: availability,
+      oeePercent: oee,
+      status: actualRate > 0 ? "running" : "stopped",
+      lastStoppageMinutes: actualRate > 0 ? null : 8,
+    }
+
+    return NextResponse.json(metrics)
+  } catch (error) {
+    console.error("Error getting current metrics:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}

@@ -1,517 +1,396 @@
-# Industrial ADAM Logger
+# Industrial ADAM Counter Ecosystem
 
-A robust, maintainable service for logging data from ADAM-6051 industrial counter devices to InfluxDB. Built for 24/7 industrial operation with comprehensive error handling and automatic recovery.
+A complete industrial data acquisition platform consisting of three robust, standalone applications designed for manufacturing environments. Built for 24/7 industrial operation with comprehensive error handling, real-time monitoring, and production analytics.
+
+## 🏭 Three-Application Ecosystem
+
+This repository contains three **separate but complementary** industrial applications that work together to provide complete manufacturing intelligence:
+
+| Application | Purpose | Technology | Location |
+|-------------|---------|------------|----------|
+| **🔧 ADAM Logger** | Data acquisition backend | C# .NET 9, TimescaleDB | `src/` |
+| **📊 Counter Frontend** | Device monitoring dashboard | React 19, Next.js 15 | `adam-counter-frontend/` |
+| **📈 OEE Application** | Manufacturing analytics | React 19, PostgreSQL | `oee-app/oee-interface/` |
+
+### Architecture Philosophy
+- **Loosely Coupled**: Each application is independently deployable and maintainable
+- **Data-Driven Integration**: Applications communicate through shared databases
+- **Never Combined**: Applications remain separate for scalability and maintainability
+- **Pragmatic Excellence**: Clean, readable code that solves real industrial problems
 
 ## Overview
 
-The Industrial ADAM Logger connects to ADAM-6051 devices via Modbus TCP, collects counter values from configured channels, and stores them in InfluxDB for monitoring and analysis. Designed specifically for industrial environments where reliability is critical.
+### 🔧 ADAM Logger Service (Backend)
+High-performance C# service that connects to ADAM-6051 devices via Modbus TCP, collects counter values from configured channels, and stores them in TimescaleDB for monitoring and analysis. Features windowed rate calculation, dead letter queues for reliability, and comprehensive error recovery.
 
-### Key Features
+### 📊 ADAM Counter Frontend (Dashboard) 
+Modern React dashboard for real-time device monitoring and configuration. Provides live counter visualization, device health monitoring, and administrative controls with WebSocket connectivity for instant updates.
 
-- **Reliable ADAM Device Communication**: Robust Modbus TCP connection with automatic retry
-- **Concurrent Device Polling**: Efficiently polls multiple devices simultaneously
-- **InfluxDB Integration**: Optimized time-series data storage
+### 📈 OEE Application (Analytics)
+Manufacturing analytics interface focused on Overall Equipment Effectiveness (OEE) calculations, production reporting, and efficiency tracking. Integrates with production data to provide actionable insights for manufacturing optimization.
+
+## 🚀 Ecosystem Features
+
+### 🔧 Backend Service (ADAM Logger)
+- **Reliable Device Communication**: Robust Modbus TCP with automatic retry and reconnection
+- **Concurrent Multi-Device Polling**: Efficiently polls multiple ADAM devices simultaneously
+- **TimescaleDB Integration**: Optimized time-series database with hypertables and compression
+- **Windowed Rate Calculation**: Configurable time windows for smooth production metrics
+- **Dead Letter Queue**: Ensures no data loss with automatic recovery from failures
 - **Industrial-Grade Error Handling**: Comprehensive error recovery for 24/7 operation
-- **Docker Deployment**: Production-ready containerized deployment
-- **Simple Configuration**: JSON-based configuration for easy management
-- **Standard .NET Logging**: Uses Microsoft.Extensions.Logging (no Serilog dependency)
-- **Clean Architecture**: Maintainable codebase following SOLID principles
-- **Multi-Language Support**: Both C# (.NET 9) and Python implementations available
+- **Clean Architecture**: CQRS, DDD patterns following SOLID principles
+
+### 📊 Frontend Applications
+- **Real-Time Monitoring**: Live counter visualization with WebSocket updates
+- **Device Management**: Configuration and health monitoring interfaces
+- **Production Analytics**: OEE calculations and manufacturing efficiency tracking
+- **Modern UI**: React 19 with shadcn/ui components and Tailwind CSS
+- **Responsive Design**: Works on desktop, tablet, and mobile devices
+- **Type Safety**: Full TypeScript implementation for reliability
+
+### 🏗️ Infrastructure & DevOps
+- **Docker Deployment**: Production-ready containerized deployment with Docker Compose
+- **Monitoring Stack**: Grafana dashboards, Prometheus metrics, health checks
+- **Development Tools**: One-click setup, device simulators, comprehensive testing
+- **Configuration Management**: JSON-based configuration with environment overrides
+- **Database Migration**: Automated schema setup and data migration tools
 
 ## Repository Structure
 
 ```
-adam-6000-counter/
-├── README.md                     # This file - overview and getting started
-├── CLAUDE.md                     # AI assistant development guidelines  
-├── Industrial.Adam.Logger.sln    # Main C# solution
-├── src/                          # Source code
-│   ├── Industrial.Adam.Logger.Core/          # Core library (V2)
-│   ├── Industrial.Adam.Logger.Core.Tests/    # Unit tests
-│   ├── Industrial.Adam.Logger.Console/       # Console application (Docker entry point)
-│   ├── Industrial.Adam.Logger.WebApi/        # REST API
-│   ├── Industrial.Adam.Logger.Simulator/     # ADAM device simulator
-│   └── Industrial.Adam.Logger.IntegrationTests/
-├── docker/                       # Docker deployment
-│   ├── docker-compose.yml        # Main stack (InfluxDB + Grafana + Logger)
-│   ├── docker-compose.simulator.yml  # Simulator for testing
-│   ├── config/                   # Configuration files
-│   └── csharp/                   # Dockerfile and scripts
-├── python/                       # Python implementation
-│   ├── adam_counter_logger.py    # Python logger
-│   └── adam_config_json.json     # Configuration example
-├── scripts/                      # Development and testing scripts
-│   ├── setup-dev-environment.sh  # One-click development setup
-│   ├── start-simulators.sh       # Start ADAM device simulators
-│   ├── test-simulators.sh        # Test simulator connectivity
-│   └── install-dotnet9.sh        # Install .NET 9 SDK
-└── docs/                         # Documentation
+adam-6000-counter/                                    # Industrial Data Acquisition Ecosystem
+├── README.md                                         # This file - ecosystem overview
+├── ONBOARDING.md                                     # 📋 Complete developer guide  
+├── QUICKSTART.md                                     # ⚡ Fast setup guide
+├── CLAUDE.md                                         # 🤖 AI development guidelines
+├── Industrial.Adam.Logger.sln                       # Main C# solution
+
+# 🔧 ADAM Logger Service (C# Backend)
+├── src/                                              
+│   ├── Industrial.Adam.Logger.Core/                 # Core business logic & services
+│   │   ├── Services/AdamLoggerService.cs             # Main orchestration service
+│   │   ├── Processing/DataProcessor.cs               # Data processing pipeline  
+│   │   ├── Storage/TimescaleStorage.cs               # TimescaleDB integration
+│   │   └── Devices/ModbusDevicePool.cs               # Device communication
+│   ├── Industrial.Adam.Logger.Console/              # Console application entry point
+│   ├── Industrial.Adam.Logger.WebApi/               # REST API service
+│   ├── Industrial.Adam.Logger.Simulator/            # ADAM device simulators
+│   └── Industrial.Adam.Logger.*.Tests/              # Comprehensive test suites
+
+# 📊 ADAM Counter Frontend (React Dashboard)
+├── adam-counter-frontend/                            
+│   ├── app/                                          # Next.js 15 app router
+│   ├── components/                                   # React components
+│   │   ├── real-time-monitoring.tsx                 # Live data visualization
+│   │   ├── device-management.tsx                    # Device configuration
+│   │   └── ui/                                       # shadcn/ui component library
+│   ├── lib/api/                                      # API client & WebSocket
+│   └── package.json                                  # Dependencies & scripts
+
+# 📈 OEE Application (Manufacturing Analytics)  
+├── oee-app/oee-interface/                           
+│   ├── app/                                          # Next.js 15 app router
+│   ├── components/                                   # OEE-specific components
+│   ├── lib/database-queries.ts                      # PostgreSQL integration
+│   ├── scripts/                                      # Database schema & migrations
+│   └── package.json                                  # Dependencies & scripts
+
+# 🐳 Infrastructure & DevOps
+├── docker/                                           # Container deployment
+│   ├── docker-compose.yml                           # Complete infrastructure stack
+│   ├── config/                                       # Application configurations
+│   └── grafana/dashboards/                          # Pre-built monitoring dashboards
+├── scripts/                                          # Development automation
+│   ├── setup-dev-environment.sh                     # 🚀 One-click complete setup
+│   ├── start-simulators.sh                          # Device simulator management
+│   └── test-*.sh                                     # Testing & validation scripts
+└── docs/                                             # Technical documentation
+    ├── architecture_guide.md                        # System design patterns
+    ├── development_standards.md                     # Coding practices & quality
+    └── configuration-guide.md                       # Setup & deployment guides
 ```
 
-## 🚀 New Features in V2
+## 🚀 Platform Capabilities
 
-### Windowed Rate Calculation
-- **Configurable Time Windows**: Set per-channel rate calculation windows (e.g., 60 seconds for production, 180 seconds for rejects)
-- **Smooth Rate Metrics**: Eliminates spikes from brief stoppages or single-point calculations
+### 🔧 Advanced Data Processing (ADAM Logger)
+- **Windowed Rate Calculation**: Configurable time windows for smooth production metrics
 - **Counter Overflow Detection**: Automatic handling of 16-bit and 32-bit counter wraparounds
-- **Circular Buffer Storage**: Efficient memory usage with automatic cleanup of old readings
+- **Circular Buffer Storage**: Efficient memory usage with automatic cleanup
+- **Dead Letter Queue**: Failed database writes queued and retried automatically
+- **No Data Loss**: Critical production data survives application restarts
+- **TimescaleDB Integration**: Hypertables with automatic compression and continuous aggregates
 
-### Data Reliability
-- **Dead Letter Queue**: Failed database writes are queued and retried automatically
-- **Persistent Storage**: Failed batches saved to disk to survive application restarts
-- **Automatic Recovery**: Processes queued data when database connection is restored
-- **No Data Loss**: Ensures critical production data is never lost
+### 📊 Real-Time Visualization (Counter Frontend)
+- **Live Dashboard**: WebSocket-powered real-time counter monitoring
+- **Device Configuration**: Dynamic device setup and channel management
+- **Health Monitoring**: Connection status and diagnostic information
+- **Responsive Design**: Works across desktop, tablet, and mobile devices
+- **Type-Safe API**: Full TypeScript integration with backend services
 
-### Development Tools
-- **One-Click Setup**: Run `./scripts/setup-dev-environment.sh` for complete environment
-- **Simulator Testing**: Built-in ADAM device simulators for development without hardware
-- **Test Coverage**: Comprehensive unit tests with isolated test mode for components
+### 📈 Production Analytics (OEE Application)
+- **OEE Calculations**: Overall Equipment Effectiveness tracking and reporting
+- **Production Metrics**: Throughput, efficiency, and quality analytics
+- **Job Performance**: Production job tracking and analysis
+- **Historical Trends**: Time-based performance analysis and reporting
+- **Manufacturing Intelligence**: Actionable insights for process optimization
+
+### 🏗️ Development & Operations
+- **One-Click Setup**: Complete development environment with `./scripts/setup-dev-environment.sh`
+- **Device Simulators**: Built-in ADAM device simulators for hardware-free development
+- **Comprehensive Testing**: Unit, integration, and system test suites
+- **Monitoring Stack**: Grafana dashboards, Prometheus metrics, health checks
 - **.NET 9 Performance**: Latest runtime optimizations for industrial workloads
 
 ## Quick Start
 
-### 🎯 Automated Development Setup (New!)
+For detailed setup instructions, see **[QUICKSTART.md](QUICKSTART.md)** or **[ONBOARDING.md](ONBOARDING.md)** for comprehensive developer guidance.
+
+### 🚀 Complete Ecosystem Setup (Recommended)
 
 ```bash
-# One-command setup for complete development environment
-./scripts/setup-dev-environment.sh
-
-# This script will:
-# ✅ Install .NET 9 SDK if needed
-# ✅ Start TimescaleDB and create database/tables
-# ✅ Start Grafana with pre-configured dashboards
-# ✅ Start Prometheus for metrics monitoring
-# ✅ Launch 3 ADAM device simulators
-# ✅ Build and start the logger application
-# ✅ Verify everything is working
-```
-
-### 🐳 Docker Deployment (Production)
-
-**Complete monitoring stack with TimescaleDB + Grafana + Prometheus:**
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/yourusername/adam-6000-counter.git
+# Clone the repository
+git clone [repository-url]
 cd adam-6000-counter
 
-# 2. Start the monitoring infrastructure
+# One-command setup for all three applications
+./scripts/setup-dev-environment.sh
+```
+
+This automatically sets up:
+- ✅ ADAM Logger backend service (C# .NET 9)
+- ✅ Counter Frontend dashboard (React/Next.js)
+- ✅ OEE Analytics application  
+- ✅ TimescaleDB with proper schema
+- ✅ Grafana with pre-configured dashboards
+- ✅ 3 ADAM device simulators for testing
+- ✅ All infrastructure services (Prometheus, etc.)
+
+### 📱 Access Your Applications
+
+After setup completes:
+- **Counter Frontend Dashboard**: http://localhost:3000
+- **OEE Analytics Interface**: http://localhost:3001  
+- **Grafana Monitoring**: http://localhost:3002 (admin/admin)
+- **TimescaleDB**: postgresql://localhost:5433 (adam_user/adam_password)
+
+### 🐳 Docker Infrastructure Only
+
+To run just the infrastructure services (databases, monitoring) without the applications:
+
+```bash
 cd docker
 docker-compose up -d
 
-# 3. Verify services are running
+# Then start applications manually:
+# Backend: dotnet run --project src/Industrial.Adam.Logger.Console
+# Frontend 1: cd adam-counter-frontend && npm run dev  
+# Frontend 2: cd oee-app/oee-interface && npm run dev
+```
+
+### 🔍 Verification & Testing
+
+```bash
+# Check all services are running
 docker-compose ps
 
-# 4. Access the dashboards
-# - Grafana: http://localhost:3002 (admin/admin)
-# - TimescaleDB: postgresql://localhost:5433 (adam_user/adam_password)
-# - Prometheus: http://localhost:9090
-```
-
-### 🎮 **Demo Mode with Simulator (No Hardware Required)**
-```bash
-# Start with simulated ADAM devices for testing
-cd docker
-docker-compose -f docker-compose.yml -f docker-compose.simulator.yml up -d
-
-# View logs to see simulated data being processed
+# View live data flow  
 docker-compose logs -f adam-logger
+
+# Test frontend applications
+curl http://localhost:3000/api/health
+curl http://localhost:3001/api/health
+
+# Test backend API
+curl http://localhost:8080/api/health  # If WebAPI is running
 ```
 
-### 🏭 **Production Mode (Real Devices)**
+## 🏗️ Technology Stack
+
+### Backend (ADAM Logger Service)
+- **Runtime**: .NET 9 with C# 13
+- **Architecture**: Clean Architecture, CQRS, DDD patterns
+- **Database**: TimescaleDB (PostgreSQL with time-series extensions)
+- **Communication**: NModbus for Modbus TCP, SignalR for WebSockets
+- **Testing**: xUnit, Moq, comprehensive integration tests
+- **Monitoring**: Prometheus metrics, structured logging
+
+### Frontend Applications
+- **Framework**: Next.js 15 with React 19
+- **Language**: TypeScript with strict type checking
+- **UI Components**: shadcn/ui with Radix UI primitives
+- **Styling**: Tailwind CSS with responsive design
+- **State Management**: React Query for server state, Zustand for client state
+- **Real-time**: WebSocket integration for live updates
+
+### Infrastructure & DevOps
+- **Containerization**: Docker with multi-stage builds
+- **Orchestration**: Docker Compose for development
+- **Monitoring**: Grafana dashboards, Prometheus metrics
+- **Database**: TimescaleDB for time-series, PostgreSQL for relational data
+- **Reverse Proxy**: NGINX for production deployments
+
+## Architecture & Design Principles
+
+### System Architecture
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Frontend Applications                     │
+│  [Counter Dashboard] [OEE Analytics] [Grafana Monitoring]  │
+├─────────────────────────────────────────────────────────────┤
+│                     API Gateway                            │
+│        [REST APIs] [WebSocket] [Health Checks]            │
+├─────────────────────────────────────────────────────────────┤
+│                 ADAM Logger Service                        │
+│    [Device Pool] [Data Processor] [Rate Calculator]       │
+├─────────────────────────────────────────────────────────────┤
+│                   Storage Layer                            │
+│     [TimescaleDB] [PostgreSQL] [Dead Letter Queue]        │
+├─────────────────────────────────────────────────────────────┤
+│                 Communication Layer                        │
+│          [Modbus TCP] [Device Simulators]                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Design Principles
+- **Separation of Concerns**: Each application has a clear, focused responsibility
+- **Loose Coupling**: Applications communicate through well-defined data contracts
+- **High Cohesion**: Related functionality is grouped together logically
+- **Fail-Safe Operation**: Graceful degradation and automatic recovery
+- **Observable Systems**: Comprehensive logging, metrics, and health monitoring
+- **Configuration-Driven**: Behavior changes through config, not code modifications
+
+## Getting Started for Developers
+
+### 📋 New Developer Path
+1. **Setup**: Follow [QUICKSTART.md](QUICKSTART.md) for fast setup or [ONBOARDING.md](ONBOARDING.md) for comprehensive guide
+2. **Explore**: Run the automated setup and explore all three applications
+3. **Understand**: Review architecture documentation in `/docs` directory
+4. **Contribute**: Follow patterns established in [CLAUDE.md](CLAUDE.md) development guidelines
+
+### 🎯 First Tasks for New Team Members
+1. ✅ Complete automated environment setup
+2. ✅ Access all three application interfaces
+3. ✅ View live data flowing through the system
+4. ✅ Make a small configuration change
+5. ✅ Run the test suites successfully
+
+## Configuration Management
+
+📖 **For detailed configuration, see [Configuration Guide](docs/configuration-guide.md)**
+
+Each application uses JSON configuration with environment variable overrides:
+
+- **ADAM Logger**: `src/Industrial.Adam.Logger.Console/appsettings.json`
+- **Counter Frontend**: Environment variables and `next.config.mjs`
+- **OEE Application**: Database configuration and environment variables
+- **Docker**: Centralized configuration in `docker/config/`
+
+Key configuration features:
+- **Hierarchical Settings**: Default values with environment-specific overrides
+- **Hot Reload**: Configuration changes applied without restarts (where supported)
+- **Validation**: Startup validation with helpful error messages
+- **Templates**: Ready-to-use configuration templates for different scenarios
+
+## Testing & Quality Assurance
+
+### 🧪 Comprehensive Testing Strategy
 ```bash
-# Edit docker/config/adam_config_v2.json with your device settings
-# Then start the stack
-docker-compose up -d
-
-# View logs to see real device data
-docker-compose logs -f adam-logger
-```
-
-### 💻 Local Development
-
-#### Python Implementation (Lightweight)
-
-```bash
-cd python/
-pip install pymodbus influxdb-client
-python adam_counter_logger.py
-```
-
-#### C# Implementation
-
-```bash
-# Build the solution
-dotnet build
-
-# Run the console application
-dotnet run --project src/Industrial.Adam.Logger.Console
-
-# Run with custom config
-dotnet run --project src/Industrial.Adam.Logger.Console -- --config myconfig.json
-```
-
-## Implementation Comparison
-
-### Python Implementation
-- **Lightweight**: Single-file implementation for quick deployment
-- **Simple Setup**: Minimal dependencies and configuration
-- **Cross-Platform**: Runs on Windows, Linux, and macOS
-- **Dependencies**: PyModbus, InfluxDB Client
-- **Use Cases**: Development, testing, simple installations
-
-### C# Implementation
-- **Production-Ready**: Designed for 24/7 industrial operation
-- **Clean Architecture**: Maintainable codebase with SOLID principles
-- **Comprehensive Testing**: Unit and integration test coverage
-- **Docker Support**: Production-ready containerized deployment
-- **Concurrent Polling**: Efficient multi-device support
-- **Standard Logging**: Microsoft.Extensions.Logging integration
-- **Use Cases**: Production environments, multi-device deployments
-
-## Configuration
-
-📖 **For detailed configuration information, see [Configuration Guide](docs/configuration-guide.md)**
-
-📋 **Ready-to-use templates available in [`config/`](config/) directory**
-
-Configuration uses standard .NET JSON format with new windowed rate calculation settings:
-
-```json
-{
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Industrial.Adam.Logger.Core": "Debug"
-    }
-  },
-  "AdamLogger": {
-    "GlobalPollIntervalMs": 5000,
-    "Devices": [
-      {
-        "DeviceId": "Device001",
-        "IpAddress": "192.168.1.100",
-        "Port": 502,
-        "UnitId": 1,
-        "Enabled": true,
-        "PollIntervalMs": 5000,
-        "TimeoutMs": 3000,
-        "Channels": [
-          {
-            "ChannelNumber": 0,
-            "Name": "ProductionCounter",
-            "StartRegister": 0,
-            "RegisterCount": 2,
-            "Enabled": true,
-            "ScaleFactor": 1.0,
-            "MinValue": 0,
-            "MaxValue": 4294967295,
-            "MaxChangeRate": 1000,
-            "RateWindowSeconds": 60  // NEW: Windowed rate calculation
-          },
-          {
-            "ChannelNumber": 1,
-            "Name": "RejectCounter",
-            "StartRegister": 2,
-            "RegisterCount": 2,
-            "Enabled": true,
-            "ScaleFactor": 1.0,
-            "MaxChangeRate": 100,
-            "RateWindowSeconds": 180  // NEW: Longer window for reject analysis
-          }
-        ]
-      }
-    ],
-    "TimescaleDb": {  // NEW: Replaced InfluxDB with TimescaleDB
-      "Host": "localhost",
-      "Port": 5433,
-      "Database": "adam_counters",
-      "Username": "adam_user",
-      "Password": "adam_password",
-      "TableName": "counter_data",
-      "BatchSize": 50,
-      "FlushIntervalMs": 5000,
-      "EnableDeadLetterQueue": true,  // NEW: Automatic retry for failed writes
-      "MaxRetryAttempts": 3,
-      "RetryDelayMs": 1000
-    }
-  }
-}
-```
-
-## 🐳 Docker Deployment
-
-### Prerequisites
-
-- Docker and Docker Compose installed
-- ADAM-6051 device accessible on your network
-- Ports 3000 (Grafana) and 8086 (InfluxDB) available
-
-### Infrastructure Components
-
-The Docker stack includes:
-
-- **TimescaleDB 2.17**: PostgreSQL-based time-series database optimized for industrial data
-  - Hypertables for automatic data partitioning
-  - Compression for efficient storage
-  - Continuous aggregates for real-time analytics
-- **Grafana 12.0**: Real-time dashboard and visualization
-  - Pre-configured dashboards for counter metrics
-  - Rate calculations and production analytics
-- **ADAM Logger**: C# .NET 9 application with advanced features
-  - Windowed rate calculation with configurable windows
-  - Dead letter queue for data reliability
-  - Circular buffer for efficient memory usage
-- **Prometheus 2.47**: Metrics collection and monitoring
-  - Application health metrics
-  - System resource monitoring
-- **ADAM Simulator**: Full-featured device simulator
-  - Realistic production patterns
-  - Configurable production profiles
-  - Multiple simulator support
-
-### Setup Instructions
-
-1. **Clone and Navigate:**
-   ```bash
-   git clone https://github.com/yourusername/adam-6000-counter.git
-   cd adam-6000-counter/docker
-   ```
-
-2. **Configure Your Devices:**
-   ```bash
-   # Edit the configuration file
-   nano config/adam_config_v2.json
-   
-   # Or use the demo configuration
-   cp config/adam_config_demo.json config/adam_config_v2.json
-   ```
-
-3. **Start the Stack:**
-   ```bash
-   # Production mode (with real devices)
-   docker-compose up -d
-   
-   # Or demo mode with simulator
-   docker-compose -f docker-compose.yml -f docker-compose.simulator.yml up -d
-   
-   # View logs
-   docker-compose logs -f
-   ```
-
-4. **Access Services:**
-   - **Grafana Dashboard**: http://localhost:3002
-     - Username: `admin`
-     - Password: `admin`
-   - **InfluxDB Console**: http://localhost:8086
-     - Username: `admin`
-     - Password: `admin123`
-   - **Prometheus**: http://localhost:9090
-
-### Data Flow
-
-```
-ADAM Devices → Logger Service → InfluxDB → Grafana Dashboard
-  (Modbus)      (Polling)     (Storage)    (Visualization)
-```
-
-### Docker Commands
-
-```bash
-# Start services
-docker-compose up -d
-
-# Stop services  
-docker-compose down
-
-# View logs
-docker-compose logs grafana
-docker-compose logs influxdb
-
-# Restart a service
-docker-compose restart adam-logger
-
-# Update and rebuild
-docker-compose pull && docker-compose up -d
-```
-
-### Troubleshooting
-
-#### Configuration Issues
-
-**❌ "Configuration validation failed"**
-
-This error indicates problems with your `appsettings.json` structure:
-
-```bash
-# Symptoms
-❌ Configuration Error
-═══════════════════════
-Configuration validation failed:
-• Missing 'AdamLogger:InfluxDb' configuration section
-```
-
-**Solutions:**
-- ✅ Use configuration templates: `cp config/appsettings.local.json src/Industrial.Adam.Logger.Console/appsettings.json`
-- ✅ Ensure InfluxDB settings are nested: `AdamLogger > InfluxDb`
-- ✅ Verify all required fields are present (Token, Organization, Bucket)
-
-**❌ "Invalid IP address for device"**
-
-The application rejected your device IP address:
-
-```bash
-# Symptoms  
-Invalid IP address or hostname for device ADAM001: 'localhost'
-```
-
-**Solutions:**
-- ✅ Use `localhost` (now supported)
-- ✅ Use IP addresses: `192.168.1.100`  
-- ✅ Use hostnames: `adam-device-01`
-- ❌ Don't use invalid formats
-
-**❌ "InfluxDB connection failed"**
-
-The logger can't connect to InfluxDB:
-
-```bash
-# Check InfluxDB status
-docker ps | grep influx
-
-# Verify InfluxDB is accessible
-curl http://localhost:8086/health
-
-# Check logs for connection details
-docker logs adam-influxdb
-```
-
-**Solutions:**
-- ✅ Ensure InfluxDB is running: `docker start adam-influxdb`
-- ✅ Check token permissions in InfluxDB UI
-- ✅ Verify organization and bucket exist
-
-#### Service Issues
-
-**Services won't start:**
-```bash
-# Check port conflicts  
-netstat -tulpn | grep -E ':(3002|8086|9090)'
-
-# View detailed logs
-docker-compose logs
-
-# Check for configuration errors
-cd src/Industrial.Adam.Logger.Console && dotnet run
-```
-
-**Can't connect to ADAM device:**
-```bash
-# Check configuration
-docker-compose exec adam-logger cat /app/appsettings.json
-
-# Test network connectivity
-ping 192.168.1.100
-
-# Try with simulator first
-./scripts/start-simulators.sh
-```
-
-**Dashboard shows no data:**
-1. ✅ Verify device connectivity: Check application logs
-2. ✅ Check InfluxDB: http://localhost:8086 → Data Explorer
-3. ✅ Verify logger is running: `docker-compose logs adam-logger`
-4. ✅ Check Grafana datasource is configured
-
-#### Quick Fixes
-
-**For Local Development:**
-```bash
-# Use working local configuration
-cp config/appsettings.local.json src/Industrial.Adam.Logger.Console/appsettings.json
-
-# Start InfluxDB with correct settings
-docker run -d --name adam-influxdb -p 8086:8086 \
-  -e DOCKER_INFLUXDB_INIT_MODE=setup \
-  -e DOCKER_INFLUXDB_INIT_USERNAME=admin \
-  -e DOCKER_INFLUXDB_INIT_PASSWORD=password123 \
-  -e DOCKER_INFLUXDB_INIT_ORG=adam_org \
-  -e DOCKER_INFLUXDB_INIT_BUCKET=adam_counters \
-  -e DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=adam-super-secret-token \
-  influxdb:2.7.12
-
-# Test with simulator
-./scripts/start-simulators.sh
-```
-
-**For Production Issues:**
-```bash  
-# Validate configuration without running
-cd src/Industrial.Adam.Logger.Console && dotnet run --validate-config
-
-# Check detailed error information  
-cd src/Industrial.Adam.Logger.Console && dotnet run --verbosity detailed
-```
-
-#### Getting Help
-
-📖 **Detailed Configuration Guide**: [`docs/configuration-guide.md`](docs/configuration-guide.md)
-📋 **Configuration Templates**: [`config/`](config/) directory  
-🔧 **Example Configurations**: See templates for different scenarios
-
-## Key Capabilities
-
-- **Multi-Device Support**: Poll multiple ADAM devices concurrently
-- **Flexible Channel Configuration**: Configure any combination of device channels
-- **Industrial Reliability**: Automatic reconnection and error recovery
-- **Real-time Data**: Continuous polling with configurable intervals
-- **Data Validation**: Counter overflow detection and quality tracking
-- **Docker Ready**: Production-ready containerized deployment
-- **REST API**: Optional WebAPI for integration with other systems
-
-## Testing
-
-Run the test suite:
-```bash
-# Run all tests
+# Run all backend tests
 dotnet test
 
-# Run with coverage
-dotnet test /p:CollectCoverage=true
+# Run frontend tests  
+cd adam-counter-frontend && npm test
+cd oee-app/oee-interface && npm test
 
-# Test with simulator
-cd docker
-docker-compose -f docker-compose.yml -f docker-compose.simulator.yml up
+# Run with coverage reporting
+./scripts/run-coverage.sh
+
+# Integration testing with simulators
+./scripts/full-system-test.sh
 ```
 
-## Documentation
+### Test Organization
+- **Unit Tests**: Individual component testing
+- **Integration Tests**: Cross-component interaction testing  
+- **System Tests**: End-to-end workflow validation
+- **Performance Tests**: Load testing with multiple devices
+- **Simulator Tests**: Hardware-free validation
 
-- **[README.md](README.md)**: This overview document
-- **[CLAUDE.md](CLAUDE.md)**: AI assistant development guidelines
-- **[Configuration Guide](docs/configuration-guide.md)**: Detailed system configuration
-- **[Simulator Configuration Guide](docs/simulator-configuration-guide.md)**: Complete simulator setup and configuration
-- **[docker/README.md](docker/README.md)**: Docker deployment guide
-- **[src/Industrial.Adam.Logger.Simulator/README.md](src/Industrial.Adam.Logger.Simulator/README.md)**: Simulator technical documentation
-- **[python/README.md](python/README.md)**: Python implementation guide
+## Documentation & Resources
 
-## Architecture
+### 📚 Complete Documentation Suite
+- **[ONBOARDING.md](ONBOARDING.md)**: Comprehensive developer guide with week-by-week learning plan
+- **[QUICKSTART.md](QUICKSTART.md)**: Fast setup guide for immediate productivity
+- **[DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md)**: Advanced development environment configuration
+- **[CLAUDE.md](CLAUDE.md)**: AI development guidelines and architectural principles
 
-The project follows Clean Architecture principles with clear separation of concerns:
+### 🏗️ Technical Documentation  
+- **[Architecture Guide](docs/Industrial%20Data%20Acquisition%20Platform%20Architecture.md)**: System design and extensibility patterns
+- **[Development Standards](docs/Industrial-Software-Development-Standards.md)**: Coding practices and quality standards
+- **[Configuration Guide](docs/configuration-guide.md)**: Detailed setup and configuration instructions
+- **[Migration Guide](docs/MIGRATION_GUIDE_INFLUXDB_TO_TIMESCALEDB.md)**: Database migration procedures
 
-- **Core Library**: Business logic and domain models
-- **Infrastructure**: Device communication and data storage
-- **Application Layer**: Console app and WebAPI
-- **Testing**: Comprehensive unit and integration tests
+### 🎯 Key Concepts
+- **Three Separate Applications**: Each serves a distinct purpose and remains independently deployable
+- **Data-Driven Integration**: Applications communicate through shared TimescaleDB/PostgreSQL databases
+- **Clean Architecture**: SOLID principles, CQRS, and DDD patterns throughout the backend
+- **Industrial Reliability**: Designed for 24/7 operation with comprehensive error handling
 
-## Support
+## Support & Contributing
 
-For questions, issues, or contributions:
+### 🤝 Getting Help
+1. **Documentation**: Start with [ONBOARDING.md](ONBOARDING.md) for comprehensive guidance
+2. **Quick Setup**: Use [QUICKSTART.md](QUICKSTART.md) for immediate setup
+3. **Issues**: Use the repository issue tracker for bugs and feature requests
+4. **Architecture Questions**: Review `/docs` directory for design decisions
 
-1. **Issues**: Use the repository issue tracker
-2. **Documentation**: Refer to the comprehensive documentation files
-3. **Examples**: Check the examples folder for implementation patterns
-4. **Tests**: Review the test files for usage examples and edge cases
+### 🔧 Contributing Guidelines
+- **Follow CLAUDE.md**: AI development guidelines and architectural principles
+- **Clean Architecture**: Maintain separation of concerns and SOLID principles
+- **Test Coverage**: Add comprehensive tests for new features
+- **Documentation**: Update relevant documentation for changes
+- **Code Review**: Submit PRs for architecture and pattern feedback
 
-## License
+### 📊 Project Status
+- **Backend**: Production-ready C# .NET 9 service with comprehensive testing
+- **Frontend**: Modern React applications with real-time capabilities
+- **Infrastructure**: Docker-based deployment with monitoring stack
+- **Documentation**: Complete developer onboarding and technical guides
 
-This project is designed for industrial automation and logging applications. Please ensure compliance with your organization's security and operational requirements.
+## Data Flow Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   ADAM Devices  │───▶│   ADAM Logger    │───▶│   TimescaleDB   │
+│  (Modbus TCP)   │    │  (C# Service)    │    │ (Time-series)   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                │                        │
+                                ▼                        ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Device Health  │◀───│   Health Checks  │    │  Counter Frontend│
+│   Monitoring    │    │  & Dead Letter   │    │   (React App)   │
+└─────────────────┘    │     Queue        │    └─────────────────┘
+                       └──────────────────┘            │
+                                                       ▼
+                       ┌──────────────────┐    ┌─────────────────┐
+                       │     Grafana      │    │  OEE Analytics  │
+                       │   Dashboards     │    │   (React App)   │
+                       └──────────────────┘    └─────────────────┘
+```
+
+## Success Metrics
+
+When properly deployed, this ecosystem provides:
+
+- **📊 Real-Time Visibility**: Live production counter monitoring across all devices
+- **⚡ Sub-Second Response**: WebSocket updates for immediate operator feedback  
+- **🔄 99.9% Uptime**: Industrial-grade reliability with automatic recovery
+- **📈 Production Intelligence**: OEE calculations and efficiency analytics
+- **🚨 Proactive Monitoring**: Health checks and alerting for all system components
+- **🏗️ Scalable Architecture**: Easily add new devices, channels, and applications
+
+---
+
+**This Industrial ADAM Counter Ecosystem represents a complete manufacturing intelligence platform built with modern, maintainable technology. Each application serves a specific purpose while contributing to comprehensive production visibility and analytics.**
+
+*Built for industry. Designed for reliability. Optimized for developer experience.* 🏭

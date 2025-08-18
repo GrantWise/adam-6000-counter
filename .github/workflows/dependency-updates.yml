@@ -1,0 +1,231 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    # Run weekly on Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  update-dotnet-packages:
+    name: Update .NET Packages
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Install dotnet-outdated
+      run: dotnet tool install --global dotnet-outdated-tool
+
+    - name: Check for outdated packages
+      run: |
+        dotnet outdated Industrial.Adam.Logger.sln --output outdated-packages.json --format json
+        
+    - name: Update packages (patch and minor versions only)
+      run: |
+        if [ -f "scripts/update-packages.sh" ]; then
+          chmod +x scripts/update-packages.sh
+          ./scripts/update-packages.sh
+        else
+          # Update packages with version constraints
+          dotnet restore Industrial.Adam.Logger.sln
+          for project in $(find . -name "*.csproj"); do
+            echo "Updating packages in $project"
+            dotnet add "$project" package Microsoft.Extensions.Hosting --version "$(dotnet list "$project" package | grep Microsoft.Extensions.Hosting | awk '{print $3}' | sed 's/\([0-9]*\.[0-9]*\).*/\1.*/')" 2>/dev/null || true
+          done
+        fi
+
+    - name: Build and test after updates
+      run: |
+        dotnet restore Industrial.Adam.Logger.sln
+        dotnet build Industrial.Adam.Logger.sln --configuration Release
+        dotnet test Industrial.Adam.Logger.sln --configuration Release --no-build
+
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v6
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: Update .NET packages'
+        title: 'Automated .NET Package Updates'
+        body: |
+          This is an automated pull request to update .NET packages.
+          
+          ## Changes
+          - Updated packages to latest patch/minor versions
+          - All tests pass after updates
+          
+          ## Review Notes
+          - Please review the package changes carefully
+          - Check for any breaking changes in release notes
+          - Ensure all integration tests pass
+        branch: automated/dotnet-package-updates
+        delete-branch: true
+
+  update-frontend-packages:
+    name: Update Frontend Packages
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [adam-counter-frontend, oee-app/oee-interface]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+
+    - name: Check if app directory exists
+      id: check-app
+      run: |
+        if [ -d "${{ matrix.app }}" ]; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Update packages
+      if: steps.check-app.outputs.exists == 'true'
+      run: |
+        cd ${{ matrix.app }}
+        
+        if [ -f "pnpm-lock.yaml" ]; then
+          npm install -g pnpm
+          pnpm update --latest --interactive=false
+          pnpm audit --fix
+        elif [ -f "package-lock.json" ]; then
+          npm update
+          npm audit fix
+        else
+          npm update
+        fi
+
+    - name: Build and test
+      if: steps.check-app.outputs.exists == 'true'
+      run: |
+        cd ${{ matrix.app }}
+        
+        if [ -f "pnpm-lock.yaml" ]; then
+          pnpm install
+          pnpm run build
+          pnpm run test --passWithNoTests
+        else
+          npm install
+          npm run build
+          npm run test --passWithNoTests
+        fi
+
+    - name: Create Pull Request
+      if: steps.check-app.outputs.exists == 'true'
+      uses: peter-evans/create-pull-request@v6
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: Update ${{ matrix.app }} packages'
+        title: 'Automated Package Updates - ${{ matrix.app }}'
+        body: |
+          This is an automated pull request to update packages for ${{ matrix.app }}.
+          
+          ## Changes
+          - Updated packages to latest versions
+          - Fixed security vulnerabilities (if any)
+          - All tests pass after updates
+          
+          ## Review Notes
+          - Please review the package changes carefully
+          - Test the application thoroughly
+          - Check for any breaking changes in dependencies
+        branch: automated/frontend-package-updates-${{ matrix.app }}
+        delete-branch: true
+
+  security-updates:
+    name: Security Updates
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Check for security vulnerabilities
+      run: |
+        dotnet restore Industrial.Adam.Logger.sln
+        dotnet list package --vulnerable --include-transitive > security-issues.txt
+        
+        if grep -q "has the following vulnerable packages" security-issues.txt; then
+          echo "SECURITY_ISSUES_FOUND=true" >> $GITHUB_ENV
+          echo "Security vulnerabilities found in .NET packages"
+        else
+          echo "SECURITY_ISSUES_FOUND=false" >> $GITHUB_ENV
+        fi
+
+    - name: Update vulnerable packages
+      if: env.SECURITY_ISSUES_FOUND == 'true'
+      run: |
+        # Extract vulnerable packages and update them
+        while IFS= read -r line; do
+          if [[ $line == *">"* ]] && [[ $line == *"["* ]]; then
+            package=$(echo "$line" | awk '{print $2}')
+            echo "Updating vulnerable package: $package"
+            find . -name "*.csproj" -exec dotnet add {} package "$package" \; 2>/dev/null || true
+          fi
+        done < security-issues.txt
+
+    - name: Test after security updates
+      if: env.SECURITY_ISSUES_FOUND == 'true'
+      run: |
+        dotnet restore Industrial.Adam.Logger.sln
+        dotnet build Industrial.Adam.Logger.sln --configuration Release
+        dotnet test Industrial.Adam.Logger.sln --configuration Release --no-build
+
+    - name: Create Security Update PR
+      if: env.SECURITY_ISSUES_FOUND == 'true'
+      uses: peter-evans/create-pull-request@v6
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'security: Update vulnerable packages'
+        title: '🔒 Critical Security Updates'
+        body: |
+          ## ⚠️ Security Update Required
+          
+          This pull request addresses security vulnerabilities found in dependencies.
+          
+          ## Vulnerable Packages Updated
+          $(cat security-issues.txt)
+          
+          ## Actions Taken
+          - Updated all vulnerable packages to secure versions
+          - Verified all tests pass after updates
+          - No breaking changes introduced
+          
+          ## Priority
+          **HIGH PRIORITY** - This PR should be reviewed and merged as soon as possible.
+        branch: security/vulnerability-fixes
+        delete-branch: true
+        labels: |
+          security
+          high-priority
+
+    - name: Upload security report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-issues-report
+        path: security-issues.txt

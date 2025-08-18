@@ -1,0 +1,321 @@
+using Microsoft.Extensions.Logging;
+using Polly;
+using Polly.CircuitBreaker;
+using System.Net.Sockets;
+using Npgsql;
+
+namespace Industrial.Adam.Oee.Infrastructure.Resilience;
+
+/// <summary>
+/// Circuit breaker policy factory for OEE operations
+/// Provides protection against cascading failures in distributed systems
+/// </summary>
+public interface ICircuitBreakerPolicyFactory
+{
+    /// <summary>
+    /// Get circuit breaker policy for database operations
+    /// </summary>
+    /// <returns>Database circuit breaker policy</returns>
+    IAsyncPolicy GetDatabaseCircuitBreakerPolicy();
+    
+    /// <summary>
+    /// Get circuit breaker policy for HTTP operations
+    /// </summary>
+    /// <returns>HTTP circuit breaker policy</returns>
+    IAsyncPolicy<HttpResponseMessage> GetHttpCircuitBreakerPolicy();
+    
+    /// <summary>
+    /// Get circuit breaker state for monitoring
+    /// </summary>
+    /// <param name="circuitName">Circuit name</param>
+    /// <returns>Circuit breaker state</returns>
+    CircuitState GetCircuitState(string circuitName);
+    
+    /// <summary>
+    /// Reset a circuit breaker manually
+    /// </summary>
+    /// <param name="circuitName">Circuit name</param>
+    void ResetCircuit(string circuitName);
+}
+
+/// <summary>
+/// Implementation of circuit breaker policy factory
+/// </summary>
+public sealed class CircuitBreakerPolicyFactory : ICircuitBreakerPolicyFactory
+{
+    private readonly ILogger<CircuitBreakerPolicyFactory> _logger;
+    private readonly CircuitBreakerSettings _settings;
+    private readonly Dictionary<string, IAsyncPolicy> _circuits = new();
+    private readonly Dictionary<string, IAsyncPolicy<HttpResponseMessage>> _httpCircuits = new();
+    private readonly object _lock = new();
+    
+    /// <summary>
+    /// Initialize circuit breaker factory
+    /// </summary>
+    /// <param name="logger">Logger instance</param>
+    /// <param name="settings">Circuit breaker settings</param>
+    public CircuitBreakerPolicyFactory(ILogger<CircuitBreakerPolicyFactory> logger, CircuitBreakerSettings settings)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+    }
+    
+    /// <inheritdoc />
+    public IAsyncPolicy GetDatabaseCircuitBreakerPolicy()
+    {
+        const string circuitName = "DatabaseCircuit";
+        
+        lock (_lock)
+        {
+            if (!_circuits.TryGetValue(circuitName, out var policy))
+            {
+                policy = Policy
+                    .Handle<NpgsqlException>()
+                    .Or<TimeoutException>()
+                    .Or<SocketException>()
+                    .Or<InvalidOperationException>(ex => 
+                        ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase))
+                    .AdvancedCircuitBreakerAsync(
+                        failureThreshold: (double)_settings.FailureThreshold / 100, // Convert to percentage
+                        samplingDuration: TimeSpan.FromSeconds(_settings.SamplingDurationSeconds),
+                        minimumThroughput: _settings.MinimumThroughput,
+                        durationOfBreak: TimeSpan.FromSeconds(_settings.DurationOfBreakSeconds),
+                        onBreak: (exception, duration) =>
+                        {
+                            _logger.LogWarning(
+                                "Database circuit breaker opened for {Duration}s due to: {Exception}",
+                                duration.TotalSeconds, exception.Message);
+                        },
+                        onReset: () =>
+                        {
+                            _logger.LogInformation("Database circuit breaker reset - operations resuming");
+                        },
+                        onHalfOpen: () =>
+                        {
+                            _logger.LogInformation("Database circuit breaker half-open - testing operations");
+                        });
+                
+                _circuits[circuitName] = policy;
+            }
+            
+            return policy;
+        }
+    }
+    
+    /// <inheritdoc />
+    public IAsyncPolicy<HttpResponseMessage> GetHttpCircuitBreakerPolicy()
+    {
+        const string circuitName = "HttpCircuit";
+        
+        lock (_lock)
+        {
+            if (!_httpCircuits.TryGetValue(circuitName, out var policy))
+            {
+                policy = Policy
+                    .HandleResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
+                    .Or<HttpRequestException>()
+                    .Or<TaskCanceledException>()
+                    .AdvancedCircuitBreakerAsync(
+                        failureThreshold: (double)_settings.FailureThreshold / 100,
+                        samplingDuration: TimeSpan.FromSeconds(_settings.SamplingDurationSeconds),
+                        minimumThroughput: _settings.MinimumThroughput,
+                        durationOfBreak: TimeSpan.FromSeconds(_settings.DurationOfBreakSeconds),
+                        onBreak: (delegateResult, duration) =>
+                        {
+                            var exception = delegateResult.Exception;
+                            var result = delegateResult.Result;
+                            
+                            _logger.LogWarning(
+                                "HTTP circuit breaker opened for {Duration}s. Exception: {Exception}, StatusCode: {StatusCode}",
+                                duration.TotalSeconds, exception?.Message, result?.StatusCode);
+                        },
+                        onReset: () =>
+                        {
+                            _logger.LogInformation("HTTP circuit breaker reset - operations resuming");
+                        },
+                        onHalfOpen: () =>
+                        {
+                            _logger.LogInformation("HTTP circuit breaker half-open - testing operations");
+                        });
+                
+                _httpCircuits[circuitName] = policy;
+            }
+            
+            return policy;
+        }
+    }
+    
+    /// <inheritdoc />
+    public CircuitState GetCircuitState(string circuitName)
+    {
+        lock (_lock)
+        {
+            if (_circuits.TryGetValue(circuitName, out var policy) && 
+                policy is ICircuitBreakerPolicy circuitBreakerPolicy)
+            {
+                return circuitBreakerPolicy.CircuitState;
+            }
+            
+            if (_httpCircuits.TryGetValue(circuitName, out var httpPolicy) && 
+                httpPolicy is ICircuitBreakerPolicy httpCircuitBreakerPolicy)
+            {
+                return httpCircuitBreakerPolicy.CircuitState;
+            }
+            
+            return CircuitState.Closed; // Default to closed if circuit not found
+        }
+    }
+    
+    /// <inheritdoc />
+    public void ResetCircuit(string circuitName)
+    {
+        lock (_lock)
+        {
+            if (_circuits.TryGetValue(circuitName, out var policy) && 
+                policy is ICircuitBreakerPolicy circuitBreakerPolicy)
+            {
+                circuitBreakerPolicy.Reset();
+                _logger.LogInformation("Manually reset circuit breaker: {CircuitName}", circuitName);
+            }
+            
+            if (_httpCircuits.TryGetValue(circuitName, out var httpPolicy) && 
+                httpPolicy is ICircuitBreakerPolicy httpCircuitBreakerPolicy)
+            {
+                httpCircuitBreakerPolicy.Reset();
+                _logger.LogInformation("Manually reset HTTP circuit breaker: {CircuitName}", circuitName);
+            }
+        }
+    }
+}
+
+/// <summary>
+/// Combined resilience policy that includes both retry and circuit breaker
+/// </summary>
+public interface ICombinedResiliencePolicy
+{
+    /// <summary>
+    /// Get combined policy for database operations (retry + circuit breaker)
+    /// </summary>
+    /// <returns>Combined database policy</returns>
+    IAsyncPolicy GetDatabasePolicy();
+    
+    /// <summary>
+    /// Get combined policy for HTTP operations (retry + circuit breaker)
+    /// </summary>
+    /// <returns>Combined HTTP policy</returns>
+    IAsyncPolicy<HttpResponseMessage> GetHttpPolicy();
+    
+    /// <summary>
+    /// Execute database operation with full resilience
+    /// </summary>
+    /// <typeparam name="T">Return type</typeparam>
+    /// <param name="operation">Operation to execute</param>
+    /// <param name="operationName">Name for logging</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Operation result</returns>
+    Task<T> ExecuteDatabaseOperationAsync<T>(Func<Task<T>> operation, string operationName, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Execute HTTP operation with full resilience
+    /// </summary>
+    /// <param name="operation">Operation to execute</param>
+    /// <param name="operationName">Name for logging</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>HTTP response</returns>
+    Task<HttpResponseMessage> ExecuteHttpOperationAsync(Func<Task<HttpResponseMessage>> operation, string operationName, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Implementation of combined resilience policy
+/// </summary>
+public sealed class CombinedResiliencePolicy : ICombinedResiliencePolicy
+{
+    private readonly IRetryPolicyFactory _retryPolicyFactory;
+    private readonly ICircuitBreakerPolicyFactory _circuitBreakerPolicyFactory;
+    private readonly ILogger<CombinedResiliencePolicy> _logger;
+    
+    /// <summary>
+    /// Initialize combined resilience policy
+    /// </summary>
+    /// <param name="retryPolicyFactory">Retry policy factory</param>
+    /// <param name="circuitBreakerPolicyFactory">Circuit breaker policy factory</param>
+    /// <param name="logger">Logger instance</param>
+    public CombinedResiliencePolicy(
+        IRetryPolicyFactory retryPolicyFactory,
+        ICircuitBreakerPolicyFactory circuitBreakerPolicyFactory,
+        ILogger<CombinedResiliencePolicy> logger)
+    {
+        _retryPolicyFactory = retryPolicyFactory ?? throw new ArgumentNullException(nameof(retryPolicyFactory));
+        _circuitBreakerPolicyFactory = circuitBreakerPolicyFactory ?? throw new ArgumentNullException(nameof(circuitBreakerPolicyFactory));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+    
+    /// <inheritdoc />
+    public IAsyncPolicy GetDatabasePolicy()
+    {
+        var retryPolicy = _retryPolicyFactory.GetDatabaseRetryPolicy();
+        var circuitBreakerPolicy = _circuitBreakerPolicyFactory.GetDatabaseCircuitBreakerPolicy();
+        
+        // Circuit breaker wraps retry policy to prevent retries when circuit is open
+        return Policy.WrapAsync(circuitBreakerPolicy, retryPolicy);
+    }
+    
+    /// <inheritdoc />
+    public IAsyncPolicy<HttpResponseMessage> GetHttpPolicy()
+    {
+        var retryPolicy = _retryPolicyFactory.GetHttpRetryPolicy();
+        var circuitBreakerPolicy = _circuitBreakerPolicyFactory.GetHttpCircuitBreakerPolicy();
+        
+        return Policy.WrapAsync(circuitBreakerPolicy, retryPolicy);
+    }
+    
+    /// <inheritdoc />
+    public async Task<T> ExecuteDatabaseOperationAsync<T>(Func<Task<T>> operation, string operationName, CancellationToken cancellationToken = default)
+    {
+        var policy = GetDatabasePolicy();
+        
+        try
+        {
+            _logger.LogDebug("Executing database operation with resilience: {OperationName}", operationName);
+            
+            var result = await policy.ExecuteAsync(async () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return await operation();
+            });
+            
+            _logger.LogDebug("Successfully executed database operation: {OperationName}", operationName);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to execute database operation after all resilience attempts: {OperationName}", operationName);
+            throw;
+        }
+    }
+    
+    /// <inheritdoc />
+    public async Task<HttpResponseMessage> ExecuteHttpOperationAsync(Func<Task<HttpResponseMessage>> operation, string operationName, CancellationToken cancellationToken = default)
+    {
+        var policy = GetHttpPolicy();
+        
+        try
+        {
+            _logger.LogDebug("Executing HTTP operation with resilience: {OperationName}", operationName);
+            
+            var result = await policy.ExecuteAsync(async () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return await operation();
+            });
+            
+            _logger.LogDebug("Successfully executed HTTP operation: {OperationName}", operationName);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to execute HTTP operation after all resilience attempts: {OperationName}", operationName);
+            throw;
+        }
+    }
+}

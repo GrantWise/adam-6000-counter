@@ -1,0 +1,572 @@
+using Industrial.Adam.Oee.Domain.Entities;
+using Industrial.Adam.Oee.Domain.Interfaces;
+using Industrial.Adam.Oee.Domain.Services;
+using Industrial.Adam.Oee.Infrastructure;
+using Industrial.Adam.Oee.Infrastructure.Repositories;
+using Industrial.Adam.Oee.Infrastructure.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Testcontainers.PostgreSql;
+using Xunit;
+using Dapper;
+using System.Diagnostics;
+
+namespace Industrial.Adam.Oee.Tests.Integration.Performance;
+
+/// <summary>
+/// Performance benchmarks for Phase 1 OEE implementation
+/// Establishes baseline performance metrics for future optimization
+/// </summary>
+public sealed class Phase1PerformanceBenchmarks : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _postgresContainer;
+    private IDbConnectionFactory _connectionFactory = null!;
+    private IWorkOrderRepository _workOrderRepository = null!;
+    private IEquipmentLineRepository _equipmentLineRepository = null!;
+    private IStoppageReasonRepository _stoppageReasonRepository = null!;
+    private JobSequencingService _jobSequencingService = null!;
+    private EquipmentLineService _equipmentLineService = null!;
+    private IServiceProvider _serviceProvider = null!;
+
+    // Performance thresholds (adjust based on requirements)
+    private const int EQUIPMENT_LINE_CREATION_THRESHOLD_MS = 100;
+    private const int WORK_ORDER_VALIDATION_THRESHOLD_MS = 50;
+    private const int REASON_CODE_LOOKUP_THRESHOLD_MS = 25;
+    private const int BATCH_OPERATION_THRESHOLD_MS = 1000;
+
+    public Phase1PerformanceBenchmarks()
+    {
+        _postgresContainer = new PostgreSqlBuilder()
+            .WithImage("timescale/timescaledb:latest-pg15")
+            .WithDatabase("adam_counters")
+            .WithUsername("adam_user")
+            .WithPassword("adam_password")
+            .WithPortBinding(54326, 5432)
+            .Build();
+    }
+
+    public async Task InitializeAsync()
+    {
+        await _postgresContainer.StartAsync();
+
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning)); // Reduce logging for performance tests
+        
+        services.AddSingleton<IDbConnectionFactory>(serviceProvider => 
+        {
+            var logger = serviceProvider.GetRequiredService<ILogger<NpgsqlConnectionFactory>>();
+            return new NpgsqlConnectionFactory(_postgresContainer.GetConnectionString(), logger);
+        });
+        
+        _serviceProvider = services.BuildServiceProvider();
+        _connectionFactory = _serviceProvider.GetRequiredService<IDbConnectionFactory>();
+        
+        var workOrderLogger = _serviceProvider.GetRequiredService<ILogger<WorkOrderRepository>>();
+        var equipmentLineLogger = _serviceProvider.GetRequiredService<ILogger<EquipmentLineRepository>>();
+        var stoppageReasonLogger = _serviceProvider.GetRequiredService<ILogger<StoppageReasonRepository>>();
+        var jobSequencingLogger = _serviceProvider.GetRequiredService<ILogger<JobSequencingService>>();
+        var equipmentLineServiceLogger = _serviceProvider.GetRequiredService<ILogger<EquipmentLineService>>();
+        
+        _workOrderRepository = new WorkOrderRepository(_connectionFactory, workOrderLogger);
+        _equipmentLineRepository = new EquipmentLineRepository(_connectionFactory, equipmentLineLogger);
+        _stoppageReasonRepository = new StoppageReasonRepository(_connectionFactory, stoppageReasonLogger);
+        _jobSequencingService = new JobSequencingService(_workOrderRepository, _equipmentLineRepository, jobSequencingLogger);
+        _equipmentLineService = new EquipmentLineService(_equipmentLineRepository, _workOrderRepository, equipmentLineServiceLogger);
+
+        await SetupTestDatabaseAsync();
+        await SeedTestDataAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_serviceProvider is IDisposable disposable)
+            disposable.Dispose();
+        await _postgresContainer.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task EquipmentLineRepository_CreatePerformance_MeetsThreshold()
+    {
+        // Arrange
+        var equipmentLine = new EquipmentLine("PERF-LINE-001", "Performance Test Line", "ADAM-PERF-001", 0);
+        var stopwatch = Stopwatch.StartNew();
+
+        // Act
+        var id = await _equipmentLineRepository.CreateAsync(equipmentLine);
+        stopwatch.Stop();
+
+        // Assert
+        Assert.True(id > 0);
+        Assert.True(stopwatch.ElapsedMilliseconds < EQUIPMENT_LINE_CREATION_THRESHOLD_MS, 
+            $"Equipment line creation took {stopwatch.ElapsedMilliseconds}ms, threshold is {EQUIPMENT_LINE_CREATION_THRESHOLD_MS}ms");
+        
+        // Output for monitoring
+        Console.WriteLine($"Equipment Line Creation: {stopwatch.ElapsedMilliseconds}ms");
+    }
+
+    [Fact]
+    public async Task EquipmentLineRepository_GetByAdamDeviceBatch_MeetsThreshold()
+    {
+        // Arrange - Create test equipment lines
+        var equipmentLines = new List<EquipmentLine>();
+        for (int i = 0; i < 100; i++)
+        {
+            var line = new EquipmentLine($"BATCH-LINE-{i:D3}", $"Batch Line {i}", $"ADAM-BATCH-{i:D3}", i % 16);
+            equipmentLines.Add(line);
+            await _equipmentLineRepository.CreateAsync(line);
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+
+        // Act - Lookup all lines by ADAM device
+        var results = new List<EquipmentLine?>();
+        foreach (var line in equipmentLines)
+        {
+            var result = await _equipmentLineRepository.GetByAdamDeviceAsync(line.AdamDeviceId, line.AdamChannel);
+            results.Add(result);
+        }
+
+        stopwatch.Stop();
+
+        // Assert
+        Assert.Equal(100, results.Count(r => r != null));
+        Assert.True(stopwatch.ElapsedMilliseconds < BATCH_OPERATION_THRESHOLD_MS, 
+            $"Batch equipment line lookup took {stopwatch.ElapsedMilliseconds}ms, threshold is {BATCH_OPERATION_THRESHOLD_MS}ms");
+        
+        // Calculate average per operation
+        var avgPerOperation = (double)stopwatch.ElapsedMilliseconds / 100;
+        Console.WriteLine($"Equipment Line Batch Lookup: {stopwatch.ElapsedMilliseconds}ms total, {avgPerOperation:F2}ms average per operation");
+    }
+
+    [Fact]
+    public async Task WorkOrderRepository_ValidationPerformance_MeetsThreshold()
+    {
+        // Arrange
+        var workOrder = CreateTestWorkOrder("PERF-WO-001", "ADAM-001");
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        var stopwatch = Stopwatch.StartNew();
+
+        // Act - Perform multiple validation operations
+        for (int i = 0; i < 10; i++)
+        {
+            var exists = await _workOrderRepository.ExistsAsync($"PERF-WO-{i:D3}");
+            var active = await _workOrderRepository.GetActiveByDeviceAsync("ADAM-001");
+        }
+
+        stopwatch.Stop();
+
+        // Assert
+        var avgPerValidation = (double)stopwatch.ElapsedMilliseconds / 20; // 20 operations total
+        Assert.True(avgPerValidation < WORK_ORDER_VALIDATION_THRESHOLD_MS, 
+            $"Work order validation averaged {avgPerValidation:F2}ms, threshold is {WORK_ORDER_VALIDATION_THRESHOLD_MS}ms");
+        
+        Console.WriteLine($"Work Order Validation: {stopwatch.ElapsedMilliseconds}ms for 20 operations, {avgPerValidation:F2}ms average");
+    }
+
+    [Fact]
+    public async Task StoppageReasonRepository_LookupPerformance_MeetsThreshold()
+    {
+        // Arrange
+        var stopwatch = Stopwatch.StartNew();
+
+        // Act - Perform multiple reason code lookups
+        for (int i = 0; i < 50; i++)
+        {
+            var categories = await _stoppageReasonRepository.GetCategoriesAsync(activeOnly: true);
+            var subcodes = await _stoppageReasonRepository.GetSubcodesAsync("A1");
+            var validation = await _stoppageReasonRepository.ValidateReasonCodeAssignmentAsync("A1", "1");
+        }
+
+        stopwatch.Stop();
+
+        // Assert
+        var avgPerLookup = (double)stopwatch.ElapsedMilliseconds / 150; // 150 operations total
+        Assert.True(avgPerLookup < REASON_CODE_LOOKUP_THRESHOLD_MS, 
+            $"Reason code lookup averaged {avgPerLookup:F2}ms, threshold is {REASON_CODE_LOOKUP_THRESHOLD_MS}ms");
+        
+        Console.WriteLine($"Reason Code Lookups: {stopwatch.ElapsedMilliseconds}ms for 150 operations, {avgPerLookup:F2}ms average");
+    }
+
+    [Fact]
+    public async Task JobSequencingService_ValidationPerformance_MeetsThreshold()
+    {
+        // Arrange
+        var stopwatch = Stopwatch.StartNew();
+
+        // Act - Perform multiple job sequencing validations
+        for (int i = 0; i < 25; i++)
+        {
+            var startValidation = await _jobSequencingService.ValidateJobStartAsync("LINE-001", $"PERF-JOB-{i:D3}");
+            var lineAvailable = await _jobSequencingService.IsLineAvailableForNewJobAsync("LINE-001");
+        }
+
+        stopwatch.Stop();
+
+        // Assert
+        var avgPerValidation = (double)stopwatch.ElapsedMilliseconds / 50; // 50 operations total
+        Assert.True(avgPerValidation < WORK_ORDER_VALIDATION_THRESHOLD_MS, 
+            $"Job sequencing validation averaged {avgPerValidation:F2}ms, threshold is {WORK_ORDER_VALIDATION_THRESHOLD_MS}ms");
+        
+        Console.WriteLine($"Job Sequencing Validation: {stopwatch.ElapsedMilliseconds}ms for 50 operations, {avgPerValidation:F2}ms average");
+    }
+
+    [Fact]
+    public async Task EquipmentLineService_AvailabilityCheckPerformance_MeetsThreshold()
+    {
+        // Arrange
+        var stopwatch = Stopwatch.StartNew();
+
+        // Act - Check availability for all equipment lines multiple times
+        for (int i = 0; i < 10; i++)
+        {
+            var allAvailabilities = await _equipmentLineService.GetAllEquipmentLineAvailabilitiesAsync();
+            var availabilityList = allAvailabilities.ToList(); // Force enumeration
+        }
+
+        stopwatch.Stop();
+
+        // Assert
+        var avgPerCheck = (double)stopwatch.ElapsedMilliseconds / 10;
+        Assert.True(avgPerCheck < BATCH_OPERATION_THRESHOLD_MS, 
+            $"Equipment line availability check averaged {avgPerCheck:F2}ms, threshold is {BATCH_OPERATION_THRESHOLD_MS}ms");
+        
+        Console.WriteLine($"Equipment Line Availability Checks: {stopwatch.ElapsedMilliseconds}ms for 10 operations, {avgPerCheck:F2}ms average");
+    }
+
+    [Fact]
+    public async Task ConcurrentOperations_Performance_HandlesLoad()
+    {
+        // Arrange - Create concurrent tasks
+        var taskCount = 20;
+        var stopwatch = Stopwatch.StartNew();
+
+        // Act - Run concurrent operations
+        var tasks = new List<Task>();
+        for (int i = 0; i < taskCount; i++)
+        {
+            var taskIndex = i;
+            tasks.Add(Task.Run(async () =>
+            {
+                // Mixed operations to simulate real usage
+                var lineId = $"CONCURRENT-LINE-{taskIndex:D3}";
+                var workOrderId = $"CONCURRENT-WO-{taskIndex:D3}";
+                
+                // Equipment line operations
+                var validation = await _jobSequencingService.ValidateJobStartAsync("LINE-001", workOrderId);
+                var availability = await _equipmentLineService.GetEquipmentLineAvailabilityAsync("LINE-001");
+                
+                // Reason code operations
+                var categories = await _stoppageReasonRepository.GetCategoriesAsync(activeOnly: true);
+                var subcodes = await _stoppageReasonRepository.GetSubcodesAsync("A1");
+                
+                // Work order operations
+                var exists = await _workOrderRepository.ExistsAsync(workOrderId);
+            }));
+        }
+
+        await Task.WhenAll(tasks);
+        stopwatch.Stop();
+
+        // Assert
+        var avgPerTask = (double)stopwatch.ElapsedMilliseconds / taskCount;
+        Assert.True(stopwatch.ElapsedMilliseconds < 5000, // 5 second threshold for 20 concurrent tasks
+            $"Concurrent operations took {stopwatch.ElapsedMilliseconds}ms, threshold is 5000ms");
+        
+        Console.WriteLine($"Concurrent Operations: {stopwatch.ElapsedMilliseconds}ms for {taskCount} concurrent tasks, {avgPerTask:F2}ms average per task");
+    }
+
+    [Fact]
+    public async Task DatabaseConstraints_ViolationPerformance_HandlesGracefully()
+    {
+        // Arrange - Create an equipment line
+        var originalLine = new EquipmentLine("CONSTRAINT-LINE", "Constraint Test", "ADAM-CONSTRAINT", 0);
+        await _equipmentLineRepository.CreateAsync(originalLine);
+
+        var stopwatch = Stopwatch.StartNew();
+
+        // Act - Try to create duplicate lines (should fail quickly)
+        var duplicateAttempts = 10;
+        var exceptions = 0;
+        
+        for (int i = 0; i < duplicateAttempts; i++)
+        {
+            try
+            {
+                var duplicateLine = new EquipmentLine("CONSTRAINT-LINE", "Duplicate Test", "ADAM-CONSTRAINT-DUP", 1);
+                await _equipmentLineRepository.CreateAsync(duplicateLine);
+            }
+            catch (InvalidOperationException)
+            {
+                exceptions++;
+            }
+        }
+
+        stopwatch.Stop();
+
+        // Assert
+        Assert.Equal(duplicateAttempts, exceptions); // All should fail
+        var avgPerException = (double)stopwatch.ElapsedMilliseconds / duplicateAttempts;
+        Assert.True(avgPerException < 100, // Constraint violations should be fast
+            $"Constraint violation handling averaged {avgPerException:F2}ms, should be under 100ms");
+        
+        Console.WriteLine($"Constraint Violations: {stopwatch.ElapsedMilliseconds}ms for {duplicateAttempts} violations, {avgPerException:F2}ms average");
+    }
+
+    [Fact]
+    public async Task LargeDataset_QueryPerformance_ScalesAppropriately()
+    {
+        // Arrange - Create a larger dataset
+        var datasetSize = 500;
+        var equipmentLines = new List<EquipmentLine>();
+        
+        var setupStopwatch = Stopwatch.StartNew();
+        for (int i = 0; i < datasetSize; i++)
+        {
+            var line = new EquipmentLine(
+                $"LARGE-LINE-{i:D4}", 
+                $"Large Dataset Line {i}", 
+                $"ADAM-LARGE-{i:D4}", 
+                i % 16);
+            equipmentLines.Add(line);
+            await _equipmentLineRepository.CreateAsync(line);
+        }
+        setupStopwatch.Stop();
+        Console.WriteLine($"Dataset setup: {setupStopwatch.ElapsedMilliseconds}ms for {datasetSize} equipment lines");
+
+        // Act - Query operations on large dataset
+        var queryStopwatch = Stopwatch.StartNew();
+        
+        var allLines = await _equipmentLineRepository.GetAllAsync();
+        var activeLines = await _equipmentLineRepository.GetActiveAsync();
+        var searchResults = await _equipmentLineRepository.SearchAsync(
+            new EquipmentLineSearchCriteria(IsActive: true));
+
+        queryStopwatch.Stop();
+
+        // Assert
+        var allLinesList = allLines.ToList();
+        var activeLinesList = activeLines.ToList();
+        var searchResultsList = searchResults.ToList();
+        
+        Assert.True(allLinesList.Count >= datasetSize);
+        Assert.True(activeLinesList.Count >= datasetSize); // All are active by default
+        Assert.True(searchResultsList.Count >= datasetSize);
+        
+        Assert.True(queryStopwatch.ElapsedMilliseconds < 2000, // 2 second threshold for large dataset queries
+            $"Large dataset queries took {queryStopwatch.ElapsedMilliseconds}ms, threshold is 2000ms");
+        
+        Console.WriteLine($"Large Dataset Queries: {queryStopwatch.ElapsedMilliseconds}ms for dataset of {datasetSize} items");
+    }
+
+    /// <summary>
+    /// Memory usage test to ensure no significant memory leaks
+    /// </summary>
+    [Fact]
+    public async Task MemoryUsage_RepeatedOperations_StaysStable()
+    {
+        // Arrange
+        var initialMemory = GC.GetTotalMemory(true);
+        
+        // Act - Perform many operations that could potentially leak memory
+        for (int i = 0; i < 100; i++)
+        {
+            var lineId = $"MEMORY-LINE-{i:D3}";
+            var workOrderId = $"MEMORY-WO-{i:D3}";
+            
+            // Create and immediately query operations
+            var validation = await _jobSequencingService.ValidateJobStartAsync("LINE-001", workOrderId);
+            var categories = await _stoppageReasonRepository.GetCategoriesAsync();
+            var availability = await _equipmentLineService.GetEquipmentLineAvailabilityAsync("LINE-001");
+            
+            // Force garbage collection every 10 iterations
+            if (i % 10 == 0)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+        }
+        
+        // Force final garbage collection
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        var finalMemory = GC.GetTotalMemory(true);
+        
+        // Assert
+        var memoryIncrease = finalMemory - initialMemory;
+        var memoryIncreaseMB = memoryIncrease / (1024.0 * 1024.0);
+        
+        // Memory increase should be minimal (less than 10MB for 100 operations)
+        Assert.True(memoryIncreaseMB < 10, 
+            $"Memory increased by {memoryIncreaseMB:F2}MB after 100 operations, should be under 10MB");
+        
+        Console.WriteLine($"Memory Usage: Initial={initialMemory / (1024.0 * 1024.0):F2}MB, Final={finalMemory / (1024.0 * 1024.0):F2}MB, Increase={memoryIncreaseMB:F2}MB");
+    }
+
+    /// <summary>
+    /// Set up test database with all Phase 1 tables
+    /// </summary>
+    private async Task SetupTestDatabaseAsync()
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+
+        // Create all Phase 1 tables with indexes for performance
+        await connection.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS equipment_lines (
+                id SERIAL PRIMARY KEY,
+                line_id VARCHAR(50) UNIQUE NOT NULL,
+                line_name VARCHAR(100) NOT NULL,
+                adam_device_id VARCHAR(50) NOT NULL,
+                adam_channel INTEGER NOT NULL,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                
+                CONSTRAINT equipment_lines_adam_channel_valid CHECK (adam_channel >= 0 AND adam_channel <= 15),
+                UNIQUE(adam_device_id, adam_channel)
+            );
+
+            CREATE TABLE IF NOT EXISTS work_orders (
+                work_order_id VARCHAR(50) PRIMARY KEY,
+                work_order_description TEXT NOT NULL,
+                product_id VARCHAR(50) NOT NULL,
+                product_description TEXT NOT NULL,
+                planned_quantity DECIMAL(18,3) NOT NULL,
+                unit_of_measure VARCHAR(20) NOT NULL DEFAULT 'pieces',
+                scheduled_start_time TIMESTAMPTZ NOT NULL,
+                scheduled_end_time TIMESTAMPTZ NOT NULL,
+                resource_reference VARCHAR(50) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+                actual_quantity_good DECIMAL(18,3) NOT NULL DEFAULT 0,
+                actual_quantity_scrap DECIMAL(18,3) NOT NULL DEFAULT 0,
+                actual_start_time TIMESTAMPTZ,
+                actual_end_time TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                
+                CONSTRAINT work_orders_planned_quantity_positive CHECK (planned_quantity > 0),
+                CONSTRAINT work_orders_actual_quantities_non_negative CHECK (
+                    actual_quantity_good >= 0 AND actual_quantity_scrap >= 0
+                ),
+                CONSTRAINT work_orders_scheduled_times_valid CHECK (scheduled_end_time > scheduled_start_time),
+                CONSTRAINT work_orders_status_valid CHECK (
+                    status IN ('Pending', 'Active', 'Paused', 'Completed', 'Cancelled')
+                )
+            );
+
+            CREATE TABLE IF NOT EXISTS stoppage_reason_categories (
+                id SERIAL PRIMARY KEY,
+                category_code VARCHAR(10) UNIQUE NOT NULL,
+                category_name VARCHAR(100) NOT NULL,
+                category_description TEXT,
+                matrix_row INTEGER NOT NULL CHECK (matrix_row BETWEEN 1 AND 3),
+                matrix_col INTEGER NOT NULL CHECK (matrix_col BETWEEN 1 AND 3),
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                
+                UNIQUE(matrix_row, matrix_col)
+            );
+
+            CREATE TABLE IF NOT EXISTS stoppage_reason_subcodes (
+                id SERIAL PRIMARY KEY,
+                category_id INTEGER NOT NULL REFERENCES stoppage_reason_categories(id) ON DELETE CASCADE,
+                category_code VARCHAR(10) NOT NULL,
+                subcode VARCHAR(10) NOT NULL,
+                subcode_name VARCHAR(100) NOT NULL,
+                subcode_description TEXT,
+                matrix_row INTEGER NOT NULL CHECK (matrix_row BETWEEN 1 AND 3),
+                matrix_col INTEGER NOT NULL CHECK (matrix_col BETWEEN 1 AND 3),
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                
+                UNIQUE(category_id, subcode),
+                UNIQUE(category_id, matrix_row, matrix_col),
+                UNIQUE(category_code, subcode)
+            );");
+
+        // Create performance indexes
+        await connection.ExecuteAsync(@"
+            CREATE INDEX IF NOT EXISTS idx_work_orders_resource_status 
+            ON work_orders(resource_reference, status) 
+            WHERE status IN ('Active', 'Paused');
+
+            CREATE INDEX IF NOT EXISTS idx_equipment_lines_adam_device 
+            ON equipment_lines(adam_device_id, adam_channel) 
+            WHERE is_active = true;
+
+            CREATE INDEX IF NOT EXISTS idx_equipment_lines_active 
+            ON equipment_lines(is_active, line_id) 
+            WHERE is_active = true;
+
+            CREATE INDEX IF NOT EXISTS idx_stoppage_categories_matrix 
+            ON stoppage_reason_categories(matrix_row, matrix_col) 
+            WHERE is_active = true;
+
+            CREATE INDEX IF NOT EXISTS idx_stoppage_subcodes_category_matrix 
+            ON stoppage_reason_subcodes(category_id, matrix_row, matrix_col) 
+            WHERE is_active = true;");
+    }
+
+    /// <summary>
+    /// Seed minimal test data for performance tests
+    /// </summary>
+    private async Task SeedTestDataAsync()
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+
+        // Insert basic test equipment lines
+        await connection.ExecuteAsync(@"
+            INSERT INTO equipment_lines (line_id, line_name, adam_device_id, adam_channel, is_active)
+            VALUES 
+                ('LINE-001', 'Performance Test Line 1', 'ADAM-001', 0, true),
+                ('LINE-002', 'Performance Test Line 2', 'ADAM-002', 0, true),
+                ('LINE-003', 'Performance Test Line 3', 'ADAM-003', 0, true)
+            ON CONFLICT (line_id) DO NOTHING");
+
+        // Insert standard reason categories
+        await connection.ExecuteAsync(@"
+            INSERT INTO stoppage_reason_categories (category_code, category_name, matrix_row, matrix_col)
+            VALUES 
+                ('A1', 'Mechanical Failure', 1, 1),
+                ('A2', 'Electrical Issues', 1, 2),
+                ('B1', 'Material Issues', 2, 1),
+                ('B2', 'Process Setup', 2, 2)
+            ON CONFLICT (category_code) DO NOTHING");
+
+        // Insert subcodes for A1 category
+        await connection.ExecuteAsync(@"
+            INSERT INTO stoppage_reason_subcodes (category_id, category_code, subcode, subcode_name, matrix_row, matrix_col)
+            SELECT c.id, 'A1', '1', 'Motor Failure', 1, 1
+            FROM stoppage_reason_categories c WHERE c.category_code = 'A1'
+            UNION ALL
+            SELECT c.id, 'A1', '2', 'Bearing Problems', 1, 2
+            FROM stoppage_reason_categories c WHERE c.category_code = 'A1'
+            ON CONFLICT (category_code, subcode) DO NOTHING");
+    }
+
+    /// <summary>
+    /// Create a test work order with default values
+    /// </summary>
+    private static WorkOrder CreateTestWorkOrder(
+        string workOrderId, 
+        string deviceId, 
+        decimal plannedQuantity = 100m)
+    {
+        var start = DateTime.UtcNow;
+        var end = start.AddHours(8);
+
+        return new WorkOrder(
+            workOrderId,
+            $"Performance Test Work Order {workOrderId}",
+            "PERF_PRODUCT_001",
+            "Performance Test Product",
+            plannedQuantity,
+            start,
+            end,
+            deviceId,
+            "pieces"
+        );
+    }
+}

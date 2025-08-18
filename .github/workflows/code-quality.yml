@@ -1,0 +1,300 @@
+name: Code Quality and Security
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run security scans daily at 1 AM UTC
+    - cron: '0 1 * * *'
+
+jobs:
+  codeql-analysis:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'csharp', 'javascript' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        queries: +security-and-quality
+
+    - name: Setup .NET
+      if: matrix.language == 'csharp'
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Build .NET solution
+      if: matrix.language == 'csharp'
+      run: |
+        dotnet restore Industrial.Adam.Logger.sln
+        dotnet build Industrial.Adam.Logger.sln --no-restore --configuration Release
+
+    - name: Setup Node.js
+      if: matrix.language == 'javascript'
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+
+    - name: Build frontend applications
+      if: matrix.language == 'javascript'
+      run: |
+        if [ -d "adam-counter-frontend" ]; then
+          cd adam-counter-frontend
+          npm install
+          npm run build
+          cd ..
+        fi
+        if [ -d "oee-app/oee-interface" ]; then
+          cd oee-app/oee-interface
+          npm install
+          npm run build
+          cd ..
+        fi
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"
+
+  sonarcloud:
+    name: SonarCloud Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Cache SonarCloud packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.sonar/cache
+        key: ${{ runner.os }}-sonar
+        restore-keys: ${{ runner.os }}-sonar
+
+    - name: Cache SonarCloud scanner
+      id: cache-sonar-scanner
+      uses: actions/cache@v4
+      with:
+        path: .sonar/scanner
+        key: ${{ runner.os }}-sonar-scanner
+        restore-keys: ${{ runner.os }}-sonar-scanner
+
+    - name: Install SonarCloud scanner
+      if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+      run: |
+        dotnet tool install --global dotnet-sonarscanner
+
+    - name: Build and analyze with SonarCloud
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      run: |
+        dotnet sonarscanner begin /k:"GrantWise_adam-6000-counter" /o:"grantwise" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.cs.dotcover.reportsPaths="coverage.html" /d:sonar.coverage.exclusions="**Tests.cs"
+        dotnet build Industrial.Adam.Logger.sln --configuration Release
+        dotnet test Industrial.Adam.Logger.sln --configuration Release --collect:"XPlat Code Coverage" --results-directory ./coverage
+        dotnet sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Dependency Review
+      uses: actions/dependency-review-action@v4
+      with:
+        fail-on-severity: high
+
+  dotnet-security:
+    name: .NET Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore Industrial.Adam.Logger.sln
+
+    - name: List vulnerable packages
+      run: dotnet list package --vulnerable --include-transitive > vulnerability-report.txt
+
+    - name: Check for vulnerabilities
+      run: |
+        if grep -q "has the following vulnerable packages" vulnerability-report.txt; then
+          echo "::error::Vulnerable packages found!"
+          cat vulnerability-report.txt
+          exit 1
+        else
+          echo "No vulnerable packages found."
+        fi
+
+    - name: Upload vulnerability report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: dotnet-vulnerability-report
+        path: vulnerability-report.txt
+
+  npm-security:
+    name: NPM Security Audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [adam-counter-frontend, oee-app/oee-interface]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+
+    - name: Install dependencies and audit
+      run: |
+        if [ -d "${{ matrix.app }}" ]; then
+          cd ${{ matrix.app }}
+          if [ -f "package-lock.json" ]; then
+            npm ci
+            npm audit --audit-level=high
+          elif [ -f "pnpm-lock.yaml" ]; then
+            npm install -g pnpm
+            pnpm install --frozen-lockfile
+            pnpm audit --audit-level=high
+          else
+            npm install
+            npm audit --audit-level=high
+          fi
+        fi
+
+  secrets-scan:
+    name: Secrets Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Run Gitleaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Install license check tool
+      run: dotnet tool install --global dotnet-project-licenses
+
+    - name: Check .NET licenses
+      run: |
+        dotnet restore Industrial.Adam.Logger.sln
+        dotnet-project-licenses --input Industrial.Adam.Logger.sln --output-format json --output licenses-report.json
+
+    - name: Setup Node.js for frontend license check
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+
+    - name: Install license checker
+      run: npm install -g license-checker
+
+    - name: Check frontend licenses
+      run: |
+        if [ -d "adam-counter-frontend" ]; then
+          cd adam-counter-frontend
+          if [ -f "package.json" ]; then
+            npm install
+            license-checker --json --out ../frontend-licenses.json
+          fi
+          cd ..
+        fi
+
+    - name: Upload license reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: license-reports
+        path: |
+          licenses-report.json
+          frontend-licenses.json
+
+  performance-analysis:
+    name: Performance Analysis
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Build solution
+      run: |
+        dotnet restore Industrial.Adam.Logger.sln
+        dotnet build Industrial.Adam.Logger.sln --configuration Release
+
+    - name: Run benchmark tests
+      run: |
+        if [ -f "scripts/run-benchmarks.sh" ]; then
+          chmod +x scripts/run-benchmarks.sh
+          ./scripts/run-benchmarks.sh
+        else
+          echo "No benchmark script found, skipping performance analysis"
+        fi
+
+    - name: Upload benchmark results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: BenchmarkDotNet.Artifacts/

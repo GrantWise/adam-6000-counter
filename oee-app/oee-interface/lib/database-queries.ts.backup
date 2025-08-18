@@ -1,0 +1,107 @@
+// Database query utilities for OEE calculations
+// These would be used with a real database connection
+
+export const DatabaseQueries = {
+  // Current rate calculation
+  getCurrentRate: `
+    SELECT 
+      rate * 60 as units_per_minute,
+      time
+    FROM counter_data 
+    WHERE 
+      device_id = $1 
+      AND channel = 0
+      AND time > NOW() - INTERVAL '2 minutes'
+    ORDER BY time DESC 
+    LIMIT 1;
+  `,
+
+  // Quality calculation for current job
+  getQualityMetrics: `
+    SELECT 
+      production.total_production,
+      COALESCE(rejects.total_rejects, 0) as total_rejects,
+      (production.total_production - COALESCE(rejects.total_rejects, 0)) / 
+      production.total_production * 100 as quality_percent
+    FROM (
+      SELECT MAX(processed_value) - MIN(processed_value) as total_production
+      FROM counter_data cd
+      JOIN production_jobs pj ON cd.device_id = pj.device_id
+      WHERE pj.status = 'active' 
+        AND cd.channel = 0
+        AND cd.time >= pj.start_time
+    ) production
+    LEFT JOIN (
+      SELECT MAX(processed_value) - MIN(processed_value) as total_rejects
+      FROM counter_data cd
+      JOIN production_jobs pj ON cd.device_id = pj.device_id
+      WHERE pj.status = 'active' 
+        AND cd.channel = 1
+        AND cd.time >= pj.start_time
+    ) rejects ON true;
+  `,
+
+  // Stoppage detection
+  detectCurrentStoppage: `
+    SELECT 
+      MIN(time) as stoppage_start,
+      EXTRACT(EPOCH FROM (NOW() - MIN(time))) / 60 as duration_minutes
+    FROM counter_data 
+    WHERE 
+      device_id = $1 
+      AND channel = 0
+      AND rate = 0 
+      AND time > NOW() - INTERVAL '1 hour'
+      AND time >= ALL(
+        SELECT time 
+        FROM counter_data 
+        WHERE device_id = $1 AND channel = 0 AND rate > 0 
+        ORDER BY time DESC 
+        LIMIT 1
+      )
+    HAVING COUNT(*) > 12;
+  `,
+
+  // Get rate history for charts
+  getRateHistory: `
+    SELECT 
+      time,
+      rate * 60 as units_per_minute
+    FROM counter_data
+    WHERE 
+      device_id = $1
+      AND channel = 0
+      AND time > NOW() - INTERVAL '$2 hours'
+    ORDER BY time ASC;
+  `,
+
+  // Get current active job
+  getCurrentJob: `
+    SELECT 
+      job_id,
+      job_number,
+      part_number,
+      device_id,
+      target_rate,
+      start_time,
+      operator_id
+    FROM production_jobs
+    WHERE device_id = $1 AND status = 'active'
+    ORDER BY start_time DESC
+    LIMIT 1;
+  `,
+
+  // Get unclassified stoppages
+  getUnclassifiedStoppages: `
+    SELECT 
+      event_id,
+      device_id,
+      job_id,
+      start_time,
+      end_time,
+      duration_minutes
+    FROM stoppage_events
+    WHERE device_id = $1 AND status = 'unclassified'
+    ORDER BY start_time DESC;
+  `,
+}

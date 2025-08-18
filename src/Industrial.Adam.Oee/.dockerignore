@@ -1,0 +1,45 @@
+# Ignore build artifacts
+**/bin/
+**/obj/
+**/out/
+
+# Ignore IDE files
+**/.vs/
+**/.vscode/
+**/.idea/
+*.swp
+*.swo
+*~
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore logs
+**/logs/
+*.log
+
+# Ignore temporary files
+**/tmp/
+**/temp/
+
+# Ignore node modules (if any)
+**/node_modules/
+
+# Ignore test results
+**/TestResults/
+**/coverage/
+
+# Ignore package files
+*.nupkg
+*.snupkg
+
+# Ignore user specific files
+*.user
+*.suo
+*.cache
+*.tmp
+
+# Keep the Dockerfile
+!Dockerfile
+!.dockerignore

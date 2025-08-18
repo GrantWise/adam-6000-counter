@@ -1,0 +1,660 @@
+using Industrial.Adam.Oee.Domain.Entities;
+using Industrial.Adam.Oee.Domain.Interfaces;
+using Industrial.Adam.Oee.Domain.Services;
+using Industrial.Adam.Oee.Infrastructure;
+using Industrial.Adam.Oee.Infrastructure.Repositories;
+using Industrial.Adam.Oee.Infrastructure.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Testcontainers.PostgreSql;
+using Xunit;
+using Dapper;
+
+namespace Industrial.Adam.Oee.Tests.Integration.Services;
+
+/// <summary>
+/// Integration tests for EquipmentLineService
+/// Tests ADAM device mapping, equipment validation, and availability tracking
+/// </summary>
+public sealed class EquipmentLineServiceIntegrationTests : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _postgresContainer;
+    private IDbConnectionFactory _connectionFactory = null!;
+    private IWorkOrderRepository _workOrderRepository = null!;
+    private IEquipmentLineRepository _equipmentLineRepository = null!;
+    private EquipmentLineService _equipmentLineService = null!;
+    private IServiceProvider _serviceProvider = null!;
+
+    public EquipmentLineServiceIntegrationTests()
+    {
+        _postgresContainer = new PostgreSqlBuilder()
+            .WithImage("timescale/timescaledb:latest-pg15")
+            .WithDatabase("adam_counters")
+            .WithUsername("adam_user")
+            .WithPassword("adam_password")
+            .WithPortBinding(54325, 5432)
+            .Build();
+    }
+
+    public async Task InitializeAsync()
+    {
+        await _postgresContainer.StartAsync();
+
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
+        
+        services.AddSingleton<IDbConnectionFactory>(serviceProvider => 
+        {
+            var logger = serviceProvider.GetRequiredService<ILogger<NpgsqlConnectionFactory>>();
+            return new NpgsqlConnectionFactory(_postgresContainer.GetConnectionString(), logger);
+        });
+        
+        _serviceProvider = services.BuildServiceProvider();
+        _connectionFactory = _serviceProvider.GetRequiredService<IDbConnectionFactory>();
+        
+        var workOrderLogger = _serviceProvider.GetRequiredService<ILogger<WorkOrderRepository>>();
+        var equipmentLineLogger = _serviceProvider.GetRequiredService<ILogger<EquipmentLineRepository>>();
+        var serviceLogger = _serviceProvider.GetRequiredService<ILogger<EquipmentLineService>>();
+        
+        _workOrderRepository = new WorkOrderRepository(_connectionFactory, workOrderLogger);
+        _equipmentLineRepository = new EquipmentLineRepository(_connectionFactory, equipmentLineLogger);
+        _equipmentLineService = new EquipmentLineService(_equipmentLineRepository, _workOrderRepository, serviceLogger);
+
+        await SetupTestDatabaseAsync();
+        await SeedTestDataAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_serviceProvider is IDisposable disposable)
+            disposable.Dispose();
+        await _postgresContainer.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task GetEquipmentLineByAdamDeviceAsync_WithValidMapping_ReturnsEquipmentLine()
+    {
+        // Arrange
+        var adamDeviceId = "ADAM-001";
+        var adamChannel = 0;
+
+        // Act
+        var equipmentLine = await _equipmentLineService.GetEquipmentLineByAdamDeviceAsync(adamDeviceId, adamChannel);
+
+        // Assert
+        Assert.NotNull(equipmentLine);
+        Assert.Equal("LINE-001", equipmentLine.LineId);
+        Assert.Equal(adamDeviceId, equipmentLine.AdamDeviceId);
+        Assert.Equal(adamChannel, equipmentLine.AdamChannel);
+        Assert.True(equipmentLine.IsActive);
+    }
+
+    [Fact]
+    public async Task GetEquipmentLineByAdamDeviceAsync_WithInvalidMapping_ReturnsNull()
+    {
+        // Arrange
+        var adamDeviceId = "NON-EXISTENT-ADAM";
+        var adamChannel = 0;
+
+        // Act
+        var equipmentLine = await _equipmentLineService.GetEquipmentLineByAdamDeviceAsync(adamDeviceId, adamChannel);
+
+        // Assert
+        Assert.Null(equipmentLine);
+    }
+
+    [Fact]
+    public async Task ValidateWorkOrderEquipmentAsync_WithAvailableLine_ReturnsSuccess()
+    {
+        // Arrange
+        var workOrderId = "WO-VALIDATION-001";
+        var lineId = "LINE-001";
+
+        // Act
+        var result = await _equipmentLineService.ValidateWorkOrderEquipmentAsync(workOrderId, lineId);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Null(result.ValidationType);
+        Assert.Null(result.ErrorMessage);
+        Assert.NotNull(result.EquipmentLine);
+        Assert.Equal(lineId, result.EquipmentLine.LineId);
+    }
+
+    [Fact]
+    public async Task ValidateWorkOrderEquipmentAsync_WithNonExistentLine_ReturnsFailure()
+    {
+        // Arrange
+        var workOrderId = "WO-VALIDATION-002";
+        var lineId = "NON-EXISTENT-LINE";
+
+        // Act
+        var result = await _equipmentLineService.ValidateWorkOrderEquipmentAsync(workOrderId, lineId);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Equal(EquipmentValidationType.LineNotFound, result.ValidationType);
+        Assert.Contains("does not exist", result.ErrorMessage);
+        Assert.Null(result.EquipmentLine);
+    }
+
+    [Fact]
+    public async Task ValidateWorkOrderEquipmentAsync_WithInactiveLine_ReturnsFailure()
+    {
+        // Arrange
+        var workOrderId = "WO-VALIDATION-003";
+        var lineId = "LINE-INACTIVE";
+
+        // Act
+        var result = await _equipmentLineService.ValidateWorkOrderEquipmentAsync(workOrderId, lineId);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Equal(EquipmentValidationType.LineInactive, result.ValidationType);
+        Assert.Contains("not active", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ValidateWorkOrderEquipmentAsync_WithOccupiedLine_ReturnsFailure()
+    {
+        // Arrange
+        var workOrderId = "WO-VALIDATION-004";
+        var lineId = "LINE-001";
+        
+        // Create an active work order on the line
+        var existingWorkOrder = CreateTestWorkOrder("WO-EXISTING-001", "ADAM-001");
+        existingWorkOrder.Start();
+        await _workOrderRepository.CreateAsync(existingWorkOrder);
+
+        // Act
+        var result = await _equipmentLineService.ValidateWorkOrderEquipmentAsync(workOrderId, lineId);
+
+        // Assert
+        Assert.False(result.IsValid);
+        Assert.Equal(EquipmentValidationType.LineOccupied, result.ValidationType);
+        Assert.Contains("already occupied", result.ErrorMessage);
+        Assert.NotNull(result.ConflictingWorkOrder);
+        Assert.Equal("WO-EXISTING-001", result.ConflictingWorkOrder.Id);
+    }
+
+    [Fact]
+    public async Task ValidateWorkOrderEquipmentAsync_WithSameWorkOrderOnLine_ReturnsSuccess()
+    {
+        // Arrange
+        var workOrderId = "WO-SAME-001";
+        var lineId = "LINE-002";
+        
+        // Create an active work order with the same ID
+        var workOrder = CreateTestWorkOrder(workOrderId, "ADAM-002");
+        workOrder.Start();
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        // Act - Validate the same work order (should succeed)
+        var result = await _equipmentLineService.ValidateWorkOrderEquipmentAsync(workOrderId, lineId);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.NotNull(result.EquipmentLine);
+    }
+
+    [Fact]
+    public async Task GetAllAdamDeviceMappingsAsync_ReturnsAllMappings()
+    {
+        // Act
+        var mappings = await _equipmentLineService.GetAllAdamDeviceMappingsAsync();
+
+        // Assert
+        var mappingsList = mappings.ToList();
+        Assert.True(mappingsList.Count >= 3); // At least our test mappings
+
+        // Verify specific mappings
+        Assert.Contains(mappingsList, m => m.AdamDeviceId == "ADAM-001" && m.AdamChannel == 0 && m.LineId == "LINE-001");
+        Assert.Contains(mappingsList, m => m.AdamDeviceId == "ADAM-002" && m.AdamChannel == 0 && m.LineId == "LINE-002");
+        Assert.Contains(mappingsList, m => m.AdamDeviceId == "ADAM-003" && m.AdamChannel == 0 && m.LineId == "LINE-003");
+    }
+
+    [Fact]
+    public async Task IsAdamDeviceMappingAvailableAsync_WithAvailableMapping_ReturnsTrue()
+    {
+        // Arrange
+        var adamDeviceId = "ADAM-AVAILABLE";
+        var adamChannel = 5;
+
+        // Act
+        var isAvailable = await _equipmentLineService.IsAdamDeviceMappingAvailableAsync(adamDeviceId, adamChannel);
+
+        // Assert
+        Assert.True(isAvailable);
+    }
+
+    [Fact]
+    public async Task IsAdamDeviceMappingAvailableAsync_WithUsedMapping_ReturnsFalse()
+    {
+        // Arrange
+        var adamDeviceId = "ADAM-001"; // Already used by LINE-001
+        var adamChannel = 0;
+
+        // Act
+        var isAvailable = await _equipmentLineService.IsAdamDeviceMappingAvailableAsync(adamDeviceId, adamChannel);
+
+        // Assert
+        Assert.False(isAvailable);
+    }
+
+    [Fact]
+    public async Task IsAdamDeviceMappingAvailableAsync_WithExcludeLine_ReturnsTrue()
+    {
+        // Arrange
+        var adamDeviceId = "ADAM-001";
+        var adamChannel = 0;
+        var excludeLineId = "LINE-001"; // Exclude the line that uses this mapping
+
+        // Act
+        var isAvailable = await _equipmentLineService.IsAdamDeviceMappingAvailableAsync(adamDeviceId, adamChannel, excludeLineId);
+
+        // Assert
+        Assert.True(isAvailable);
+    }
+
+    [Fact]
+    public async Task CreateEquipmentLineAsync_WithValidData_CreatesSuccessfully()
+    {
+        // Arrange
+        var creationData = new EquipmentLineCreationData(
+            "LINE-CREATE-001",
+            "New Test Line",
+            "ADAM-CREATE-001",
+            5,
+            true);
+
+        // Act
+        var result = await _equipmentLineService.CreateEquipmentLineAsync(creationData);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.ErrorMessage);
+        Assert.NotNull(result.EquipmentLineId);
+        Assert.NotNull(result.EquipmentLine);
+        Assert.Equal("LINE-CREATE-001", result.EquipmentLine.LineId);
+        Assert.Equal("New Test Line", result.EquipmentLine.LineName);
+        Assert.Equal("ADAM-CREATE-001", result.EquipmentLine.AdamDeviceId);
+        Assert.Equal(5, result.EquipmentLine.AdamChannel);
+    }
+
+    [Fact]
+    public async Task CreateEquipmentLineAsync_WithDuplicateLineId_ReturnsFailure()
+    {
+        // Arrange
+        var creationData = new EquipmentLineCreationData(
+            "LINE-001", // Duplicate line ID
+            "Duplicate Line",
+            "ADAM-DUPLICATE",
+            1);
+
+        // Act
+        var result = await _equipmentLineService.CreateEquipmentLineAsync(creationData);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Contains("already in use", result.ErrorMessage);
+        Assert.Null(result.EquipmentLineId);
+        Assert.Null(result.EquipmentLine);
+    }
+
+    [Fact]
+    public async Task CreateEquipmentLineAsync_WithDuplicateAdamMapping_ReturnsFailure()
+    {
+        // Arrange
+        var creationData = new EquipmentLineCreationData(
+            "LINE-ADAM-DUP",
+            "ADAM Duplicate Line",
+            "ADAM-001", // Duplicate ADAM device
+            0);         // Duplicate channel
+
+        // Act
+        var result = await _equipmentLineService.CreateEquipmentLineAsync(creationData);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Contains("already mapped", result.ErrorMessage);
+        Assert.Null(result.EquipmentLineId);
+        Assert.Null(result.EquipmentLine);
+    }
+
+    [Fact]
+    public async Task UpdateAdamDeviceMappingAsync_WithValidMapping_UpdatesSuccessfully()
+    {
+        // Arrange
+        var lineId = "LINE-UPDATE-TEST";
+        var originalAdamId = "ADAM-ORIGINAL";
+        var newAdamId = "ADAM-UPDATED";
+
+        // Create test equipment line
+        var creationData = new EquipmentLineCreationData(lineId, "Update Test Line", originalAdamId, 0);
+        var createResult = await _equipmentLineService.CreateEquipmentLineAsync(creationData);
+        Assert.True(createResult.IsSuccess);
+
+        // Act - Update ADAM mapping
+        var result = await _equipmentLineService.UpdateAdamDeviceMappingAsync(lineId, newAdamId, 5);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.ErrorMessage);
+        Assert.NotNull(result.EquipmentLine);
+        Assert.Equal(newAdamId, result.EquipmentLine.AdamDeviceId);
+        Assert.Equal(5, result.EquipmentLine.AdamChannel);
+    }
+
+    [Fact]
+    public async Task UpdateAdamDeviceMappingAsync_WithActiveJob_ReturnsFailure()
+    {
+        // Arrange
+        var lineId = "LINE-003";
+        
+        // Create active work order on the line
+        var workOrder = CreateTestWorkOrder("WO-UPDATE-BLOCK", "ADAM-003");
+        workOrder.Start();
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        // Act - Try to update ADAM mapping
+        var result = await _equipmentLineService.UpdateAdamDeviceMappingAsync(lineId, "ADAM-NEW", 1);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Contains("active job", result.ErrorMessage);
+        Assert.Null(result.EquipmentLine);
+    }
+
+    [Fact]
+    public async Task UpdateAdamDeviceMappingAsync_WithDuplicateMapping_ReturnsFailure()
+    {
+        // Arrange
+        var lineId = "LINE-002";
+        var conflictingAdamId = "ADAM-001"; // Already used by LINE-001
+        var conflictingChannel = 0;
+
+        // Act
+        var result = await _equipmentLineService.UpdateAdamDeviceMappingAsync(lineId, conflictingAdamId, conflictingChannel);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.Contains("already mapped", result.ErrorMessage);
+        Assert.Null(result.EquipmentLine);
+    }
+
+    [Fact]
+    public async Task GetEquipmentLineAvailabilityAsync_WithAvailableLine_ReturnsCorrectStatus()
+    {
+        // Arrange
+        var lineId = "LINE-001";
+
+        // Act
+        var availability = await _equipmentLineService.GetEquipmentLineAvailabilityAsync(lineId);
+
+        // Assert
+        Assert.NotNull(availability);
+        Assert.Equal(lineId, availability.LineId);
+        Assert.Equal("Test Production Line 1", availability.LineName);
+        Assert.True(availability.IsActive);
+        Assert.True(availability.IsAvailable);
+        Assert.Null(availability.ActiveWorkOrderId);
+        Assert.Null(availability.ActiveProduct);
+        Assert.Null(availability.CompletionPercentage);
+        Assert.Equal("ADAM-001", availability.AdamDeviceId);
+        Assert.Equal(0, availability.AdamChannel);
+    }
+
+    [Fact]
+    public async Task GetEquipmentLineAvailabilityAsync_WithOccupiedLine_ReturnsCorrectStatus()
+    {
+        // Arrange
+        var lineId = "LINE-002";
+        var workOrderId = "WO-OCCUPIED-TEST";
+        
+        var workOrder = CreateTestWorkOrder(workOrderId, "ADAM-002");
+        workOrder.Start();
+        workOrder.UpdateFromCounterData(60, 15); // 80% completion
+        await _workOrderRepository.CreateAsync(workOrder);
+
+        // Act
+        var availability = await _equipmentLineService.GetEquipmentLineAvailabilityAsync(lineId);
+
+        // Assert
+        Assert.NotNull(availability);
+        Assert.Equal(lineId, availability.LineId);
+        Assert.True(availability.IsActive);
+        Assert.False(availability.IsAvailable);
+        Assert.Equal(workOrderId, availability.ActiveWorkOrderId);
+        Assert.Equal("Test Product Description", availability.ActiveProduct);
+        Assert.Equal(75m, availability.CompletionPercentage); // (60+15)/100 = 75%
+    }
+
+    [Fact]
+    public async Task GetEquipmentLineAvailabilityAsync_WithInactiveLine_ReturnsCorrectStatus()
+    {
+        // Arrange
+        var lineId = "LINE-INACTIVE";
+
+        // Act
+        var availability = await _equipmentLineService.GetEquipmentLineAvailabilityAsync(lineId);
+
+        // Assert
+        Assert.NotNull(availability);
+        Assert.Equal(lineId, availability.LineId);
+        Assert.False(availability.IsActive);
+        Assert.False(availability.IsAvailable); // Inactive lines are not available
+        Assert.Null(availability.ActiveWorkOrderId);
+    }
+
+    [Fact]
+    public async Task GetAllEquipmentLineAvailabilitiesAsync_ReturnsAllStatuses()
+    {
+        // Arrange - Create work orders on some lines
+        var workOrder1 = CreateTestWorkOrder("WO-STATUS-ALL-1", "ADAM-001");
+        workOrder1.Start();
+        await _workOrderRepository.CreateAsync(workOrder1);
+
+        var workOrder2 = CreateTestWorkOrder("WO-STATUS-ALL-2", "ADAM-002");
+        workOrder2.Start();
+        await _workOrderRepository.CreateAsync(workOrder2);
+
+        // Act
+        var availabilities = await _equipmentLineService.GetAllEquipmentLineAvailabilitiesAsync();
+
+        // Assert
+        var availabilitiesList = availabilities.ToList();
+        Assert.True(availabilitiesList.Count >= 4); // At least our 4 test lines
+
+        // Check occupied lines
+        var line1Availability = availabilitiesList.FirstOrDefault(a => a.LineId == "LINE-001");
+        Assert.NotNull(line1Availability);
+        Assert.False(line1Availability.IsAvailable);
+        Assert.Equal("WO-STATUS-ALL-1", line1Availability.ActiveWorkOrderId);
+
+        var line2Availability = availabilitiesList.FirstOrDefault(a => a.LineId == "LINE-002");
+        Assert.NotNull(line2Availability);
+        Assert.False(line2Availability.IsAvailable);
+        Assert.Equal("WO-STATUS-ALL-2", line2Availability.ActiveWorkOrderId);
+
+        // Check available line
+        var line3Availability = availabilitiesList.FirstOrDefault(a => a.LineId == "LINE-003");
+        Assert.NotNull(line3Availability);
+        Assert.True(line3Availability.IsAvailable);
+        Assert.Null(line3Availability.ActiveWorkOrderId);
+
+        // Check inactive line
+        var inactiveAvailability = availabilitiesList.FirstOrDefault(a => a.LineId == "LINE-INACTIVE");
+        Assert.NotNull(inactiveAvailability);
+        Assert.False(inactiveAvailability.IsAvailable);
+        Assert.Null(inactiveAvailability.ActiveWorkOrderId);
+    }
+
+    [Fact]
+    public async Task AdamDeviceMappingWorkflow_CreateUpdateValidate_WorksCorrectly()
+    {
+        // Arrange - Create new equipment line
+        var lineId = "LINE-WORKFLOW-TEST";
+        var creationData = new EquipmentLineCreationData(
+            lineId, "Workflow Test Line", "ADAM-WORKFLOW-001", 0);
+
+        // Act 1: Create equipment line
+        var createResult = await _equipmentLineService.CreateEquipmentLineAsync(creationData);
+        Assert.True(createResult.IsSuccess);
+
+        // Act 2: Verify ADAM mapping is no longer available
+        var isAvailable1 = await _equipmentLineService.IsAdamDeviceMappingAvailableAsync("ADAM-WORKFLOW-001", 0);
+        Assert.False(isAvailable1);
+
+        // Act 3: Update ADAM mapping
+        var updateResult = await _equipmentLineService.UpdateAdamDeviceMappingAsync(lineId, "ADAM-WORKFLOW-002", 5);
+        Assert.True(updateResult.IsSuccess);
+
+        // Act 4: Verify old mapping is now available, new mapping is not
+        var isOldAvailable = await _equipmentLineService.IsAdamDeviceMappingAvailableAsync("ADAM-WORKFLOW-001", 0);
+        var isNewAvailable = await _equipmentLineService.IsAdamDeviceMappingAvailableAsync("ADAM-WORKFLOW-002", 5);
+        
+        Assert.True(isOldAvailable);
+        Assert.False(isNewAvailable);
+
+        // Act 5: Verify equipment line by ADAM device lookup
+        var foundLine = await _equipmentLineService.GetEquipmentLineByAdamDeviceAsync("ADAM-WORKFLOW-002", 5);
+        Assert.NotNull(foundLine);
+        Assert.Equal(lineId, foundLine.LineId);
+    }
+
+    [Fact]
+    public async Task ConcurrentEquipmentLineCreation_WithSameAdamMapping_EnforcesUniqueness()
+    {
+        // Arrange
+        var tasks = new List<Task<EquipmentLineCreationResult>>();
+
+        // Act - Try to create multiple lines with the same ADAM mapping
+        for (int i = 0; i < 3; i++)
+        {
+            var lineId = $"LINE-CONCURRENT-{i}";
+            var creationData = new EquipmentLineCreationData(
+                lineId, $"Concurrent Line {i}", "ADAM-CONCURRENT", 0); // Same ADAM mapping
+
+            tasks.Add(Task.Run(() => _equipmentLineService.CreateEquipmentLineAsync(creationData)));
+        }
+
+        var results = await Task.WhenAll(tasks);
+
+        // Assert - Only one should succeed
+        var successCount = results.Count(r => r.IsSuccess);
+        var failureCount = results.Count(r => !r.IsSuccess);
+
+        Assert.Equal(1, successCount);
+        Assert.Equal(2, failureCount);
+
+        // All failures should be for duplicate ADAM mapping
+        Assert.All(results.Where(r => !r.IsSuccess), 
+            r => Assert.Contains("already mapped", r.ErrorMessage));
+    }
+
+    /// <summary>
+    /// Set up test database with required tables
+    /// </summary>
+    private async Task SetupTestDatabaseAsync()
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+
+        // Create equipment_lines table
+        await connection.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS equipment_lines (
+                id SERIAL PRIMARY KEY,
+                line_id VARCHAR(50) UNIQUE NOT NULL,
+                line_name VARCHAR(100) NOT NULL,
+                adam_device_id VARCHAR(50) NOT NULL,
+                adam_channel INTEGER NOT NULL,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                
+                CONSTRAINT equipment_lines_adam_channel_valid CHECK (adam_channel >= 0 AND adam_channel <= 15),
+                UNIQUE(adam_device_id, adam_channel)
+            );");
+
+        // Create work_orders table
+        await connection.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS work_orders (
+                work_order_id VARCHAR(50) PRIMARY KEY,
+                work_order_description TEXT NOT NULL,
+                product_id VARCHAR(50) NOT NULL,
+                product_description TEXT NOT NULL,
+                planned_quantity DECIMAL(18,3) NOT NULL,
+                unit_of_measure VARCHAR(20) NOT NULL DEFAULT 'pieces',
+                scheduled_start_time TIMESTAMPTZ NOT NULL,
+                scheduled_end_time TIMESTAMPTZ NOT NULL,
+                resource_reference VARCHAR(50) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+                actual_quantity_good DECIMAL(18,3) NOT NULL DEFAULT 0,
+                actual_quantity_scrap DECIMAL(18,3) NOT NULL DEFAULT 0,
+                actual_start_time TIMESTAMPTZ,
+                actual_end_time TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                
+                CONSTRAINT work_orders_planned_quantity_positive CHECK (planned_quantity > 0),
+                CONSTRAINT work_orders_actual_quantities_non_negative CHECK (
+                    actual_quantity_good >= 0 AND actual_quantity_scrap >= 0
+                ),
+                CONSTRAINT work_orders_scheduled_times_valid CHECK (scheduled_end_time > scheduled_start_time),
+                CONSTRAINT work_orders_status_valid CHECK (
+                    status IN ('Pending', 'Active', 'Paused', 'Completed', 'Cancelled')
+                )
+            );");
+
+        // Create indexes
+        await connection.ExecuteAsync(@"
+            CREATE INDEX IF NOT EXISTS idx_work_orders_resource_status 
+            ON work_orders(resource_reference, status) 
+            WHERE status IN ('Active', 'Paused');
+
+            CREATE INDEX IF NOT EXISTS idx_equipment_lines_adam_device 
+            ON equipment_lines(adam_device_id, adam_channel) 
+            WHERE is_active = true;");
+    }
+
+    /// <summary>
+    /// Seed test data with equipment lines
+    /// </summary>
+    private async Task SeedTestDataAsync()
+    {
+        using var connection = await _connectionFactory.CreateConnectionAsync();
+
+        // Insert test equipment lines
+        await connection.ExecuteAsync(@"
+            INSERT INTO equipment_lines (line_id, line_name, adam_device_id, adam_channel, is_active)
+            VALUES 
+                ('LINE-001', 'Test Production Line 1', 'ADAM-001', 0, true),
+                ('LINE-002', 'Test Production Line 2', 'ADAM-002', 0, true),
+                ('LINE-003', 'Test Production Line 3', 'ADAM-003', 0, true),
+                ('LINE-INACTIVE', 'Inactive Test Line', 'ADAM-INACTIVE', 0, false)
+            ON CONFLICT (line_id) DO NOTHING");
+    }
+
+    /// <summary>
+    /// Create a test work order with default values
+    /// </summary>
+    private static WorkOrder CreateTestWorkOrder(
+        string workOrderId, 
+        string deviceId, 
+        decimal plannedQuantity = 100m)
+    {
+        var start = DateTime.UtcNow;
+        var end = start.AddHours(8);
+
+        return new WorkOrder(
+            workOrderId,
+            $"Test Work Order {workOrderId}",
+            "TEST_PRODUCT_001",
+            "Test Product Description",
+            plannedQuantity,
+            start,
+            end,
+            deviceId,
+            "pieces"
+        );
+    }
+}
