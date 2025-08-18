@@ -2,6 +2,7 @@ using Industrial.Adam.EquipmentScheduling.Domain.Interfaces;
 using Industrial.Adam.EquipmentScheduling.Domain.Services;
 using Industrial.Adam.EquipmentScheduling.Infrastructure.Configuration;
 using Industrial.Adam.EquipmentScheduling.Infrastructure.Data;
+using Industrial.Adam.EquipmentScheduling.Infrastructure.Health;
 using Industrial.Adam.EquipmentScheduling.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -37,23 +38,36 @@ public static class DependencyInjection
             ?? configuration.GetSection($"{EquipmentSchedulingSettings.SectionName}:ConnectionString").Value
             ?? throw new InvalidOperationException("Equipment Scheduling connection string is not configured");
 
-        services.AddDbContext<EquipmentSchedulingDbContext>(options =>
+        // Use InMemory database for testing, PostgreSQL for production
+        if (environment.EnvironmentName == "Testing" || connectionString == "InMemoryDatabase")
         {
-            options.UseNpgsql(connectionString, npgsqlOptions =>
+            services.AddDbContext<EquipmentSchedulingDbContext>(options =>
             {
-                npgsqlOptions.MigrationsAssembly(typeof(EquipmentSchedulingDbContext).Assembly.FullName);
-                npgsqlOptions.CommandTimeout(30);
-            });
-
-            // Enable sensitive data logging in development
-            if (environment.IsDevelopment())
-            {
+                options.UseInMemoryDatabase($"EquipmentSchedulingTestDb_{Guid.NewGuid()}");
                 options.EnableSensitiveDataLogging();
                 options.EnableDetailedErrors();
-            }
+            });
+        }
+        else
+        {
+            services.AddDbContext<EquipmentSchedulingDbContext>(options =>
+            {
+                options.UseNpgsql(connectionString, npgsqlOptions =>
+                {
+                    npgsqlOptions.MigrationsAssembly(typeof(EquipmentSchedulingDbContext).Assembly.FullName);
+                    npgsqlOptions.CommandTimeout(30);
+                });
 
-            // Use default logging - will be configured at application level
-        });
+                // Enable sensitive data logging in development
+                if (environment.IsDevelopment())
+                {
+                    options.EnableSensitiveDataLogging();
+                    options.EnableDetailedErrors();
+                }
+
+                // Use default logging - will be configured at application level
+            });
+        }
 
         // Repositories
         services.AddScoped<IResourceRepository, ResourceRepository>();
@@ -64,12 +78,23 @@ public static class DependencyInjection
         // Domain Services
         services.AddScoped<ScheduleGenerationService>();
 
-        // Health Checks
-        services.AddHealthChecks()
-            .AddNpgSql(
+        // Health Checks - only add PostgreSQL health check for non-test environments
+        var healthChecks = services.AddHealthChecks();
+
+        if (environment.EnvironmentName != "Testing" && connectionString != "InMemoryDatabase")
+        {
+            healthChecks.AddNpgSql(
                 connectionString,
                 name: "equipment-scheduling-database",
                 tags: ["database", "equipment-scheduling"]);
+        }
+        else
+        {
+            // For testing environments, add a simple check that just verifies the DbContext can be created
+            healthChecks.AddCheck<EquipmentSchedulingDbContextHealthCheck>(
+                name: "equipment-scheduling-database",
+                tags: ["database", "equipment-scheduling"]);
+        }
 
         // Memory Cache
         services.AddMemoryCache();
