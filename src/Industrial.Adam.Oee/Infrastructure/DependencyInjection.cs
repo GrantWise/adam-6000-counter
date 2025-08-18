@@ -3,6 +3,7 @@ using Industrial.Adam.Oee.Application.Events;
 using Industrial.Adam.Oee.Application.Interfaces;
 using Industrial.Adam.Oee.Application.Services;
 using Industrial.Adam.Oee.Domain.Interfaces;
+using Industrial.Adam.Oee.Domain.Services;
 using Industrial.Adam.Oee.Infrastructure.Configuration;
 using Industrial.Adam.Oee.Infrastructure.Monitoring;
 using Industrial.Adam.Oee.Infrastructure.Repositories;
@@ -83,6 +84,9 @@ public static class DependencyInjection
         services.AddScoped<ICounterDataRepository, SimpleCounterDataRepository>();
         services.AddScoped<IWorkOrderRepository, WorkOrderRepository>();
 
+        // Add domain services
+        services.AddScoped<ISimpleJobQueueService, SimpleJobQueueService>();
+
         // Add cache services
         services.AddMemoryCache();
         services.AddSingleton<ICacheService, CacheService>();
@@ -104,8 +108,8 @@ public static class DependencyInjection
 
             options.EnableDetailedErrors = signalRSettings.EnableDetailedLogging;
             options.KeepAliveInterval = TimeSpan.FromSeconds(signalRSettings.KeepAliveIntervalSeconds);
-            options.ClientTimeoutInterval = TimeSpan.FromSeconds(signalRSettings.ClientTimeoutIntervalSeconds);
-            options.MaximumReceiveMessageSize = signalRSettings.MaxMessageBufferSize;
+            // Note: ClientTimeoutInterval and MaximumReceiveMessageSize properties 
+            // are not available in SignalR v1.2.0 - they were added in later versions
         });
 
         // Add resilience policies (basic implementation for now)

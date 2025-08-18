@@ -494,7 +494,7 @@ public sealed class StoppageDetectionService : IStoppageDetectionService
         try
         {
             var activeWorkOrder = await _workOrderRepository.GetActiveByLineAsync(lineId, cancellationToken);
-            return activeWorkOrder?.WorkOrderId;
+            return activeWorkOrder?.Id;
         }
         catch (Exception ex)
         {

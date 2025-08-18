@@ -345,14 +345,19 @@ public class StoppageDetectionServiceTests
     {
         return new WorkOrder(
             workOrderId,
+            "Test Work Order",
             "PROD001",
             "Test Product",
-            lineId,
             1000,
             DateTime.UtcNow.AddHours(-2),
             DateTime.UtcNow.AddHours(2),
-            WorkOrderStatus.InProgress,
-            DateTime.UtcNow);
+            lineId,
+            "pieces",
+            0,
+            0,
+            DateTime.UtcNow,
+            null,
+            WorkOrderStatus.Active);
     }
 
     private void SetupLastProductionTime(string lineId, DateTime? lastProductionTime)

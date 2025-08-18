@@ -43,6 +43,9 @@
     <!-- Memory Caching -->
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
     
+    <!-- SignalR for Infrastructure layer -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR" Version="1.2.0" />
+    
     <!-- Code Analysis -->
     <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0">
       <PrivateAssets>all</PrivateAssets>

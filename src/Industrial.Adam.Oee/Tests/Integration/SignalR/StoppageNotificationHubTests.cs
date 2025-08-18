@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Industrial.Adam.Oee.Application.Events;
 using Industrial.Adam.Oee.Domain.Events;
 using Industrial.Adam.Oee.Infrastructure.SignalR;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -252,7 +253,7 @@ public class StoppageNotificationHubTests : IClassFixture<WebApplicationFactory<
 
         var client = _factory.CreateClient();
         _connection = new HubConnectionBuilder()
-            .WithUrl($"{client.BaseAddress!.TrimEnd('/')}{_hubUrl}", options =>
+            .WithUrl($"{client.BaseAddress!.ToString().TrimEnd('/')}{_hubUrl}", options =>
             {
                 options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
             })

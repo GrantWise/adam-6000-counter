@@ -483,6 +483,22 @@ public enum JobSequencingViolationType
 }
 
 /// <summary>
+/// Types of job completion issues
+/// </summary>
+public enum JobCompletionIssueType
+{
+    /// <summary>
+    /// Job completed with less than required minimum percentage
+    /// </summary>
+    UnderCompletion,
+
+    /// <summary>
+    /// Job completed with significantly more than planned quantity
+    /// </summary>
+    Overproduction
+}
+
+/// <summary>
 /// Equipment line status information
 /// </summary>
 /// <param name="LineId">Equipment line identifier</param>

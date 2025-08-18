@@ -70,12 +70,12 @@ public class StoppageNotificationsController : ControllerBase
                 CheckedAt = DateTime.UtcNow
             };
 
-            return Ok(ApiResponse.Success(status));
+            return Ok(ApiResponse.WithData(status));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get stoppage status for line {LineId}", lineId);
-            return StatusCode(500, ApiResponse.Error($"Failed to get stoppage status: {ex.Message}"));
+            return StatusCode(500, ApiResponse.Failed($"Failed to get stoppage status: {ex.Message}"));
         }
     }
 
@@ -131,12 +131,12 @@ public class StoppageNotificationsController : ControllerBase
                 }
             }
 
-            return Ok(ApiResponse.Success(statuses.AsEnumerable()));
+            return Ok(ApiResponse.WithData(statuses.AsEnumerable()));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get stoppage status for all lines");
-            return StatusCode(500, ApiResponse.Error($"Failed to get stoppage status: {ex.Message}"));
+            return StatusCode(500, ApiResponse.Failed($"Failed to get stoppage status: {ex.Message}"));
         }
     }
 
@@ -184,12 +184,12 @@ public class StoppageNotificationsController : ControllerBase
                     cancellationToken);
             }
 
-            return Ok(ApiResponse.Success(result));
+            return Ok(ApiResponse.WithData(result));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to trigger stoppage detection for line {LineId}", lineId);
-            return StatusCode(500, ApiResponse.Error($"Failed to trigger detection: {ex.Message}"));
+            return StatusCode(500, ApiResponse.Failed($"Failed to trigger detection: {ex.Message}"));
         }
     }
 
@@ -214,7 +214,7 @@ public class StoppageNotificationsController : ControllerBase
         {
             if (string.IsNullOrWhiteSpace(request.LineId))
             {
-                return BadRequest(ApiResponse.Error("LineId is required"));
+                return BadRequest(ApiResponse.Failed("LineId is required"));
             }
 
             _logger.LogInformation("Sending test notification for line {LineId}", request.LineId);
@@ -244,12 +244,12 @@ public class StoppageNotificationsController : ControllerBase
                 Message = "Test notification sent successfully"
             };
 
-            return Ok(ApiResponse.Success(result));
+            return Ok(ApiResponse.WithData(result));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send test notification");
-            return StatusCode(500, ApiResponse.Error($"Failed to send test notification: {ex.Message}"));
+            return StatusCode(500, ApiResponse.Failed($"Failed to send test notification: {ex.Message}"));
         }
     }
 
@@ -289,7 +289,7 @@ public class StoppageNotificationsController : ControllerBase
             CheckedAt = DateTime.UtcNow
         };
 
-        return Ok(ApiResponse.Success(status));
+        return Ok(ApiResponse.WithData(status));
     }
 }
 

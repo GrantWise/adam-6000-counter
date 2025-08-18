@@ -158,6 +158,74 @@ public sealed class WorkOrderRepository : IWorkOrderRepository
     }
 
     /// <summary>
+    /// Get the active work order for a specific equipment line
+    /// </summary>
+    /// <param name="lineId">Equipment line identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Active work order or null if none active</returns>
+    public async Task<WorkOrder?> GetActiveByLineAsync(string lineId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(lineId))
+            throw new ArgumentException("Line ID cannot be null or empty", nameof(lineId));
+
+        using var activity = ActivitySource.StartActivity("GetActiveWorkOrderByLine");
+        activity?.SetTag("lineId", lineId);
+
+        try
+        {
+            using var connection = await _connectionFactory.CreateConnectionAsync();
+
+            // Join with equipment_lines to find the active work order for the line
+            const string sql = @"
+                SELECT 
+                    wo.work_order_id as Id,
+                    wo.work_order_description as WorkOrderDescription,
+                    wo.product_id as ProductId,
+                    wo.product_description as ProductDescription,
+                    wo.planned_quantity as PlannedQuantity,
+                    wo.unit_of_measure as UnitOfMeasure,
+                    wo.scheduled_start_time as ScheduledStartTime,
+                    wo.scheduled_end_time as ScheduledEndTime,
+                    wo.resource_reference as ResourceReference,
+                    wo.status as Status,
+                    wo.actual_quantity_good as ActualQuantityGood,
+                    wo.actual_quantity_scrap as ActualQuantityScrap,
+                    wo.actual_start_time as ActualStartTime,
+                    wo.actual_end_time as ActualEndTime,
+                    wo.created_at as CreatedAt,
+                    wo.updated_at as UpdatedAt
+                FROM work_orders wo
+                INNER JOIN equipment_lines el ON wo.resource_reference = el.adam_device_id
+                WHERE el.line_id = @lineId 
+                  AND wo.status IN ('Active', 'Paused')
+                ORDER BY wo.created_at DESC
+                LIMIT 1";
+
+            _logger.LogDebug("Retrieving active work order for line {LineId}", lineId);
+
+            var workOrderData = await connection.QuerySingleOrDefaultAsync<WorkOrderData>(sql, new { lineId });
+
+            if (workOrderData == null)
+            {
+                _logger.LogDebug("No active work order found for line {LineId}", lineId);
+                return null;
+            }
+
+            var workOrder = MapToWorkOrder(workOrderData);
+
+            _logger.LogInformation("Found active work order {WorkOrderId} for line {LineId} with status {Status}",
+                workOrder.Id, lineId, workOrder.Status);
+
+            return workOrder;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve active work order for line {LineId}", lineId);
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Get work orders by status
     /// </summary>
     /// <param name="status">Work order status</param>

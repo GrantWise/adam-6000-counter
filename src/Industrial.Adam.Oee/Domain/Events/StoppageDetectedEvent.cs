@@ -124,9 +124,24 @@ public interface IDomainEvent
 /// </summary>
 public enum NotificationUrgency
 {
+    /// <summary>
+    /// Low priority notification
+    /// </summary>
     Low = 1,
+
+    /// <summary>
+    /// Medium priority notification
+    /// </summary>
     Medium = 2,
+
+    /// <summary>
+    /// High priority notification
+    /// </summary>
     High = 3,
+
+    /// <summary>
+    /// Critical priority notification
+    /// </summary>
     Critical = 4
 }
 

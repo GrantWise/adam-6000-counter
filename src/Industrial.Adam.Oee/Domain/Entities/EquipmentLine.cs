@@ -280,16 +280,3 @@ public record EquipmentLineSummary(
     DateTime UpdatedAt
 );
 
-/// <summary>
-/// ADAM device mapping information
-/// </summary>
-/// <param name="AdamDeviceId">ADAM device identifier</param>
-/// <param name="AdamChannel">ADAM channel number</param>
-/// <param name="LineId">Associated equipment line ID</param>
-/// <param name="LineName">Associated equipment line name</param>
-public record AdamDeviceMapping(
-    string AdamDeviceId,
-    int AdamChannel,
-    string LineId,
-    string LineName
-);

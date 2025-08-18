@@ -138,7 +138,7 @@ public class EquipmentLineService : IEquipmentLineService
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Collection of ADAM device mappings</returns>
-    public async Task<IEnumerable<Entities.AdamDeviceMapping>> GetAllAdamDeviceMappingsAsync(
+    public async Task<IEnumerable<Interfaces.AdamDeviceMapping>> GetAllAdamDeviceMappingsAsync(
         CancellationToken cancellationToken = default)
     {
         try
@@ -148,7 +148,7 @@ public class EquipmentLineService : IEquipmentLineService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting ADAM device mappings");
-            return Enumerable.Empty<Entities.AdamDeviceMapping>();
+            return Enumerable.Empty<Interfaces.AdamDeviceMapping>();
         }
     }
 
