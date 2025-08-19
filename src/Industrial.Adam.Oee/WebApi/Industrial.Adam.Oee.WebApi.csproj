@@ -1,47 +1,32 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    
-    <!-- Package Properties -->
+    <!-- Project-specific Properties -->
     <PackageId>Industrial.Adam.Oee.WebApi</PackageId>
-    <Version>1.0.0</Version>
-    <Authors>Industrial Systems</Authors>
     <Description>OEE Web API service for React frontend integration</Description>
     <PackageTags>industrial;oee;webapi;rest</PackageTags>
     
-    <!-- Build Properties -->
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- WebApi projects automatically get TreatWarningsAsErrors=false from Directory.Build.props -->
   </PropertyGroup>
 
   <ItemGroup>
     <!-- ASP.NET Core -->
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="$(MicrosoftAspNetCoreVersion)" />
     
     <!-- Swagger/OpenAPI -->
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
     
     <!-- Logging -->
-    <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
+    <PackageReference Include="Serilog.AspNetCore" Version="$(SerilogVersion)" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
     
     <!-- Health Checks -->
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="$(MicrosoftExtensionsVersion)" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="8.0.1" />
     
     <!-- CORS for React integration -->
     <PackageReference Include="Microsoft.AspNetCore.Cors" Version="2.2.0" />
-    
-    <!-- Code Analysis -->
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
