@@ -154,7 +154,14 @@ public sealed class ResourceTests
         var parent = new Resource("Parent", "PARENT-001", ResourceType.Area);
         var child = new Resource("Child", "CHILD-001", ResourceType.WorkCenter);
 
-        // Set up hierarchy
+        // Set up hierarchy - simulate parent has ID 100 by setting its hierarchy path appropriately
+        // Use reflection to set IDs for testing since they're protected
+        var parentIdField = typeof(Resource).BaseType!.GetProperty("Id", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        var childIdField = typeof(Resource).BaseType!.GetProperty("Id", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        
+        parentIdField!.SetValue(parent, 100L);
+        childIdField!.SetValue(child, 200L);
+
         parent.SetParent(1L, "/1/");
         child.SetParent(parent.Id, parent.HierarchyPath);
 

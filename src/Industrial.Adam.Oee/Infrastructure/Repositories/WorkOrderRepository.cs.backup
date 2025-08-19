@@ -1170,19 +1170,4 @@ public sealed class WorkOrderRepository : IWorkOrderRepository
         decimal TotalActualQuantity,
         decimal OnTimeCompletionRate
     );
-
-    /// <summary>
-    /// Data structure for mapping work order completion history from database queries
-    /// </summary>
-    private sealed record WorkOrderCompletionData(
-        string WorkOrderId,
-        string ProductDescription,
-        decimal PlannedQuantity,
-        decimal ActualQuantity,
-        decimal YieldPercentage,
-        decimal ScheduledDuration,
-        decimal ActualDuration,
-        bool CompletedOnTime,
-        DateTime CompletionDate
-    );
 }

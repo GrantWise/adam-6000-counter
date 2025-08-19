@@ -4,6 +4,7 @@ using Industrial.Adam.EquipmentScheduling.Infrastructure.Configuration;
 using Industrial.Adam.EquipmentScheduling.Infrastructure.Data;
 using Industrial.Adam.EquipmentScheduling.Infrastructure.Health;
 using Industrial.Adam.EquipmentScheduling.Infrastructure.Repositories;
+using Industrial.Adam.EquipmentScheduling.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -77,6 +78,9 @@ public static class DependencyInjection
 
         // Domain Services
         services.AddScoped<ScheduleGenerationService>();
+
+        // Domain Event System
+        services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
 
         // Health Checks - only add PostgreSQL health check for non-test environments
         var healthChecks = services.AddHealthChecks();
