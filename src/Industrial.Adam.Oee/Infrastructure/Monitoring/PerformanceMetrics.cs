@@ -417,11 +417,38 @@ internal sealed record PerformanceData
 /// </summary>
 public sealed record PerformanceStatistics
 {
+    /// <summary>
+    /// Total number of calculations performed since the specified time
+    /// </summary>
     public int TotalCalculations { get; init; }
+
+    /// <summary>
+    /// Average calculation time across all operations
+    /// </summary>
     public TimeSpan AverageCalculationTime { get; init; }
+
+    /// <summary>
+    /// Maximum calculation time observed
+    /// </summary>
     public TimeSpan MaxCalculationTime { get; init; }
+
+    /// <summary>
+    /// Number of active devices with recent calculations
+    /// </summary>
     public int ActiveDevices { get; init; }
+
+    /// <summary>
+    /// Rate of calculations per minute
+    /// </summary>
     public double CalculationsPerMinute { get; init; }
+
+    /// <summary>
+    /// Current memory usage in megabytes
+    /// </summary>
     public double MemoryUsageMB { get; init; }
+
+    /// <summary>
+    /// Statistics collection start time
+    /// </summary>
     public DateTimeOffset Since { get; init; }
 }

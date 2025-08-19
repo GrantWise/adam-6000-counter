@@ -1,4 +1,5 @@
 using Industrial.Adam.Oee.Application.DTOs;
+using Industrial.Adam.Oee.Domain.Interfaces;
 
 namespace Industrial.Adam.Oee.Application.Interfaces;
 
@@ -80,29 +81,3 @@ public class DeviceStatusDto
     public DateTime LastUpdate { get; set; }
 }
 
-/// <summary>
-/// Work order validation result
-/// </summary>
-public class WorkOrderValidationResult
-{
-    /// <summary>
-    /// Indicates if the work order is valid
-    /// </summary>
-    public bool IsValid { get; set; }
-    /// <summary>
-    /// List of validation issues
-    /// </summary>
-    public IEnumerable<string> Issues { get; set; } = Array.Empty<string>();
-    /// <summary>
-    /// List of validation warnings
-    /// </summary>
-    public IEnumerable<string> Warnings { get; set; } = Array.Empty<string>();
-    /// <summary>
-    /// Indicates if processing can proceed despite issues
-    /// </summary>
-    public bool CanProceed { get; set; }
-    /// <summary>
-    /// Timestamp when validation was performed
-    /// </summary>
-    public DateTime ValidationTimestamp { get; set; }
-}

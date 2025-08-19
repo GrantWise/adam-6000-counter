@@ -1,394 +1,284 @@
 using Industrial.Adam.Oee.Domain.Entities;
 using Industrial.Adam.Oee.Domain.Enums;
 using Industrial.Adam.Oee.Domain.Exceptions;
+using Industrial.Adam.Oee.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Industrial.Adam.Oee.Domain.Services;
-
-/// <summary>
-/// Domain service for work order validation and business rule enforcement
-/// Extracts validation logic from WorkOrder entity to follow SRP
-/// </summary>
-public interface IWorkOrderValidationService
-{
-    /// <summary>
-    /// Validate work order creation parameters
-    /// </summary>
-    /// <param name="workOrderId">Work order identifier</param>
-    /// <param name="plannedQuantity">Planned quantity</param>
-    /// <param name="scheduledStartTime">Scheduled start time</param>
-    /// <param name="scheduledEndTime">Scheduled end time</param>
-    /// <param name="resourceReference">Resource reference</param>
-    /// <returns>Validation result</returns>
-    public ValidationResult ValidateCreation(
-        string workOrderId,
-        decimal plannedQuantity,
-        DateTime scheduledStartTime,
-        DateTime scheduledEndTime,
-        string resourceReference);
-
-    /// <summary>
-    /// Validate state transition
-    /// </summary>
-    /// <param name="currentStatus">Current work order status</param>
-    /// <param name="targetStatus">Target status</param>
-    /// <returns>Validation result</returns>
-    public ValidationResult ValidateStateTransition(WorkOrderStatus currentStatus, WorkOrderStatus targetStatus);
-
-    /// <summary>
-    /// Validate counter data update
-    /// </summary>
-    /// <param name="goodCount">Good pieces count</param>
-    /// <param name="scrapCount">Scrap pieces count</param>
-    /// <returns>Validation result</returns>
-    public ValidationResult ValidateCounterDataUpdate(decimal goodCount, decimal scrapCount);
-
-    /// <summary>
-    /// Validate work order business rules
-    /// </summary>
-    /// <param name="workOrder">Work order to validate</param>
-    /// <returns>Validation result</returns>
-    public ValidationResult ValidateBusinessRules(WorkOrder workOrder);
-
-    /// <summary>
-    /// Check if work order can be started
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>True if can be started</returns>
-    public bool CanStart(WorkOrder workOrder);
-
-    /// <summary>
-    /// Check if work order can be paused
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>True if can be paused</returns>
-    public bool CanPause(WorkOrder workOrder);
-
-    /// <summary>
-    /// Check if work order can be resumed
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>True if can be resumed</returns>
-    public bool CanResume(WorkOrder workOrder);
-
-    /// <summary>
-    /// Check if work order can be completed
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>True if can be completed</returns>
-    public bool CanComplete(WorkOrder workOrder);
-
-    /// <summary>
-    /// Check if work order can be cancelled
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>True if can be cancelled</returns>
-    public bool CanCancel(WorkOrder workOrder);
-}
 
 /// <summary>
 /// Implementation of work order validation service
 /// </summary>
 public sealed class WorkOrderValidationService : IWorkOrderValidationService
 {
+    private readonly IWorkOrderRepository _workOrderRepository;
     private readonly ILogger<WorkOrderValidationService> _logger;
 
     /// <summary>
     /// Initialize work order validation service
     /// </summary>
+    /// <param name="workOrderRepository">Work order repository</param>
     /// <param name="logger">Logger instance</param>
-    public WorkOrderValidationService(ILogger<WorkOrderValidationService> logger)
+    public WorkOrderValidationService(
+        IWorkOrderRepository workOrderRepository,
+        ILogger<WorkOrderValidationService> logger)
     {
+        _workOrderRepository = workOrderRepository ?? throw new ArgumentNullException(nameof(workOrderRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc />
-    public ValidationResult ValidateCreation(
-        string workOrderId,
-        decimal plannedQuantity,
-        DateTime scheduledStartTime,
-        DateTime scheduledEndTime,
-        string resourceReference)
-    {
-        var errors = new List<string>();
-
-        if (string.IsNullOrWhiteSpace(workOrderId))
-        {
-            errors.Add("Work order ID is required");
-        }
-
-        if (plannedQuantity <= 0)
-        {
-            errors.Add("Planned quantity must be positive");
-        }
-
-        if (scheduledEndTime <= scheduledStartTime)
-        {
-            errors.Add("Scheduled end time must be after start time");
-        }
-
-        if (string.IsNullOrWhiteSpace(resourceReference))
-        {
-            errors.Add("Resource reference is required");
-        }
-
-        // Business rule: Work orders should not be scheduled more than 1 year in advance
-        if (scheduledStartTime > DateTime.UtcNow.AddYears(1))
-        {
-            errors.Add("Work orders cannot be scheduled more than 1 year in advance");
-        }
-
-        // Business rule: Work orders should not be scheduled in the past (with 5-minute grace period)
-        if (scheduledStartTime < DateTime.UtcNow.AddMinutes(-5))
-        {
-            errors.Add("Work orders cannot be scheduled in the past");
-        }
-
-        // Business rule: Reasonable duration limits
-        var duration = scheduledEndTime - scheduledStartTime;
-        if (duration.TotalMinutes < 1)
-        {
-            errors.Add("Work order duration must be at least 1 minute");
-        }
-
-        if (duration.TotalDays > 30)
-        {
-            errors.Add("Work order duration cannot exceed 30 days");
-        }
-
-        var result = new ValidationResult(errors.Count == 0, errors);
-
-        if (!result.IsValid)
-        {
-            _logger.LogWarning(
-                "Work order creation validation failed for {WorkOrderId}: {Errors}",
-                workOrderId, string.Join(", ", errors));
-        }
-
-        return result;
-    }
-
-    /// <inheritdoc />
-    public ValidationResult ValidateStateTransition(WorkOrderStatus currentStatus, WorkOrderStatus targetStatus)
-    {
-        var errors = new List<string>();
-
-        // Define valid state transitions
-        var validTransitions = new Dictionary<WorkOrderStatus, HashSet<WorkOrderStatus>>
-        {
-            { WorkOrderStatus.Pending, new HashSet<WorkOrderStatus> { WorkOrderStatus.Active, WorkOrderStatus.Cancelled } },
-            { WorkOrderStatus.Active, new HashSet<WorkOrderStatus> { WorkOrderStatus.Paused, WorkOrderStatus.Completed, WorkOrderStatus.Cancelled } },
-            { WorkOrderStatus.Paused, new HashSet<WorkOrderStatus> { WorkOrderStatus.Active, WorkOrderStatus.Cancelled } },
-            { WorkOrderStatus.Completed, new HashSet<WorkOrderStatus>() }, // Terminal state
-            { WorkOrderStatus.Cancelled, new HashSet<WorkOrderStatus>() }  // Terminal state
-        };
-
-        if (!validTransitions.TryGetValue(currentStatus, out var allowedTargets) ||
-            !allowedTargets.Contains(targetStatus))
-        {
-            errors.Add($"Invalid state transition from {currentStatus} to {targetStatus}");
-        }
-
-        var result = new ValidationResult(errors.Count == 0, errors);
-
-        if (!result.IsValid)
-        {
-            _logger.LogWarning(
-                "State transition validation failed: {CurrentStatus} -> {TargetStatus}",
-                currentStatus, targetStatus);
-        }
-
-        return result;
-    }
-
-    /// <inheritdoc />
-    public ValidationResult ValidateCounterDataUpdate(decimal goodCount, decimal scrapCount)
-    {
-        var errors = new List<string>();
-
-        if (goodCount < 0)
-        {
-            errors.Add("Good count cannot be negative");
-        }
-
-        if (scrapCount < 0)
-        {
-            errors.Add("Scrap count cannot be negative");
-        }
-
-        // Business rule: Reasonable production limits
-        if (goodCount > 1_000_000)
-        {
-            errors.Add("Good count exceeds reasonable production limits");
-        }
-
-        if (scrapCount > 100_000)
-        {
-            errors.Add("Scrap count exceeds reasonable limits");
-        }
-
-        // Business rule: Quality check
-        var totalProduced = goodCount + scrapCount;
-        if (totalProduced > 0)
-        {
-            var yieldPercentage = (goodCount / totalProduced) * 100;
-            if (yieldPercentage < 1) // Less than 1% yield is suspicious
-            {
-                errors.Add($"Extremely low yield detected: {yieldPercentage:F1}%");
-            }
-        }
-
-        var result = new ValidationResult(errors.Count == 0, errors);
-
-        if (!result.IsValid)
-        {
-            _logger.LogWarning(
-                "Counter data validation failed: Good={Good}, Scrap={Scrap}, Errors={Errors}",
-                goodCount, scrapCount, string.Join(", ", errors));
-        }
-
-        return result;
-    }
-
-    /// <inheritdoc />
-    public ValidationResult ValidateBusinessRules(WorkOrder workOrder)
+    public async Task<WorkOrderValidationResult> ValidateForCreationAsync(
+        WorkOrder workOrder,
+        CancellationToken cancellationToken = default)
     {
         if (workOrder == null)
             throw new ArgumentNullException(nameof(workOrder));
 
+        _logger.LogDebug("Validating work order {WorkOrderId} for creation", workOrder.Id);
+
         var errors = new List<string>();
+        var warnings = new List<string>();
 
-        // Rule: Active work orders should have actual start time
-        if (workOrder.Status == WorkOrderStatus.Active && workOrder.ActualStartTime == null)
+        // Basic validation
+        if (string.IsNullOrWhiteSpace(workOrder.Id))
+            errors.Add("Work order ID is required");
+
+        if (string.IsNullOrWhiteSpace(workOrder.ResourceReference))
+            errors.Add("Resource reference is required");
+
+        if (workOrder.PlannedQuantity <= 0)
+            errors.Add("Target quantity must be positive");
+
+        // Schedule validation
+        if (workOrder.ScheduledStartTime >= workOrder.ScheduledEndTime)
+            errors.Add("Scheduled end time must be after start time");
+
+        // Check for duplicates
+        var existingWorkOrder = await _workOrderRepository.GetByIdAsync(workOrder.Id, cancellationToken);
+        if (existingWorkOrder != null)
+            errors.Add($"Work order with ID '{workOrder.Id}' already exists");
+
+        // Scheduling validation
+        var schedulingResult = await ValidateSchedulingConstraintsAsync(workOrder, cancellationToken);
+        if (!schedulingResult.IsValidSchedule)
         {
-            errors.Add("Active work orders must have an actual start time");
+            errors.AddRange(schedulingResult.ScheduleIssues);
         }
 
-        // Rule: Completed work orders should have actual end time
-        if (workOrder.Status == WorkOrderStatus.Completed && workOrder.ActualEndTime == null)
+        var isValid = !errors.Any();
+        var validationCode = isValid ? "VALID_FOR_CREATION" : "INVALID_FOR_CREATION";
+
+        return new WorkOrderValidationResult(isValid, errors, warnings, validationCode);
+    }
+
+    /// <inheritdoc />
+    public async Task<WorkOrderValidationResult> ValidateForStartAsync(
+        string workOrderId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workOrderId))
+            throw new ArgumentException("Work order ID cannot be null or empty", nameof(workOrderId));
+
+        _logger.LogDebug("Validating work order {WorkOrderId} for start", workOrderId);
+
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        var workOrder = await _workOrderRepository.GetByIdAsync(workOrderId, cancellationToken);
+        if (workOrder == null)
         {
-            errors.Add("Completed work orders must have an actual end time");
+            errors.Add($"Work order '{workOrderId}' not found");
+            return new WorkOrderValidationResult(false, errors, warnings, "WORK_ORDER_NOT_FOUND");
         }
 
-        // Rule: Actual times should be logical
-        if (workOrder.ActualStartTime.HasValue && workOrder.ActualEndTime.HasValue)
+        // Check current status
+        if (workOrder.ActualStartTime.HasValue)
+            errors.Add("Work order has already been started");
+
+        // Check scheduling
+        if (DateTime.UtcNow < workOrder.ScheduledStartTime.AddHours(-1)) // Allow 1 hour early start
+            warnings.Add("Starting work order earlier than scheduled time");
+
+        // Resource availability
+        var resourceResult = await ValidateResourceAvailabilityAsync(
+            workOrderId, workOrder.ResourceReference, cancellationToken);
+
+        if (!resourceResult.IsAvailable)
         {
-            if (workOrder.ActualEndTime <= workOrder.ActualStartTime)
+            errors.Add($"Resource '{workOrder.ResourceReference}' is not available");
+            errors.AddRange(resourceResult.ConflictingWorkOrders.Select(wo =>
+                $"Resource conflict with work order: {wo}"));
+        }
+
+        var isValid = !errors.Any();
+        var validationCode = isValid ? "VALID_FOR_START" : "INVALID_FOR_START";
+
+        return new WorkOrderValidationResult(isValid, errors, warnings, validationCode);
+    }
+
+    /// <inheritdoc />
+    public async Task<WorkOrderValidationResult> ValidateForCompletionAsync(
+        string workOrderId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workOrderId))
+            throw new ArgumentException("Work order ID cannot be null or empty", nameof(workOrderId));
+
+        _logger.LogDebug("Validating work order {WorkOrderId} for completion", workOrderId);
+
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        var workOrder = await _workOrderRepository.GetByIdAsync(workOrderId, cancellationToken);
+        if (workOrder == null)
+        {
+            errors.Add($"Work order '{workOrderId}' not found");
+            return new WorkOrderValidationResult(false, errors, warnings, "WORK_ORDER_NOT_FOUND");
+        }
+
+        // Check current status
+        if (!workOrder.ActualStartTime.HasValue)
+            errors.Add("Work order must be started before it can be completed");
+
+        if (workOrder.ActualEndTime.HasValue)
+            errors.Add("Work order has already been completed");
+
+        // Check production quantities
+        if (workOrder.TotalQuantityProduced == 0)
+            warnings.Add("No production recorded for this work order");
+
+        var completionPercentage = workOrder.PlannedQuantity > 0
+            ? (workOrder.TotalQuantityProduced / workOrder.PlannedQuantity) * 100
+            : 0;
+
+        if (completionPercentage < 50)
+            warnings.Add($"Work order is only {completionPercentage:F1}% complete");
+
+        var isValid = !errors.Any();
+        var validationCode = isValid ? "VALID_FOR_COMPLETION" : "INVALID_FOR_COMPLETION";
+
+        return new WorkOrderValidationResult(isValid, errors, warnings, validationCode);
+    }
+
+    /// <inheritdoc />
+    public async Task<ResourceValidationResult> ValidateResourceAvailabilityAsync(
+        string workOrderId,
+        string resourceReference,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workOrderId))
+            throw new ArgumentException("Work order ID cannot be null or empty", nameof(workOrderId));
+
+        if (string.IsNullOrWhiteSpace(resourceReference))
+            throw new ArgumentException("Resource reference cannot be null or empty", nameof(resourceReference));
+
+        _logger.LogDebug(
+            "Validating resource availability for work order {WorkOrderId}, resource {ResourceReference}",
+            workOrderId, resourceReference);
+
+        try
+        {
+            var workOrder = await _workOrderRepository.GetByIdAsync(workOrderId, cancellationToken);
+            if (workOrder == null)
             {
-                errors.Add("Actual end time must be after actual start time");
+                return new ResourceValidationResult(
+                    false, resourceReference, new[] { "Work order not found" }, null, null);
             }
-        }
 
-        // Rule: Production quantities should be reasonable
-        if (workOrder.TotalQuantityProduced > workOrder.PlannedQuantity * 2)
-        {
-            errors.Add($"Production ({workOrder.TotalQuantityProduced}) significantly exceeds plan ({workOrder.PlannedQuantity})");
-        }
+            // Check for conflicting work orders on the same resource
+            var activeWorkOrder = await _workOrderRepository.GetActiveByDeviceAsync(
+                resourceReference, cancellationToken);
 
-        // Rule: Check for suspiciously long-running work orders
-        if (workOrder.ActualStartTime.HasValue && workOrder.Status == WorkOrderStatus.Active)
-        {
-            var runningTime = DateTime.UtcNow - workOrder.ActualStartTime.Value;
-            var scheduledDuration = workOrder.ScheduledEndTime - workOrder.ScheduledStartTime;
-
-            if (runningTime > scheduledDuration.Add(TimeSpan.FromHours(24)))
+            var conflicts = new List<string>();
+            if (activeWorkOrder != null &&
+                activeWorkOrder.Id != workOrderId &&
+                activeWorkOrder.ActualStartTime.HasValue &&
+                !activeWorkOrder.ActualEndTime.HasValue)
             {
-                errors.Add($"Work order has been running for {runningTime.TotalHours:F1} hours, significantly longer than scheduled");
+                conflicts.Add(activeWorkOrder.Id);
             }
+
+            var isAvailable = !conflicts.Any();
+
+            // Simple availability window (could be enhanced with actual scheduling)
+            var availableFrom = isAvailable ? DateTime.UtcNow : (DateTime?)null;
+            var availableUntil = isAvailable ? DateTime.UtcNow.AddDays(1) : (DateTime?)null;
+
+            return new ResourceValidationResult(
+                isAvailable,
+                resourceReference,
+                conflicts,
+                availableFrom,
+                availableUntil
+            );
         }
-
-        var result = new ValidationResult(errors.Count == 0, errors);
-
-        if (!result.IsValid)
+        catch (Exception ex)
         {
-            _logger.LogWarning(
-                "Business rule validation failed for work order {WorkOrderId}: {Errors}",
-                workOrder.Id, string.Join(", ", errors));
+            _logger.LogError(ex,
+                "Error validating resource availability for work order {WorkOrderId}, resource {ResourceReference}",
+                workOrderId, resourceReference);
+
+            return new ResourceValidationResult(
+                false, resourceReference, new[] { "Error checking resource availability" }, null, null);
         }
-
-        return result;
     }
 
     /// <inheritdoc />
-    public bool CanStart(WorkOrder workOrder)
+    public async Task<SchedulingValidationResult> ValidateSchedulingConstraintsAsync(
+        WorkOrder workOrder,
+        CancellationToken cancellationToken = default)
     {
         if (workOrder == null)
-            return false;
-        return workOrder.Status == WorkOrderStatus.Pending;
-    }
+            throw new ArgumentNullException(nameof(workOrder));
 
-    /// <inheritdoc />
-    public bool CanPause(WorkOrder workOrder)
-    {
-        if (workOrder == null)
-            return false;
-        return workOrder.Status == WorkOrderStatus.Active;
-    }
+        _logger.LogDebug("Validating scheduling constraints for work order {WorkOrderId}", workOrder.Id);
 
-    /// <inheritdoc />
-    public bool CanResume(WorkOrder workOrder)
-    {
-        if (workOrder == null)
-            return false;
-        return workOrder.Status == WorkOrderStatus.Paused;
-    }
+        await Task.CompletedTask; // Placeholder for async operations
 
-    /// <inheritdoc />
-    public bool CanComplete(WorkOrder workOrder)
-    {
-        if (workOrder == null)
-            return false;
-        return workOrder.Status == WorkOrderStatus.Active || workOrder.Status == WorkOrderStatus.Paused;
-    }
+        var issues = new List<string>();
 
-    /// <inheritdoc />
-    public bool CanCancel(WorkOrder workOrder)
-    {
-        if (workOrder == null)
-            return false;
-        return workOrder.Status != WorkOrderStatus.Completed && workOrder.Status != WorkOrderStatus.Cancelled;
-    }
-}
+        // Basic time validation
+        if (workOrder.ScheduledStartTime >= workOrder.ScheduledEndTime)
+            issues.Add("Scheduled end time must be after start time");
 
-/// <summary>
-/// Validation result containing success status and error messages
-/// </summary>
-public sealed record ValidationResult(bool IsValid, IReadOnlyList<string> Errors)
-{
-    /// <summary>
-    /// Create successful validation result
-    /// </summary>
-    /// <returns>Successful validation result</returns>
-    public static ValidationResult Success() => new(true, Array.Empty<string>());
+        // Check if scheduled in the past
+        if (workOrder.ScheduledStartTime < DateTime.UtcNow.AddMinutes(-30)) // Allow 30 min grace period
+            issues.Add("Work order is scheduled in the past");
 
-    /// <summary>
-    /// Create failed validation result with errors
-    /// </summary>
-    /// <param name="errors">Validation errors</param>
-    /// <returns>Failed validation result</returns>
-    public static ValidationResult Failure(params string[] errors) => new(false, errors);
+        // Check reasonable duration
+        var scheduledDuration = workOrder.ScheduledEndTime - workOrder.ScheduledStartTime;
+        if (scheduledDuration.TotalMinutes < 1)
+            issues.Add("Scheduled duration is too short (minimum 1 minute)");
 
-    /// <summary>
-    /// Create failed validation result with error list
-    /// </summary>
-    /// <param name="errors">Validation errors</param>
-    /// <returns>Failed validation result</returns>
-    public static ValidationResult Failure(IEnumerable<string> errors) => new(false, errors.ToList());
+        if (scheduledDuration.TotalHours > 168) // 1 week
+            issues.Add("Scheduled duration is unusually long (over 1 week)");
 
-    /// <summary>
-    /// Throw exception if validation failed
-    /// </summary>
-    /// <param name="workOrderId">Work order ID for context</param>
-    /// <exception cref="WorkOrderException">Thrown if validation failed</exception>
-    public void ThrowIfInvalid(string workOrderId)
-    {
-        if (!IsValid)
+        // Estimate if target quantity is realistic for time period
+        if (workOrder.PlannedQuantity > 0 && scheduledDuration.TotalMinutes > 0)
         {
-            var errorMessage = $"Work order validation failed: {string.Join(", ", Errors)}";
-            throw new WorkOrderException(
-                errorMessage,
-                workOrderId,
-                OeeErrorCode.WorkOrderValidationFailed);
+            var requiredRate = workOrder.PlannedQuantity / (decimal)scheduledDuration.TotalMinutes;
+            if (requiredRate > 100) // Arbitrary high rate threshold
+                issues.Add($"Required production rate ({requiredRate:F1} units/min) may be unrealistic");
         }
+
+        var isValid = !issues.Any();
+
+        // Provide recommendations
+        DateTime? recommendedStart = null;
+        DateTime? recommendedEnd = null;
+
+        if (!isValid)
+        {
+            recommendedStart = DateTime.UtcNow.AddMinutes(30); // Start in 30 minutes
+            recommendedEnd = recommendedStart.Value.AddHours(2); // 2-hour duration
+        }
+
+        return new SchedulingValidationResult(
+            isValid,
+            issues,
+            recommendedStart,
+            recommendedEnd
+        );
     }
 }

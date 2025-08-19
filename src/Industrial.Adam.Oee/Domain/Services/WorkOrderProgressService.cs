@@ -1,410 +1,279 @@
 using Industrial.Adam.Oee.Domain.Entities;
 using Industrial.Adam.Oee.Domain.Enums;
 using Industrial.Adam.Oee.Domain.Exceptions;
+using Industrial.Adam.Oee.Domain.Interfaces;
+using Industrial.Adam.Oee.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 
 namespace Industrial.Adam.Oee.Domain.Services;
-
-/// <summary>
-/// Domain service for work order progress calculations and analysis
-/// Extracts complex progress logic from WorkOrder entity to follow SRP
-/// </summary>
-public interface IWorkOrderProgressService
-{
-    /// <summary>
-    /// Calculate completion percentage based on planned quantity
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>Completion percentage (0-100)</returns>
-    public decimal CalculateCompletionPercentage(WorkOrder workOrder);
-
-    /// <summary>
-    /// Calculate yield/quality percentage
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>Yield percentage (0-100)</returns>
-    public decimal CalculateYieldPercentage(WorkOrder workOrder);
-
-    /// <summary>
-    /// Check if work order is behind schedule
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>True if behind schedule</returns>
-    public bool IsBehindSchedule(WorkOrder workOrder);
-
-    /// <summary>
-    /// Get production rate (pieces per minute)
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>Production rate in pieces per minute</returns>
-    public decimal GetProductionRate(WorkOrder workOrder);
-
-    /// <summary>
-    /// Calculate estimated completion time based on current rate
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>Estimated completion time or null if cannot be calculated</returns>
-    public DateTime? GetEstimatedCompletionTime(WorkOrder workOrder);
-
-    /// <summary>
-    /// Check if work order requires attention
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <param name="qualityThreshold">Quality threshold percentage (default 95%)</param>
-    /// <returns>True if requires attention</returns>
-    public bool RequiresAttention(WorkOrder workOrder, decimal qualityThreshold = 95m);
-
-    /// <summary>
-    /// Analyze work order performance
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <returns>Performance analysis</returns>
-    public WorkOrderPerformanceAnalysis AnalyzePerformance(WorkOrder workOrder);
-
-    /// <summary>
-    /// Calculate expected progress based on schedule
-    /// </summary>
-    /// <param name="workOrder">Work order</param>
-    /// <param name="currentTime">Current time (optional, uses UtcNow if not provided)</param>
-    /// <returns>Expected progress percentage</returns>
-    public decimal CalculateExpectedProgress(WorkOrder workOrder, DateTime? currentTime = null);
-}
 
 /// <summary>
 /// Implementation of work order progress service
 /// </summary>
 public sealed class WorkOrderProgressService : IWorkOrderProgressService
 {
+    private readonly IWorkOrderRepository _workOrderRepository;
+    private readonly ICounterDataRepository _counterDataRepository;
     private readonly ILogger<WorkOrderProgressService> _logger;
 
     /// <summary>
     /// Initialize work order progress service
     /// </summary>
+    /// <param name="workOrderRepository">Work order repository</param>
+    /// <param name="counterDataRepository">Counter data repository</param>
     /// <param name="logger">Logger instance</param>
-    public WorkOrderProgressService(ILogger<WorkOrderProgressService> logger)
+    public WorkOrderProgressService(
+        IWorkOrderRepository workOrderRepository,
+        ICounterDataRepository counterDataRepository,
+        ILogger<WorkOrderProgressService> logger)
     {
+        _workOrderRepository = workOrderRepository ?? throw new ArgumentNullException(nameof(workOrderRepository));
+        _counterDataRepository = counterDataRepository ?? throw new ArgumentNullException(nameof(counterDataRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc />
-    public decimal CalculateCompletionPercentage(WorkOrder workOrder)
+    public async Task<WorkOrderProgress> GetProgressAsync(
+        string workOrderId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workOrderId))
+            throw new ArgumentException("Work order ID cannot be null or empty", nameof(workOrderId));
+
+        _logger.LogDebug("Getting progress for work order {WorkOrderId}", workOrderId);
+
+        try
+        {
+            var workOrder = await _workOrderRepository.GetByIdAsync(workOrderId, cancellationToken);
+            if (workOrder == null)
+            {
+                throw new OeeCalculationException(
+                    $"Work order {workOrderId} not found",
+                    "WorkOrderProgress",
+                    OeeErrorCode.WorkOrderNotFound,
+                    null,
+                    null,
+                    null);
+            }
+
+            var completionPercentage = await CalculateCompletionPercentageAsync(workOrder, cancellationToken);
+            var remainingQuantity = Math.Max(0, workOrder.PlannedQuantity - workOrder.TotalQuantityProduced);
+            var estimatedCompletion = await PredictCompletionTimeAsync(workOrderId, cancellationToken);
+            var isOnSchedule = workOrder.ScheduledEndTime > DateTime.UtcNow ||
+                              (estimatedCompletion.HasValue && estimatedCompletion <= workOrder.ScheduledEndTime);
+
+            return new WorkOrderProgress(
+                workOrderId,
+                completionPercentage,
+                workOrder.ActualQuantityGood,
+                workOrder.ActualQuantityScrap,
+                workOrder.PlannedQuantity,
+                remainingQuantity,
+                estimatedCompletion,
+                isOnSchedule,
+                DateTime.UtcNow
+            );
+        }
+        catch (Exception ex) when (!(ex is OeeCalculationException))
+        {
+            var calculationException = new OeeCalculationException(
+                $"Failed to get progress for work order {workOrderId}",
+                "WorkOrderProgress",
+                OeeErrorCode.CalculationFailed,
+                null,
+                null,
+                null,
+                ex);
+
+            _logger.LogError(calculationException,
+                "Work order progress calculation failed for {WorkOrderId}", workOrderId);
+
+            throw calculationException;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<WorkOrderProgress> UpdateProgressAsync(
+        string workOrderId,
+        decimal goodCount,
+        decimal scrapCount,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workOrderId))
+            throw new ArgumentException("Work order ID cannot be null or empty", nameof(workOrderId));
+
+        _logger.LogDebug(
+            "Updating progress for work order {WorkOrderId}: {GoodCount} good, {ScrapCount} scrap",
+            workOrderId, goodCount, scrapCount);
+
+        try
+        {
+            var workOrder = await _workOrderRepository.GetByIdAsync(workOrderId, cancellationToken);
+            if (workOrder == null)
+            {
+                throw new OeeCalculationException(
+                    $"Work order {workOrderId} not found",
+                    "WorkOrderProgressUpdate",
+                    OeeErrorCode.WorkOrderNotFound,
+                    null,
+                    null,
+                    null);
+            }
+
+            // Update work order quantities
+            workOrder.UpdateFromCounterData(goodCount, scrapCount);
+            await _workOrderRepository.UpdateAsync(workOrder, cancellationToken);
+
+            return await GetProgressAsync(workOrderId, cancellationToken);
+        }
+        catch (Exception ex) when (!(ex is OeeCalculationException))
+        {
+            var calculationException = new OeeCalculationException(
+                $"Failed to update progress for work order {workOrderId}",
+                "WorkOrderProgressUpdate",
+                OeeErrorCode.CalculationFailed,
+                null,
+                null,
+                null,
+                ex);
+
+            _logger.LogError(calculationException,
+                "Work order progress update failed for {WorkOrderId}", workOrderId);
+
+            throw calculationException;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<decimal> CalculateCompletionPercentageAsync(
+        WorkOrder workOrder,
+        CancellationToken cancellationToken = default)
     {
         if (workOrder == null)
             throw new ArgumentNullException(nameof(workOrder));
 
-        if (workOrder.PlannedQuantity == 0)
-        {
-            _logger.LogWarning("Work order {WorkOrderId} has zero planned quantity", workOrder.Id);
+        await Task.CompletedTask; // Method is synchronous but interface is async
+
+        if (workOrder.PlannedQuantity <= 0)
             return 0;
-        }
 
-        var totalProduced = workOrder.TotalQuantityProduced;
-        var completionPercentage = (totalProduced / workOrder.PlannedQuantity) * 100;
-
-        // Cap at 100% for display purposes
-        var cappedPercentage = Math.Min(completionPercentage, 100);
-
-        _logger.LogDebug(
-            "Work order {WorkOrderId} completion: {Completion:F1}% ({Produced}/{Planned})",
-            workOrder.Id, cappedPercentage, totalProduced, workOrder.PlannedQuantity);
-
-        return cappedPercentage;
+        var completionPercentage = (workOrder.TotalQuantityProduced / workOrder.PlannedQuantity) * 100;
+        return Math.Min(100, completionPercentage);
     }
 
     /// <inheritdoc />
-    public decimal CalculateYieldPercentage(WorkOrder workOrder)
+    public async Task<WorkOrderEfficiency> GetEfficiencyMetricsAsync(
+        string workOrderId,
+        CancellationToken cancellationToken = default)
     {
-        if (workOrder == null)
-            throw new ArgumentNullException(nameof(workOrder));
+        if (string.IsNullOrWhiteSpace(workOrderId))
+            throw new ArgumentException("Work order ID cannot be null or empty", nameof(workOrderId));
 
-        var total = workOrder.TotalQuantityProduced;
-        if (total == 0)
+        _logger.LogDebug("Getting efficiency metrics for work order {WorkOrderId}", workOrderId);
+
+        try
         {
-            _logger.LogDebug("Work order {WorkOrderId} has no production, returning 100% yield", workOrder.Id);
-            return 100; // No production = no defects
+            var workOrder = await _workOrderRepository.GetByIdAsync(workOrderId, cancellationToken);
+            if (workOrder == null)
+            {
+                throw new OeeCalculationException(
+                    $"Work order {workOrderId} not found",
+                    "WorkOrderEfficiency",
+                    OeeErrorCode.WorkOrderNotFound,
+                    null,
+                    null,
+                    null);
+            }
+
+            var yieldRate = workOrder.TotalQuantityProduced > 0
+                ? (workOrder.ActualQuantityGood / workOrder.TotalQuantityProduced) * 100
+                : 0;
+
+            var qualityRate = yieldRate; // Same as yield rate for this implementation
+
+            var elapsedTime = (workOrder.ActualEndTime ?? DateTime.UtcNow) -
+                             (workOrder.ActualStartTime ?? workOrder.ScheduledStartTime);
+
+            var throughputRate = elapsedTime.TotalMinutes > 0
+                ? workOrder.TotalQuantityProduced / (decimal)elapsedTime.TotalMinutes
+                : 0;
+
+            var scheduleTime = workOrder.ScheduledEndTime - workOrder.ScheduledStartTime;
+            var scheduleAdherence = scheduleTime.TotalMinutes > 0 && elapsedTime.TotalMinutes > 0
+                ? Math.Min(100, (scheduleTime.TotalMinutes / elapsedTime.TotalMinutes) * 100)
+                : 100;
+
+            var overallEfficiency = (yieldRate * (decimal)scheduleAdherence) / 100;
+
+            return new WorkOrderEfficiency(
+                workOrderId,
+                overallEfficiency,
+                yieldRate,
+                throughputRate,
+                (decimal)scheduleAdherence,
+                qualityRate
+            );
         }
+        catch (Exception ex) when (!(ex is OeeCalculationException))
+        {
+            var calculationException = new OeeCalculationException(
+                $"Failed to get efficiency metrics for work order {workOrderId}",
+                "WorkOrderEfficiency",
+                OeeErrorCode.CalculationFailed,
+                null,
+                null,
+                null,
+                ex);
 
-        var yieldPercentage = (workOrder.ActualQuantityGood / total) * 100;
+            _logger.LogError(calculationException,
+                "Work order efficiency calculation failed for {WorkOrderId}", workOrderId);
 
-        _logger.LogDebug(
-            "Work order {WorkOrderId} yield: {Yield:F1}% ({Good}/{Total})",
-            workOrder.Id, yieldPercentage, workOrder.ActualQuantityGood, total);
-
-        return yieldPercentage;
+            throw calculationException;
+        }
     }
 
     /// <inheritdoc />
-    public bool IsBehindSchedule(WorkOrder workOrder)
+    public async Task<DateTime?> PredictCompletionTimeAsync(
+        string workOrderId,
+        CancellationToken cancellationToken = default)
     {
-        if (workOrder == null)
-            throw new ArgumentNullException(nameof(workOrder));
+        if (string.IsNullOrWhiteSpace(workOrderId))
+            throw new ArgumentException("Work order ID cannot be null or empty", nameof(workOrderId));
 
-        var now = DateTime.UtcNow;
-        var expectedProgress = CalculateExpectedProgress(workOrder, now);
-        var actualProgress = CalculateCompletionPercentage(workOrder);
-
-        var isBehind = actualProgress < expectedProgress;
-
-        _logger.LogDebug(
-            "Work order {WorkOrderId} schedule check: Actual={Actual:F1}%, Expected={Expected:F1}%, Behind={Behind}",
-            workOrder.Id, actualProgress, expectedProgress, isBehind);
-
-        return isBehind;
-    }
-
-    /// <inheritdoc />
-    public decimal GetProductionRate(WorkOrder workOrder)
-    {
-        if (workOrder == null)
-            throw new ArgumentNullException(nameof(workOrder));
-
-        if (workOrder.ActualStartTime == null || workOrder.Status == WorkOrderStatus.Pending)
+        try
         {
-            _logger.LogDebug("Work order {WorkOrderId} not started, returning zero rate", workOrder.Id);
-            return 0;
+            var workOrder = await _workOrderRepository.GetByIdAsync(workOrderId, cancellationToken);
+            if (workOrder == null)
+                return null;
+
+            // If already completed
+            if (workOrder.ActualEndTime.HasValue)
+                return workOrder.ActualEndTime;
+
+            // If not started
+            if (!workOrder.ActualStartTime.HasValue)
+                return null;
+
+            var elapsedTime = DateTime.UtcNow - workOrder.ActualStartTime.Value;
+
+            // Need some production to calculate rate
+            if (workOrder.TotalQuantityProduced <= 0 || elapsedTime.TotalMinutes <= 0)
+                return null;
+
+            var currentRate = workOrder.TotalQuantityProduced / (decimal)elapsedTime.TotalMinutes;
+            var remainingQuantity = Math.Max(0, workOrder.PlannedQuantity - workOrder.TotalQuantityProduced);
+
+            if (currentRate <= 0)
+                return null;
+
+            var remainingMinutes = remainingQuantity / currentRate;
+            return DateTime.UtcNow.AddMinutes((double)remainingMinutes);
         }
-
-        var endTime = workOrder.ActualEndTime ?? DateTime.UtcNow;
-        var durationMinutes = (decimal)(endTime - workOrder.ActualStartTime.Value).TotalMinutes;
-
-        if (durationMinutes == 0)
+        catch (Exception ex)
         {
-            _logger.LogDebug("Work order {WorkOrderId} has zero duration, returning zero rate", workOrder.Id);
-            return 0;
-        }
-
-        var rate = workOrder.TotalQuantityProduced / durationMinutes;
-
-        _logger.LogDebug(
-            "Work order {WorkOrderId} production rate: {Rate:F2} pieces/minute over {Duration:F1} minutes",
-            workOrder.Id, rate, durationMinutes);
-
-        return rate;
-    }
-
-    /// <inheritdoc />
-    public DateTime? GetEstimatedCompletionTime(WorkOrder workOrder)
-    {
-        if (workOrder == null)
-            throw new ArgumentNullException(nameof(workOrder));
-
-        var rate = GetProductionRate(workOrder);
-        if (rate == 0)
-        {
-            _logger.LogDebug("Work order {WorkOrderId} has zero production rate, cannot estimate completion", workOrder.Id);
+            _logger.LogWarning(ex,
+                "Failed to predict completion time for work order {WorkOrderId}", workOrderId);
             return null;
         }
-
-        var remainingQuantity = workOrder.PlannedQuantity - workOrder.TotalQuantityProduced;
-        if (remainingQuantity <= 0)
-        {
-            _logger.LogDebug("Work order {WorkOrderId} is complete or overproduced", workOrder.Id);
-            return DateTime.UtcNow;
-        }
-
-        var remainingMinutes = remainingQuantity / rate;
-        var estimatedCompletion = DateTime.UtcNow.AddMinutes((double)remainingMinutes);
-
-        _logger.LogDebug(
-            "Work order {WorkOrderId} estimated completion: {EstimatedTime} ({RemainingMinutes:F1} minutes remaining)",
-            workOrder.Id, estimatedCompletion, remainingMinutes);
-
-        return estimatedCompletion;
     }
-
-    /// <inheritdoc />
-    public bool RequiresAttention(WorkOrder workOrder, decimal qualityThreshold = 95m)
-    {
-        if (workOrder == null)
-            throw new ArgumentNullException(nameof(workOrder));
-
-        var reasons = new List<string>();
-
-        if (IsBehindSchedule(workOrder))
-        {
-            reasons.Add("behind schedule");
-        }
-
-        if (CalculateYieldPercentage(workOrder) < qualityThreshold)
-        {
-            reasons.Add($"yield below {qualityThreshold}%");
-        }
-
-        if (workOrder.Status == WorkOrderStatus.Active && GetProductionRate(workOrder) == 0)
-        {
-            reasons.Add("no production activity");
-        }
-
-        var requiresAttention = reasons.Count > 0;
-
-        if (requiresAttention)
-        {
-            _logger.LogWarning(
-                "Work order {WorkOrderId} requires attention: {Reasons}",
-                workOrder.Id, string.Join(", ", reasons));
-        }
-        else
-        {
-            _logger.LogDebug("Work order {WorkOrderId} is performing normally", workOrder.Id);
-        }
-
-        return requiresAttention;
-    }
-
-    /// <inheritdoc />
-    public WorkOrderPerformanceAnalysis AnalyzePerformance(WorkOrder workOrder)
-    {
-        if (workOrder == null)
-            throw new ArgumentNullException(nameof(workOrder));
-
-        var completionPercentage = CalculateCompletionPercentage(workOrder);
-        var yieldPercentage = CalculateYieldPercentage(workOrder);
-        var productionRate = GetProductionRate(workOrder);
-        var estimatedCompletion = GetEstimatedCompletionTime(workOrder);
-        var isBehindSchedule = IsBehindSchedule(workOrder);
-        var requiresAttention = RequiresAttention(workOrder);
-        var expectedProgress = CalculateExpectedProgress(workOrder);
-
-        var performanceRating = CalculatePerformanceRating(completionPercentage, yieldPercentage, isBehindSchedule);
-        var efficiency = expectedProgress > 0 ? completionPercentage / expectedProgress : 1.0m;
-
-        var analysis = new WorkOrderPerformanceAnalysis(
-            CompletionPercentage: completionPercentage,
-            YieldPercentage: yieldPercentage,
-            ProductionRate: productionRate,
-            ExpectedProgress: expectedProgress,
-            IsBehindSchedule: isBehindSchedule,
-            RequiresAttention: requiresAttention,
-            EstimatedCompletion: estimatedCompletion,
-            PerformanceRating: performanceRating,
-            EfficiencyRatio: efficiency);
-
-        _logger.LogInformation(
-            "Work order {WorkOrderId} performance analysis: Rating={Rating}, Completion={Completion:F1}%, Yield={Yield:F1}%, Rate={Rate:F2}/min",
-            workOrder.Id, performanceRating, completionPercentage, yieldPercentage, productionRate);
-
-        return analysis;
-    }
-
-    /// <inheritdoc />
-    public decimal CalculateExpectedProgress(WorkOrder workOrder, DateTime? currentTime = null)
-    {
-        if (workOrder == null)
-            throw new ArgumentNullException(nameof(workOrder));
-
-        var now = currentTime ?? DateTime.UtcNow;
-
-        // If not started yet, expected progress is 0
-        if (now < workOrder.ScheduledStartTime)
-        {
-            return 0;
-        }
-
-        // If past scheduled end time, expected progress is 100%
-        if (now >= workOrder.ScheduledEndTime)
-        {
-            return 100;
-        }
-
-        var scheduledDuration = (workOrder.ScheduledEndTime - workOrder.ScheduledStartTime).TotalMilliseconds;
-        var elapsedTime = (now - workOrder.ScheduledStartTime).TotalMilliseconds;
-        var expectedProgress = (decimal)(elapsedTime / scheduledDuration) * 100;
-
-        _logger.LogDebug(
-            "Work order {WorkOrderId} expected progress: {Progress:F1}% ({Elapsed:F1}/{Total:F1} hours)",
-            workOrder.Id, expectedProgress, elapsedTime / 3600000, scheduledDuration / 3600000);
-
-        return Math.Max(0, Math.Min(100, expectedProgress));
-    }
-
-    /// <summary>
-    /// Calculate performance rating based on key metrics
-    /// </summary>
-    /// <param name="completion">Completion percentage</param>
-    /// <param name="yield">Yield percentage</param>
-    /// <param name="isBehindSchedule">Whether behind schedule</param>
-    /// <returns>Performance rating</returns>
-    private static PerformanceRating CalculatePerformanceRating(decimal completion, decimal yield, bool isBehindSchedule)
-    {
-        // Start with excellent and downgrade based on issues
-        var rating = PerformanceRating.Excellent;
-
-        if (yield < 95)
-        {
-            rating = PerformanceRating.Good;
-        }
-
-        if (yield < 90 || isBehindSchedule)
-        {
-            rating = PerformanceRating.Fair;
-        }
-
-        if (yield < 80 || (isBehindSchedule && completion < 50))
-        {
-            rating = PerformanceRating.Poor;
-        }
-
-        if (yield < 70 || (isBehindSchedule && completion < 25))
-        {
-            rating = PerformanceRating.Critical;
-        }
-
-        return rating;
-    }
-}
-
-/// <summary>
-/// Comprehensive work order performance analysis
-/// </summary>
-public sealed record WorkOrderPerformanceAnalysis(
-    decimal CompletionPercentage,
-    decimal YieldPercentage,
-    decimal ProductionRate,
-    decimal ExpectedProgress,
-    bool IsBehindSchedule,
-    bool RequiresAttention,
-    DateTime? EstimatedCompletion,
-    PerformanceRating PerformanceRating,
-    decimal EfficiencyRatio)
-{
-    /// <summary>
-    /// Overall performance score (0-100)
-    /// </summary>
-    public decimal OverallScore => (CompletionPercentage * 0.4m + YieldPercentage * 0.4m + (IsBehindSchedule ? 0 : 20)) * EfficiencyRatio;
-
-    /// <summary>
-    /// Performance summary text
-    /// </summary>
-    public string Summary => $"{PerformanceRating} - {CompletionPercentage:F1}% complete, {YieldPercentage:F1}% yield, {ProductionRate:F1}/min";
-}
-
-/// <summary>
-/// Performance rating enumeration
-/// </summary>
-public enum PerformanceRating
-{
-    /// <summary>
-    /// Critical performance issues requiring immediate attention
-    /// </summary>
-    Critical = 1,
-
-    /// <summary>
-    /// Poor performance with significant issues
-    /// </summary>
-    Poor = 2,
-
-    /// <summary>
-    /// Fair performance with some concerns
-    /// </summary>
-    Fair = 3,
-
-    /// <summary>
-    /// Good performance meeting most targets
-    /// </summary>
-    Good = 4,
-
-    /// <summary>
-    /// Excellent performance exceeding expectations
-    /// </summary>
-    Excellent = 5
 }

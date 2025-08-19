@@ -20,12 +20,12 @@ public static class TestContainerManager
     private static readonly ConcurrentDictionary<string, PostgreSqlContainer> _containers = new();
     private static readonly ConcurrentDictionary<string, int> _portCounters = new();
     private static readonly object _lock = new();
-    
+
     /// <summary>
     /// Base port for test containers - each test class gets a unique port range
     /// </summary>
     private const int BasePort = 55000;
-    
+
     /// <summary>
     /// Creates a test container with a unique port for the calling test class
     /// Includes health checks and proper wait strategies
@@ -36,7 +36,7 @@ public static class TestContainerManager
         {
             var portOffset = GetNextPortOffset(testClassName);
             var uniquePort = BasePort + portOffset;
-            
+
             var container = new PostgreSqlBuilder()
                 .WithImage("timescale/timescaledb:latest-pg15")
                 .WithDatabase("adam_counters")
@@ -52,12 +52,12 @@ public static class TestContainerManager
                     await VerifyContainerHealthAsync(container);
                 })
                 .Build();
-                
+
             _containers[testClassName] = container;
             return container;
         }
     }
-    
+
     /// <summary>
     /// Gets or creates a container for the specified test class
     /// </summary>
@@ -65,7 +65,7 @@ public static class TestContainerManager
     {
         return _containers.GetOrAdd(testClassName, CreateContainer);
     }
-    
+
     /// <summary>
     /// Properly disposes a container for the specified test class
     /// </summary>
@@ -83,7 +83,7 @@ public static class TestContainerManager
             }
         }
     }
-    
+
     /// <summary>
     /// Creates a connection factory for the test container
     /// </summary>
@@ -92,7 +92,7 @@ public static class TestContainerManager
         var logger = serviceProvider.GetRequiredService<ILogger<NpgsqlConnectionFactory>>();
         return new NpgsqlConnectionFactory(container.GetConnectionString(), logger);
     }
-    
+
     /// <summary>
     /// Cleans up all containers - useful for test environment cleanup
     /// </summary>
@@ -109,22 +109,22 @@ public static class TestContainerManager
                 // Ignore disposal exceptions during cleanup
             }
         });
-        
+
         await Task.WhenAll(disposalTasks);
         _containers.Clear();
         _portCounters.Clear();
     }
-    
+
     /// <summary>
     /// Sets up basic OEE database schema for testing
     /// </summary>
     public static async Task SetupOeeDatabaseAsync(IDbConnectionFactory connectionFactory)
     {
         using var connection = await connectionFactory.CreateConnectionAsync();
-        
+
         // Enable TimescaleDB extension
         await connection.ExecuteAsync("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;");
-        
+
         // Create counter_data table (from Industrial.Adam.Logger)
         await connection.ExecuteAsync(@"
             CREATE TABLE IF NOT EXISTS counter_data (
@@ -136,11 +136,11 @@ public static class TestContainerManager
                 quality VARCHAR(10),
                 PRIMARY KEY (timestamp, device_id, channel)
             );");
-        
+
         // Convert to hypertable
         await connection.ExecuteAsync(@"
             SELECT create_hypertable('counter_data', 'timestamp', if_not_exists => TRUE);");
-        
+
         // Create work_orders table (OEE-specific)
         await connection.ExecuteAsync(@"
             CREATE TABLE IF NOT EXISTS work_orders (
@@ -170,7 +170,7 @@ public static class TestContainerManager
                     status IN ('Pending', 'Active', 'Paused', 'Completed', 'Cancelled')
                 )
             );");
-        
+
         // Create performance indexes
         await connection.ExecuteAsync(@"
             CREATE INDEX IF NOT EXISTS idx_counter_data_device_timestamp_desc 
@@ -181,22 +181,22 @@ public static class TestContainerManager
             ON work_orders(resource_reference, status) 
             WHERE status IN ('Active', 'Paused');");
     }
-    
+
     /// <summary>
     /// Cleans test data from the database for test isolation
     /// </summary>
     public static async Task CleanupTestDataAsync(IDbConnectionFactory connectionFactory)
     {
         using var connection = await connectionFactory.CreateConnectionAsync();
-        
+
         // Clean up test data
         await connection.ExecuteAsync("DELETE FROM work_orders WHERE work_order_id LIKE 'TEST_%' OR work_order_id LIKE 'WO-%' OR work_order_id LIKE 'PERF_%';");
         await connection.ExecuteAsync("DELETE FROM counter_data WHERE device_id LIKE 'TEST_%' OR device_id LIKE 'PERF_%';");
-        
+
         // Reset sequences if any
         // Note: TimescaleDB hypertables don't use sequences, but this is good practice
     }
-    
+
     /// <summary>
     /// Verifies container health after startup
     /// </summary>
@@ -204,14 +204,14 @@ public static class TestContainerManager
     {
         const int maxRetries = 10;
         const int delayMs = 1000;
-        
+
         for (int i = 0; i < maxRetries; i++)
         {
             try
             {
                 using var connection = new Npgsql.NpgsqlConnection(container.GetConnectionString());
                 await connection.OpenAsync();
-                
+
                 var result = await connection.QuerySingleAsync<int>("SELECT 1");
                 if (result == 1)
                 {
@@ -224,20 +224,20 @@ public static class TestContainerManager
                 {
                     throw new InvalidOperationException($"Container health check failed after {maxRetries} attempts");
                 }
-                
+
                 await Task.Delay(delayMs);
             }
         }
     }
-    
+
     /// <summary>
     /// Gets the next available port offset for a test class
     /// Each test class gets a sequential port number to avoid conflicts
     /// </summary>
     private static int GetNextPortOffset(string testClassName)
     {
-        return _portCounters.AddOrUpdate(testClassName, 
-            key => _portCounters.Count, 
+        return _portCounters.AddOrUpdate(testClassName,
+            key => _portCounters.Count,
             (key, current) => current);
     }
 }

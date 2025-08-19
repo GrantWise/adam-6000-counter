@@ -1,3 +1,4 @@
+using Industrial.Adam.Oee.Domain.Entities;
 using Industrial.Adam.Oee.Domain.Enums;
 using Industrial.Adam.Oee.Domain.Exceptions;
 using Industrial.Adam.Oee.Domain.Interfaces;
@@ -7,98 +8,27 @@ using Microsoft.Extensions.Logging;
 namespace Industrial.Adam.Oee.Domain.Services;
 
 /// <summary>
-/// Domain service for performance calculations
-/// Handles all performance-related OEE calculations following Single Responsibility Principle
-/// </summary>
-public interface IPerformanceCalculationService
-{
-    /// <summary>
-    /// Calculate performance from counter data and target rates
-    /// </summary>
-    /// <param name="deviceId">Device identifier</param>
-    /// <param name="startTime">Period start time</param>
-    /// <param name="endTime">Period end time</param>
-    /// <param name="targetRatePerMinute">Target production rate per minute</param>
-    /// <param name="productionChannel">Production channel number</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Performance calculation</returns>
-    public Task<Performance> CalculateAsync(
-        string deviceId,
-        DateTime startTime,
-        DateTime endTime,
-        decimal targetRatePerMinute,
-        int productionChannel = 0,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Calculate speed loss for a device in a time period
-    /// </summary>
-    /// <param name="deviceId">Device identifier</param>
-    /// <param name="startTime">Period start time</param>
-    /// <param name="endTime">Period end time</param>
-    /// <param name="targetRatePerMinute">Target production rate per minute</param>
-    /// <param name="productionChannel">Production channel number</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Speed loss percentage</returns>
-    public Task<decimal> CalculateSpeedLossAsync(
-        string deviceId,
-        DateTime startTime,
-        DateTime endTime,
-        decimal targetRatePerMinute,
-        int productionChannel = 0,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Calculate actual production rate from counter data
-    /// </summary>
-    /// <param name="deviceId">Device identifier</param>
-    /// <param name="startTime">Period start time</param>
-    /// <param name="endTime">Period end time</param>
-    /// <param name="productionChannel">Production channel number</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Actual production rate per minute</returns>
-    public Task<decimal> CalculateActualRateAsync(
-        string deviceId,
-        DateTime startTime,
-        DateTime endTime,
-        int productionChannel = 0,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Calculate total pieces produced in a time period
-    /// </summary>
-    /// <param name="deviceId">Device identifier</param>
-    /// <param name="startTime">Period start time</param>
-    /// <param name="endTime">Period end time</param>
-    /// <param name="productionChannel">Production channel number</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Total pieces produced</returns>
-    public Task<decimal> CalculateTotalPiecesAsync(
-        string deviceId,
-        DateTime startTime,
-        DateTime endTime,
-        int productionChannel = 0,
-        CancellationToken cancellationToken = default);
-}
-
-/// <summary>
 /// Implementation of performance calculation service
 /// </summary>
 public sealed class PerformanceCalculationService : IPerformanceCalculationService
 {
     private readonly ICounterDataRepository _counterDataRepository;
+    private readonly IWorkOrderRepository _workOrderRepository;
     private readonly ILogger<PerformanceCalculationService> _logger;
 
     /// <summary>
     /// Initialize performance calculation service
     /// </summary>
     /// <param name="counterDataRepository">Counter data repository</param>
+    /// <param name="workOrderRepository">Work order repository</param>
     /// <param name="logger">Logger instance</param>
     public PerformanceCalculationService(
         ICounterDataRepository counterDataRepository,
+        IWorkOrderRepository workOrderRepository,
         ILogger<PerformanceCalculationService> logger)
     {
         _counterDataRepository = counterDataRepository ?? throw new ArgumentNullException(nameof(counterDataRepository));
+        _workOrderRepository = workOrderRepository ?? throw new ArgumentNullException(nameof(workOrderRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -108,7 +38,6 @@ public sealed class PerformanceCalculationService : IPerformanceCalculationServi
         DateTime startTime,
         DateTime endTime,
         decimal targetRatePerMinute,
-        int productionChannel = 0,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
@@ -127,7 +56,7 @@ public sealed class PerformanceCalculationService : IPerformanceCalculationServi
         try
         {
             var aggregates = await _counterDataRepository.GetAggregatedDataAsync(
-                deviceId, productionChannel, startTime, endTime, cancellationToken);
+                deviceId, 0, startTime, endTime, cancellationToken);
 
             if (aggregates == null)
             {
@@ -173,50 +102,111 @@ public sealed class PerformanceCalculationService : IPerformanceCalculationServi
     }
 
     /// <inheritdoc />
-    public async Task<decimal> CalculateSpeedLossAsync(
+    public async Task<Performance> CalculateForWorkOrderAsync(
+        string workOrderId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workOrderId))
+            throw new ArgumentException("Work order ID cannot be null or empty", nameof(workOrderId));
+
+        _logger.LogDebug("Calculating performance for work order {WorkOrderId}", workOrderId);
+
+        try
+        {
+            var workOrder = await _workOrderRepository.GetByIdAsync(workOrderId, cancellationToken);
+            if (workOrder == null)
+            {
+                throw new OeeCalculationException(
+                    $"Work order {workOrderId} not found",
+                    "WorkOrderPerformance",
+                    OeeErrorCode.WorkOrderNotFound,
+                    null,
+                    null,
+                    null);
+            }
+
+            var startTime = workOrder.ActualStartTime ?? workOrder.ScheduledStartTime;
+            var endTime = workOrder.ActualEndTime ?? DateTime.UtcNow;
+
+            // Use work order target rate or default
+            var targetRate = workOrder.PlannedQuantity > 0 && (endTime - startTime).TotalMinutes > 0
+                ? workOrder.PlannedQuantity / (decimal)(endTime - startTime).TotalMinutes
+                : 60m; // Default rate
+
+            return await CalculateAsync(workOrder.ResourceReference, startTime, endTime, targetRate, cancellationToken);
+        }
+        catch (Exception ex) when (!(ex is OeeCalculationException))
+        {
+            var calculationException = new OeeCalculationException(
+                $"Failed to calculate performance for work order {workOrderId}",
+                "WorkOrderPerformance",
+                OeeErrorCode.PerformanceCalculationFailed,
+                null,
+                null,
+                null,
+                ex);
+
+            _logger.LogError(calculationException,
+                "Work order performance calculation failed for {WorkOrderId}", workOrderId);
+
+            throw calculationException;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<Performance> CalculateWithConfigurationAsync(
         string deviceId,
         DateTime startTime,
         DateTime endTime,
-        decimal targetRatePerMinute,
-        int productionChannel = 0,
+        PerformanceConfiguration configuration,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
             throw new ArgumentException("Device ID cannot be null or empty", nameof(deviceId));
 
-        if (endTime <= startTime)
-            throw new ArgumentException("End time must be after start time", nameof(endTime));
-
-        if (targetRatePerMinute <= 0)
-            throw new ArgumentException("Target rate must be positive", nameof(targetRatePerMinute));
+        if (configuration == null)
+            throw new ArgumentNullException(nameof(configuration));
 
         _logger.LogDebug(
-            "Calculating speed loss for device {DeviceId} from {StartTime} to {EndTime}",
+            "Calculating performance with configuration for device {DeviceId} from {StartTime} to {EndTime}",
             deviceId, startTime, endTime);
 
         try
         {
-            var actualRate = await CalculateActualRateAsync(
-                deviceId, startTime, endTime, productionChannel, cancellationToken);
+            var aggregates = await _counterDataRepository.GetAggregatedDataAsync(
+                deviceId, configuration.ProductionChannel, startTime, endTime, cancellationToken);
 
-            if (targetRatePerMinute == 0)
+            if (aggregates == null)
             {
-                return 0; // No target rate defined
+                _logger.LogWarning(
+                    "No aggregated data available for device {DeviceId}, returning zero performance",
+                    deviceId);
+
+                var runTimeMinutes = (decimal)(endTime - startTime).TotalMinutes;
+                return new Performance(0, runTimeMinutes, configuration.TargetRatePerMinute);
             }
 
-            var speedLoss = Math.Max(0, (targetRatePerMinute - actualRate) / targetRatePerMinute * 100);
+            var actualRatePerMinute = aggregates.AverageRate * 60;
 
-            _logger.LogDebug(
-                "Calculated speed loss for device {DeviceId}: {SpeedLoss:F1}% ({ActualRate:F1} vs {TargetRate:F1})",
-                deviceId, speedLoss, actualRate, targetRatePerMinute);
+            // Apply weighted averaging if configured
+            if (configuration.UseWeightedAveraging && aggregates.RunTimeMinutes > 0)
+            {
+                actualRatePerMinute = aggregates.TotalCount / aggregates.RunTimeMinutes;
+            }
 
-            return speedLoss;
+            var performance = new Performance(
+                totalPiecesProduced: aggregates.TotalCount,
+                runTimeMinutes: aggregates.RunTimeMinutes,
+                targetRatePerMinute: configuration.TargetRatePerMinute,
+                actualRatePerMinute: actualRatePerMinute);
+
+            return performance;
         }
         catch (Exception ex) when (!(ex is OeeCalculationException))
         {
             var calculationException = new OeeCalculationException(
-                $"Failed to calculate speed loss for device {deviceId}",
-                "SpeedLoss",
+                $"Failed to calculate performance with configuration for device {deviceId}",
+                "ConfiguredPerformance",
                 OeeErrorCode.PerformanceCalculationFailed,
                 deviceId,
                 startTime,
@@ -224,48 +214,58 @@ public sealed class PerformanceCalculationService : IPerformanceCalculationServi
                 ex);
 
             _logger.LogError(calculationException,
-                "Speed loss calculation failed for device {DeviceId}", deviceId);
+                "Configured performance calculation failed for device {DeviceId}", deviceId);
 
             throw calculationException;
         }
     }
 
     /// <inheritdoc />
-    public async Task<decimal> CalculateActualRateAsync(
+    public async Task<IEnumerable<PerformanceTrend>> GetTrendsAsync(
         string deviceId,
         DateTime startTime,
         DateTime endTime,
-        int productionChannel = 0,
+        int intervalMinutes,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
             throw new ArgumentException("Device ID cannot be null or empty", nameof(deviceId));
 
-        if (endTime <= startTime)
-            throw new ArgumentException("End time must be after start time", nameof(endTime));
+        if (intervalMinutes <= 0)
+            throw new ArgumentException("Interval must be positive", nameof(intervalMinutes));
 
         _logger.LogDebug(
-            "Calculating actual rate for device {DeviceId} channel {Channel} from {StartTime} to {EndTime}",
-            deviceId, productionChannel, startTime, endTime);
+            "Getting performance trends for device {DeviceId} from {StartTime} to {EndTime} with {Interval}min intervals",
+            deviceId, startTime, endTime, intervalMinutes);
 
         try
         {
-            var aggregates = await _counterDataRepository.GetAggregatedDataAsync(
-                deviceId, productionChannel, startTime, endTime, cancellationToken);
+            var trends = new List<PerformanceTrend>();
+            var currentTime = startTime;
+            var intervalSpan = TimeSpan.FromMinutes(intervalMinutes);
+            const decimal defaultTargetRate = 60m; // Default rate for trends
 
-            var actualRatePerMinute = (aggregates?.AverageRate ?? 0) * 60; // Convert to per-minute
+            while (currentTime < endTime)
+            {
+                var intervalEnd = currentTime.Add(intervalSpan);
+                if (intervalEnd > endTime)
+                    intervalEnd = endTime;
 
-            _logger.LogDebug(
-                "Calculated actual rate for device {DeviceId}: {ActualRate:F1} pieces/minute",
-                deviceId, actualRatePerMinute);
+                var performance = await CalculateAsync(
+                    deviceId, currentTime, intervalEnd, defaultTargetRate, cancellationToken);
 
-            return actualRatePerMinute;
+                trends.Add(new PerformanceTrend(currentTime, performance));
+
+                currentTime = intervalEnd;
+            }
+
+            return trends;
         }
         catch (Exception ex) when (!(ex is OeeCalculationException))
         {
             var calculationException = new OeeCalculationException(
-                $"Failed to calculate actual rate for device {deviceId}",
-                "ActualRate",
+                $"Failed to get performance trends for device {deviceId}",
+                "PerformanceTrends",
                 OeeErrorCode.PerformanceCalculationFailed,
                 deviceId,
                 startTime,
@@ -273,56 +273,7 @@ public sealed class PerformanceCalculationService : IPerformanceCalculationServi
                 ex);
 
             _logger.LogError(calculationException,
-                "Actual rate calculation failed for device {DeviceId}", deviceId);
-
-            throw calculationException;
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<decimal> CalculateTotalPiecesAsync(
-        string deviceId,
-        DateTime startTime,
-        DateTime endTime,
-        int productionChannel = 0,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(deviceId))
-            throw new ArgumentException("Device ID cannot be null or empty", nameof(deviceId));
-
-        if (endTime <= startTime)
-            throw new ArgumentException("End time must be after start time", nameof(endTime));
-
-        _logger.LogDebug(
-            "Calculating total pieces for device {DeviceId} channel {Channel} from {StartTime} to {EndTime}",
-            deviceId, productionChannel, startTime, endTime);
-
-        try
-        {
-            var aggregates = await _counterDataRepository.GetAggregatedDataAsync(
-                deviceId, productionChannel, startTime, endTime, cancellationToken);
-
-            var totalPieces = aggregates?.TotalCount ?? 0;
-
-            _logger.LogDebug(
-                "Calculated total pieces for device {DeviceId}: {TotalPieces} pieces",
-                deviceId, totalPieces);
-
-            return totalPieces;
-        }
-        catch (Exception ex) when (!(ex is OeeCalculationException))
-        {
-            var calculationException = new OeeCalculationException(
-                $"Failed to calculate total pieces for device {deviceId}",
-                "TotalPieces",
-                OeeErrorCode.PerformanceCalculationFailed,
-                deviceId,
-                startTime,
-                endTime,
-                ex);
-
-            _logger.LogError(calculationException,
-                "Total pieces calculation failed for device {DeviceId}", deviceId);
+                "Performance trends calculation failed for device {DeviceId}", deviceId);
 
             throw calculationException;
         }

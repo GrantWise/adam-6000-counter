@@ -15,6 +15,7 @@ public class OeeApplicationService : IOeeApplicationService
     private readonly IOeeCalculationService _oeeCalculationService;
     private readonly IWorkOrderRepository _workOrderRepository;
     private readonly ICounterDataRepository _counterDataRepository;
+    private readonly IWorkOrderValidationService _workOrderValidationService;
     private readonly IMemoryCache _cache;
     private readonly ILogger<OeeApplicationService> _logger;
 
@@ -28,18 +29,21 @@ public class OeeApplicationService : IOeeApplicationService
     /// <param name="oeeCalculationService">Service for OEE calculations</param>
     /// <param name="workOrderRepository">Repository for work order operations</param>
     /// <param name="counterDataRepository">Repository for counter data operations</param>
+    /// <param name="workOrderValidationService">Service for work order validation</param>
     /// <param name="cache">Memory cache for performance optimization</param>
     /// <param name="logger">Logger instance</param>
     public OeeApplicationService(
         IOeeCalculationService oeeCalculationService,
         IWorkOrderRepository workOrderRepository,
         ICounterDataRepository counterDataRepository,
+        IWorkOrderValidationService workOrderValidationService,
         IMemoryCache cache,
         ILogger<OeeApplicationService> logger)
     {
         _oeeCalculationService = oeeCalculationService;
         _workOrderRepository = workOrderRepository;
         _counterDataRepository = counterDataRepository;
+        _workOrderValidationService = workOrderValidationService;
         _cache = cache;
         _logger = logger;
     }
@@ -165,64 +169,23 @@ public class OeeApplicationService : IOeeApplicationService
         _logger.LogInformation("Validating work order start conditions for {WorkOrderId} on device {DeviceId}",
             workOrderId, deviceId);
 
-        var issues = new List<string>();
-        var warnings = new List<string>();
-
         try
         {
-            // Check if work order already exists
-            var existingWorkOrder = await _workOrderRepository.GetByIdAsync(workOrderId, cancellationToken);
-            if (existingWorkOrder != null)
-            {
-                issues.Add($"Work order {workOrderId} already exists");
-            }
+            // Delegate to domain service for work order validation
+            var validationResult = await _workOrderValidationService.ValidateForStartAsync(
+                workOrderId, cancellationToken);
 
-            // Check if device has active work order
-            var activeWorkOrder = await _workOrderRepository.GetActiveByDeviceAsync(deviceId, cancellationToken);
-            if (activeWorkOrder != null)
-            {
-                issues.Add($"Device {deviceId} already has an active work order: {activeWorkOrder.Id}");
-            }
-
-            // Check if device has recent production activity
-            var hasRecentActivity = await _counterDataRepository.HasProductionActivityAsync(
-                deviceId, 0, DateTime.UtcNow.AddMinutes(-30), DateTime.UtcNow, cancellationToken);
-
-            if (hasRecentActivity)
-            {
-                warnings.Add("Device has recent production activity. Ensure counter readings are accurate.");
-            }
-
-            // Check data quality
-            var dataValidation = await _oeeCalculationService.ValidateDataSufficiencyAsync(
-                deviceId, DateTime.UtcNow.AddHours(-1), DateTime.UtcNow, 5, cancellationToken);
-
-            if (!dataValidation.IsValid)
-            {
-                warnings.AddRange(dataValidation.Issues);
-            }
-
-            return new WorkOrderValidationResult
-            {
-                IsValid = !issues.Any(),
-                Issues = issues,
-                Warnings = warnings,
-                CanProceed = !issues.Any(),
-                ValidationTimestamp = DateTime.UtcNow
-            };
+            return validationResult;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error validating work order start conditions");
 
-            return new WorkOrderValidationResult
-            {
-                IsValid = false,
-                Issues = new[] { "Validation failed due to system error" },
-                Warnings = Array.Empty<string>(),
-                CanProceed = false,
-                ValidationTimestamp = DateTime.UtcNow
-            };
+            return new WorkOrderValidationResult(
+                false,
+                new[] { "Validation failed due to system error" },
+                Array.Empty<string>(),
+                "SYSTEM_ERROR");
         }
     }
 
