@@ -5,6 +5,7 @@ using Industrial.Adam.Oee.Domain.Interfaces;
 using Industrial.Adam.Oee.Infrastructure;
 using Industrial.Adam.Oee.Infrastructure.Repositories;
 using Industrial.Adam.Oee.Infrastructure.Services;
+using Industrial.Adam.Oee.Tests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Testcontainers.PostgreSql;
@@ -16,6 +17,7 @@ namespace Industrial.Adam.Oee.Tests.Integration.Infrastructure;
 /// <summary>
 /// Performance tests for OEE infrastructure components
 /// Validates sub-100ms query performance requirements
+/// Uses centralized container management for proper port allocation
 /// </summary>
 public sealed class PerformanceTests : IAsyncLifetime
 {
@@ -25,6 +27,7 @@ public sealed class PerformanceTests : IAsyncLifetime
     private ICounterDataRepository _counterDataRepository = null!;
     private IWorkOrderRepository _workOrderRepository = null!;
     private IServiceProvider _serviceProvider = null!;
+    private const string TestClassName = nameof(PerformanceTests);
 
     private const int PerformanceThresholdMs = 100;
     private const int LargeDataSetSize = 10000;
@@ -32,13 +35,7 @@ public sealed class PerformanceTests : IAsyncLifetime
     public PerformanceTests(ITestOutputHelper output)
     {
         _output = output;
-        _postgresContainer = new PostgreSqlBuilder()
-            .WithImage("timescale/timescaledb:latest-pg15")
-            .WithDatabase("adam_counters")
-            .WithUsername("adam_user")
-            .WithPassword("adam_password")
-            .WithPortBinding(54322, 5432)
-            .Build();
+        _postgresContainer = TestContainerManager.CreateContainer(TestClassName);
     }
 
     public async Task InitializeAsync()
@@ -47,26 +44,19 @@ public sealed class PerformanceTests : IAsyncLifetime
 
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
-
-        services.AddSingleton<IDbConnectionFactory>(serviceProvider =>
-        {
-            var logger = serviceProvider.GetRequiredService<ILogger<NpgsqlConnectionFactory>>();
-            return new NpgsqlConnectionFactory(_postgresContainer.GetConnectionString(), logger);
-        });
-
         services.AddSingleton<DataAccessMetrics>();
 
         _serviceProvider = services.BuildServiceProvider();
-        _connectionFactory = _serviceProvider.GetRequiredService<IDbConnectionFactory>();
+        _connectionFactory = TestContainerManager.CreateConnectionFactory(_postgresContainer, _serviceProvider);
 
         var logger = _serviceProvider.GetRequiredService<ILogger<SimpleCounterDataRepository>>();
         var workOrderLogger = _serviceProvider.GetRequiredService<ILogger<WorkOrderRepository>>();
-        var metrics = _serviceProvider.GetRequiredService<DataAccessMetrics>();
 
         _counterDataRepository = new SimpleCounterDataRepository(_connectionFactory, logger);
         _workOrderRepository = new WorkOrderRepository(_connectionFactory, workOrderLogger);
 
-        await SetupPerformanceTestDatabaseAsync();
+        await TestContainerManager.SetupOeeDatabaseAsync(_connectionFactory);
+        await SetupPerformanceIndexesAsync();
         await SeedLargeDataSetAsync();
     }
 
@@ -74,7 +64,7 @@ public sealed class PerformanceTests : IAsyncLifetime
     {
         if (_serviceProvider is IDisposable disposable)
             disposable.Dispose();
-        await _postgresContainer.DisposeAsync();
+        await TestContainerManager.DisposeContainerAsync(TestClassName);
     }
 
     [Fact]
@@ -313,37 +303,14 @@ public sealed class PerformanceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Set up database with performance optimizations
+    /// Add additional performance indexes beyond the base schema
     /// </summary>
-    private async Task SetupPerformanceTestDatabaseAsync()
+    private async Task SetupPerformanceIndexesAsync()
     {
         using var connection = await _connectionFactory.CreateConnectionAsync();
 
-        // Enable TimescaleDB
-        await connection.ExecuteAsync("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;");
-
-        // Create counter_data table with optimal structure
+        // Create additional performance indexes for testing
         await connection.ExecuteAsync(@"
-            CREATE TABLE IF NOT EXISTS counter_data (
-                timestamp TIMESTAMPTZ NOT NULL,
-                device_id VARCHAR(20) NOT NULL,
-                channel INTEGER NOT NULL,
-                rate DECIMAL(10,2),
-                processed_value DECIMAL(18,3),
-                quality VARCHAR(10),
-                PRIMARY KEY (timestamp, device_id, channel)
-            );");
-
-        // Convert to hypertable
-        await connection.ExecuteAsync(@"
-            SELECT create_hypertable('counter_data', 'timestamp', if_not_exists => TRUE);");
-
-        // Create performance indexes
-        await connection.ExecuteAsync(@"
-            CREATE INDEX IF NOT EXISTS idx_counter_data_device_timestamp_desc 
-            ON counter_data(device_id, timestamp DESC)
-            WHERE channel IN (0, 1);
-
             CREATE INDEX IF NOT EXISTS idx_counter_data_device_channel_timestamp 
             ON counter_data(device_id, channel, timestamp DESC)
             WHERE channel IN (0, 1);
@@ -351,31 +318,6 @@ public sealed class PerformanceTests : IAsyncLifetime
             CREATE INDEX IF NOT EXISTS idx_counter_data_latest_by_device_channel 
             ON counter_data(device_id, channel, timestamp DESC, rate)
             WHERE channel IN (0, 1) AND rate IS NOT NULL;");
-
-        // Create work_orders table
-        await connection.ExecuteAsync(@"
-            CREATE TABLE IF NOT EXISTS work_orders (
-                work_order_id VARCHAR(50) PRIMARY KEY,
-                work_order_description TEXT NOT NULL,
-                product_id VARCHAR(50) NOT NULL,
-                product_description TEXT NOT NULL,
-                planned_quantity DECIMAL(18,3) NOT NULL,
-                unit_of_measure VARCHAR(20) NOT NULL DEFAULT 'pieces',
-                scheduled_start_time TIMESTAMPTZ NOT NULL,
-                scheduled_end_time TIMESTAMPTZ NOT NULL,
-                resource_reference VARCHAR(50) NOT NULL,
-                status VARCHAR(20) NOT NULL DEFAULT 'Pending',
-                actual_quantity_good DECIMAL(18,3) NOT NULL DEFAULT 0,
-                actual_quantity_scrap DECIMAL(18,3) NOT NULL DEFAULT 0,
-                actual_start_time TIMESTAMPTZ,
-                actual_end_time TIMESTAMPTZ,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_work_orders_resource_status 
-            ON work_orders(resource_reference, status) 
-            WHERE status IN ('Active', 'Paused');");
 
         // Analyze tables for optimal query planning
         await connection.ExecuteAsync("ANALYZE counter_data; ANALYZE work_orders;");

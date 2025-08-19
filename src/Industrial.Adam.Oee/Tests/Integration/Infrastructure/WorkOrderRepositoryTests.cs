@@ -5,6 +5,7 @@ using Industrial.Adam.Oee.Domain.Interfaces;
 using Industrial.Adam.Oee.Infrastructure;
 using Industrial.Adam.Oee.Infrastructure.Repositories;
 using Industrial.Adam.Oee.Infrastructure.Services;
+using Industrial.Adam.Oee.Tests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Testcontainers.PostgreSql;
@@ -15,6 +16,7 @@ namespace Industrial.Adam.Oee.Tests.Integration.Infrastructure;
 /// <summary>
 /// Integration tests for WorkOrderRepository
 /// Tests full CRUD operations on the OEE-specific work_orders table
+/// Uses centralized container management for proper port allocation and cleanup
 /// </summary>
 public sealed class WorkOrderRepositoryTests : IAsyncLifetime
 {
@@ -22,16 +24,11 @@ public sealed class WorkOrderRepositoryTests : IAsyncLifetime
     private IDbConnectionFactory _connectionFactory = null!;
     private IWorkOrderRepository _repository = null!;
     private IServiceProvider _serviceProvider = null!;
+    private const string TestClassName = nameof(WorkOrderRepositoryTests);
 
     public WorkOrderRepositoryTests()
     {
-        _postgresContainer = new PostgreSqlBuilder()
-            .WithImage("timescale/timescaledb:latest-pg15")
-            .WithDatabase("adam_counters")
-            .WithUsername("adam_user")
-            .WithPassword("adam_password")
-            .WithPortBinding(54321, 5432)
-            .Build();
+        _postgresContainer = TestContainerManager.CreateContainer(TestClassName);
     }
 
     public async Task InitializeAsync()
@@ -40,31 +37,22 @@ public sealed class WorkOrderRepositoryTests : IAsyncLifetime
 
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
-
-        services.AddSingleton<IDbConnectionFactory>(serviceProvider =>
-        {
-            var logger = serviceProvider.GetRequiredService<ILogger<NpgsqlConnectionFactory>>();
-            return new NpgsqlConnectionFactory(_postgresContainer.GetConnectionString(), logger);
-        });
-
         services.AddSingleton<DataAccessMetrics>();
 
         _serviceProvider = services.BuildServiceProvider();
-        _connectionFactory = _serviceProvider.GetRequiredService<IDbConnectionFactory>();
+        _connectionFactory = TestContainerManager.CreateConnectionFactory(_postgresContainer, _serviceProvider);
 
         var logger = _serviceProvider.GetRequiredService<ILogger<WorkOrderRepository>>();
-        var metrics = _serviceProvider.GetRequiredService<DataAccessMetrics>();
-
         _repository = new WorkOrderRepository(_connectionFactory, logger);
 
-        await SetupTestDatabaseAsync();
+        await TestContainerManager.SetupOeeDatabaseAsync(_connectionFactory);
     }
 
     public async Task DisposeAsync()
     {
         if (_serviceProvider is IDisposable disposable)
             disposable.Dispose();
-        await _postgresContainer.DisposeAsync();
+        await TestContainerManager.DisposeContainerAsync(TestClassName);
     }
 
     [Fact]
@@ -377,49 +365,6 @@ public sealed class WorkOrderRepositoryTests : IAsyncLifetime
         }
     }
 
-    /// <summary>
-    /// Set up test database with work_orders table
-    /// </summary>
-    private async Task SetupTestDatabaseAsync()
-    {
-        using var connection = await _connectionFactory.CreateConnectionAsync();
-
-        // Create work_orders table
-        await connection.ExecuteAsync(@"
-            CREATE TABLE IF NOT EXISTS work_orders (
-                work_order_id VARCHAR(50) PRIMARY KEY,
-                work_order_description TEXT NOT NULL,
-                product_id VARCHAR(50) NOT NULL,
-                product_description TEXT NOT NULL,
-                planned_quantity DECIMAL(18,3) NOT NULL,
-                unit_of_measure VARCHAR(20) NOT NULL DEFAULT 'pieces',
-                scheduled_start_time TIMESTAMPTZ NOT NULL,
-                scheduled_end_time TIMESTAMPTZ NOT NULL,
-                resource_reference VARCHAR(50) NOT NULL,
-                status VARCHAR(20) NOT NULL DEFAULT 'Pending',
-                actual_quantity_good DECIMAL(18,3) NOT NULL DEFAULT 0,
-                actual_quantity_scrap DECIMAL(18,3) NOT NULL DEFAULT 0,
-                actual_start_time TIMESTAMPTZ,
-                actual_end_time TIMESTAMPTZ,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                
-                CONSTRAINT work_orders_planned_quantity_positive CHECK (planned_quantity > 0),
-                CONSTRAINT work_orders_actual_quantities_non_negative CHECK (
-                    actual_quantity_good >= 0 AND actual_quantity_scrap >= 0
-                ),
-                CONSTRAINT work_orders_scheduled_times_valid CHECK (scheduled_end_time > scheduled_start_time),
-                CONSTRAINT work_orders_status_valid CHECK (
-                    status IN ('Pending', 'Active', 'Paused', 'Completed', 'Cancelled')
-                )
-            );");
-
-        // Create indexes
-        await connection.ExecuteAsync(@"
-            CREATE INDEX IF NOT EXISTS idx_work_orders_resource_status 
-            ON work_orders(resource_reference, status) 
-            WHERE status IN ('Active', 'Paused');");
-    }
 
     /// <summary>
     /// Create a test work order with default values
