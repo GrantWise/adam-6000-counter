@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using Dapper;
 using Industrial.Adam.Oee.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -182,7 +183,7 @@ public sealed class SimpleCounterDataRepository : ICounterDataRepository
                     quality
                 FROM counter_data 
                 WHERE device_id = @deviceId 
-                  AND channel = ANY(@channels)
+                  AND channel = ANY(@channels::int[])
                   AND timestamp >= @startTime 
                   AND timestamp <= @endTime
                 ORDER BY channel, timestamp ASC";
@@ -275,7 +276,7 @@ public sealed class SimpleCounterDataRepository : ICounterDataRepository
                 aggregates.MaxRate,
                 aggregates.MinRate,
                 aggregates.RunTimeMinutes,
-                aggregates.DataPoints
+                (int)aggregates.DataPoints
             );
 
             _logger.LogInformation("Calculated aggregates for device {DeviceId} channel {Channel}: {TotalCount} total, {AverageRate:F2} avg rate",
@@ -319,7 +320,7 @@ public sealed class SimpleCounterDataRepository : ICounterDataRepository
                 FROM counter_data 
                 WHERE device_id = @deviceId 
                   AND channel = @channel
-                  AND timestamp >= NOW() - INTERVAL '@lookbackMinutes minutes'";
+                  AND timestamp >= NOW() - INTERVAL '1 minute' * @lookbackMinutes";
 
             _logger.LogDebug("Calculating current rate for device {DeviceId} channel {Channel} over {LookbackMinutes} minutes",
                 deviceId, channel, lookbackMinutes);
@@ -521,18 +522,19 @@ public sealed class SimpleCounterDataRepository : ICounterDataRepository
     /// <summary>
     /// Data structure for aggregated counter statistics
     /// </summary>
-    private sealed record CounterAggregatesData(
-        string DeviceId,
-        int Channel,
-        DateTime StartTime,
-        DateTime EndTime,
-        decimal TotalCount,
-        decimal AverageRate,
-        decimal MaxRate,
-        decimal MinRate,
-        decimal RunTimeMinutes,
-        int DataPoints
-    );
+    private sealed class CounterAggregatesData
+    {
+        public string DeviceId { get; set; } = string.Empty;
+        public int Channel { get; set; }
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
+        public decimal TotalCount { get; set; }
+        public decimal AverageRate { get; set; }
+        public decimal MaxRate { get; set; }
+        public decimal MinRate { get; set; }
+        public decimal RunTimeMinutes { get; set; }
+        public long DataPoints { get; set; }
+    }
 
     /// <summary>
     /// Data structure for downtime period mapping

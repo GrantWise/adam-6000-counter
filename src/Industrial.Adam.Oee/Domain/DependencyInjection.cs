@@ -21,10 +21,17 @@ public static class DependencyInjection
         services.TryAddScoped<IAvailabilityCalculationService, AvailabilityCalculationService>();
         services.TryAddScoped<IPerformanceCalculationService, PerformanceCalculationService>();
         services.TryAddScoped<IQualityCalculationService, QualityCalculationService>();
+        services.TryAddScoped<IOeeCalculationService, OeeCalculationService>();
 
         // Work Order Services
         services.TryAddScoped<IWorkOrderProgressService, WorkOrderProgressService>();
         services.TryAddScoped<IWorkOrderValidationService, WorkOrderValidationService>();
+
+        // Job Sequencing Services  
+        services.TryAddScoped<IJobSequencingService, JobSequencingService>();
+
+        // Equipment Services
+        services.TryAddScoped<IEquipmentLineService, EquipmentLineService>();
 
         // Error Handling Services
         services.TryAddSingleton<IIndustrialOeeErrorService, IndustrialOeeErrorService>();
