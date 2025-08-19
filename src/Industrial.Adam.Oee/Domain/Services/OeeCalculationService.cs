@@ -10,11 +10,13 @@ namespace Industrial.Adam.Oee.Domain.Services;
 /// 
 /// Implements Overall Equipment Effectiveness calculations following Domain-Driven Design principles.
 /// Encapsulates complex business logic for calculating OEE metrics from counter data and work orders.
+/// Integrates with Equipment Scheduling service for planned availability data.
 /// </summary>
 public sealed class OeeCalculationService : IOeeCalculationService
 {
     private readonly ICounterDataRepository _counterDataRepository;
     private readonly IWorkOrderRepository _workOrderRepository;
+    private readonly IEquipmentAvailabilityService _equipmentAvailabilityService;
     private readonly ILogger<OeeCalculationService> _logger;
 
     /// <summary>
@@ -22,14 +24,17 @@ public sealed class OeeCalculationService : IOeeCalculationService
     /// </summary>
     /// <param name="counterDataRepository">Counter data repository</param>
     /// <param name="workOrderRepository">Work order repository</param>
+    /// <param name="equipmentAvailabilityService">Equipment availability service</param>
     /// <param name="logger">Logger instance</param>
     public OeeCalculationService(
         ICounterDataRepository counterDataRepository,
         IWorkOrderRepository workOrderRepository,
+        IEquipmentAvailabilityService equipmentAvailabilityService,
         ILogger<OeeCalculationService> logger)
     {
         _counterDataRepository = counterDataRepository ?? throw new ArgumentNullException(nameof(counterDataRepository));
         _workOrderRepository = workOrderRepository ?? throw new ArgumentNullException(nameof(workOrderRepository));
+        _equipmentAvailabilityService = equipmentAvailabilityService ?? throw new ArgumentNullException(nameof(equipmentAvailabilityService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -38,7 +43,7 @@ public sealed class OeeCalculationService : IOeeCalculationService
     /// </summary>
     public async Task<OeeCalculation> CalculateCurrentOeeAsync(string deviceId, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Calculating current OEE for device {DeviceId}", deviceId);
+        _logger.LogInformation("Calculating current OEE for device {DeviceId} with planned availability integration", deviceId);
 
         try
         {
@@ -74,7 +79,7 @@ public sealed class OeeCalculationService : IOeeCalculationService
         DateTime endTime,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Calculating OEE for device {DeviceId} from {StartTime} to {EndTime}",
+        _logger.LogInformation("Calculating OEE for device {DeviceId} from {StartTime} to {EndTime} with planned availability",
             deviceId, startTime, endTime);
 
         // Validate data sufficiency
@@ -88,8 +93,8 @@ public sealed class OeeCalculationService : IOeeCalculationService
         // Get configuration for the device
         var config = await GetCalculationConfigurationAsync(deviceId, cancellationToken);
 
-        // Calculate individual components
-        var availability = await CalculateAvailabilityInternalAsync(deviceId, startTime, endTime, null, cancellationToken);
+        // Calculate individual components using planned availability
+        var availability = await CalculateAvailabilityWithPlannedHoursAsync(deviceId, startTime, endTime, cancellationToken);
         var performance = await CalculatePerformanceAsync(deviceId, startTime, endTime, config.DefaultTargetRate, cancellationToken);
         var quality = await CalculateQualityAsync(deviceId, startTime, endTime, config.ProductionChannel, config.RejectChannel, cancellationToken);
 
@@ -183,6 +188,139 @@ public sealed class OeeCalculationService : IOeeCalculationService
         var actualRunTimeMinutes = aggregates?.RunTimeMinutes ?? 0;
 
         return new Availability(plannedTimeMinutes, actualRunTimeMinutes);
+    }
+
+    /// <summary>
+    /// Calculate availability using planned hours from Equipment Scheduling service
+    /// Implements the MASTER-PLAN.md integration pattern for improved OEE accuracy
+    /// </summary>
+    private async Task<Availability> CalculateAvailabilityWithPlannedHoursAsync(
+        string deviceId,
+        DateTime startTime,
+        DateTime endTime,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Calculating availability with planned hours for device {DeviceId} from {StartTime} to {EndTime}",
+            deviceId, startTime, endTime);
+
+        try
+        {
+            // Get planned availability from Equipment Scheduling service
+            var availabilitySummary = await _equipmentAvailabilityService.GetAvailabilitySummaryAsync(
+                deviceId, startTime.Date, endTime.Date, cancellationToken);
+
+            // Calculate planned time based on Equipment Scheduling data
+            var plannedTimeMinutes = CalculatePlannedTimeFromSummary(availabilitySummary, startTime, endTime);
+
+            // Get actual runtime from counter data
+            var config = await GetCalculationConfigurationAsync(deviceId, cancellationToken);
+            var aggregates = await _counterDataRepository.GetAggregatedDataAsync(
+                deviceId, config.ProductionChannel, startTime, endTime, cancellationToken);
+
+            var actualRunTimeMinutes = aggregates?.RunTimeMinutes ?? 0;
+
+            _logger.LogDebug("Planned time: {PlannedMinutes}min, Actual runtime: {ActualMinutes}min for device {DeviceId}",
+                plannedTimeMinutes, actualRunTimeMinutes, deviceId);
+
+            // Apply confidence factor from Equipment Scheduling data quality
+            var confidenceFactor = availabilitySummary.AverageConfidence;
+            var adjustedPlannedTime = plannedTimeMinutes * confidenceFactor;
+
+            _logger.LogDebug("Applied confidence factor {ConfidenceFactor:P1} to planned time for device {DeviceId}",
+                confidenceFactor, deviceId);
+
+            return new Availability(adjustedPlannedTime, actualRunTimeMinutes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get planned availability for device {DeviceId}, falling back to traditional calculation", deviceId);
+            
+            // Fallback to traditional availability calculation
+            return await CalculateAvailabilityInternalAsync(deviceId, startTime, endTime, null, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Calculates planned time in minutes from availability summary within the specified time range
+    /// </summary>
+    private static decimal CalculatePlannedTimeFromSummary(AvailabilitySummary summary, DateTime startTime, DateTime endTime)
+    {
+        decimal totalPlannedMinutes = 0;
+
+        // Iterate through each day in the summary that falls within our time range
+        foreach (var dailyAvailability in summary.DailyBreakdown)
+        {
+            if (dailyAvailability.Date < startTime.Date || dailyAvailability.Date > endTime.Date)
+                continue;
+
+            // For the start date, consider only the time from startTime
+            // For the end date, consider only the time until endTime
+            // For days in between, use the full planned hours
+
+            decimal dayPlannedMinutes;
+
+            if (dailyAvailability.Date == startTime.Date && dailyAvailability.Date == endTime.Date)
+            {
+                // Same day - calculate planned time for the specific time range
+                dayPlannedMinutes = CalculatePlannedTimeForTimeRange(dailyAvailability, startTime, endTime);
+            }
+            else if (dailyAvailability.Date == startTime.Date)
+            {
+                // Start day - calculate from startTime to end of day
+                var endOfDay = startTime.Date.AddDays(1);
+                dayPlannedMinutes = CalculatePlannedTimeForTimeRange(dailyAvailability, startTime, endOfDay);
+            }
+            else if (dailyAvailability.Date == endTime.Date)
+            {
+                // End day - calculate from start of day to endTime
+                var startOfDay = endTime.Date;
+                dayPlannedMinutes = CalculatePlannedTimeForTimeRange(dailyAvailability, startOfDay, endTime);
+            }
+            else
+            {
+                // Full day within range
+                dayPlannedMinutes = dailyAvailability.PlannedHours * 60; // Convert hours to minutes
+            }
+
+            totalPlannedMinutes += dayPlannedMinutes;
+        }
+
+        return totalPlannedMinutes;
+    }
+
+    /// <summary>
+    /// Calculates planned time for a specific time range within a day
+    /// </summary>
+    private static decimal CalculatePlannedTimeForTimeRange(DailyAvailability dailyAvailability, DateTime startTime, DateTime endTime)
+    {
+        if (dailyAvailability.Date != startTime.Date)
+            return 0;
+
+        decimal totalMinutes = 0;
+
+        foreach (var shift in dailyAvailability.Shifts)
+        {
+            // Calculate shift times as DateTime for the specific date
+            var shiftStart = dailyAvailability.Date.Add(shift.StartTime.ToTimeSpan());
+            var shiftEnd = dailyAvailability.Date.Add(shift.EndTime.ToTimeSpan());
+
+            // Handle shifts that span midnight
+            if (shift.EndTime <= shift.StartTime)
+            {
+                shiftEnd = shiftEnd.AddDays(1);
+            }
+
+            // Find overlap between shift and requested time range
+            var overlapStart = shiftStart > startTime ? shiftStart : startTime;
+            var overlapEnd = shiftEnd < endTime ? shiftEnd : endTime;
+
+            if (overlapStart < overlapEnd)
+            {
+                totalMinutes += (decimal)(overlapEnd - overlapStart).TotalMinutes;
+            }
+        }
+
+        return totalMinutes;
     }
 
     /// <summary>

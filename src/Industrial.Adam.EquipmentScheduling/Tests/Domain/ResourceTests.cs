@@ -158,7 +158,7 @@ public sealed class ResourceTests
         // Use reflection to set IDs for testing since they're protected
         var parentIdField = typeof(Resource).BaseType!.GetProperty("Id", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
         var childIdField = typeof(Resource).BaseType!.GetProperty("Id", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-        
+
         parentIdField!.SetValue(parent, 100L);
         childIdField!.SetValue(child, 200L);
 

@@ -20,5 +20,5 @@ public interface IDomainEventHandler<in TDomainEvent> : IDomainEventHandler
     /// <param name="domainEvent">The domain event to handle</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task representing the asynchronous operation</returns>
-    Task HandleAsync(TDomainEvent domainEvent, CancellationToken cancellationToken = default);
+    public Task HandleAsync(TDomainEvent domainEvent, CancellationToken cancellationToken = default);
 }

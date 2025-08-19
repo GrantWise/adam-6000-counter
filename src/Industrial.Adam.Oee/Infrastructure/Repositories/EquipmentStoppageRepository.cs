@@ -206,7 +206,7 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
                   AND start_time <= @endTime
                 ORDER BY start_time ASC";
 
-            _logger.LogDebug("Retrieving equipment stoppages for line {LineId} between {StartTime} and {EndTime}", 
+            _logger.LogDebug("Retrieving equipment stoppages for line {LineId} between {StartTime} and {EndTime}",
                 lineId, startTime, endTime);
 
             var stoppageData = await connection.QueryAsync<EquipmentStoppageRowData>(sql, new { lineId, startTime, endTime });
@@ -214,14 +214,14 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
 
             var stoppages = stoppageList.Select(ReconstructStoppageFromRow).ToList();
 
-            _logger.LogDebug("Retrieved {StoppageCount} equipment stoppages for line {LineId} in time range", 
+            _logger.LogDebug("Retrieved {StoppageCount} equipment stoppages for line {LineId} in time range",
                 stoppages.Count, lineId);
 
             return stoppages;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve equipment stoppages for line {LineId} in time range {StartTime} to {EndTime}", 
+            _logger.LogError(ex, "Failed to retrieve equipment stoppages for line {LineId} in time range {StartTime} to {EndTime}",
                 lineId, startTime, endTime);
             throw;
         }
@@ -274,7 +274,7 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
 
             var stoppages = stoppageList.Select(ReconstructStoppageFromRow).ToList();
 
-            _logger.LogDebug("Retrieved {StoppageCount} equipment stoppages for work order {WorkOrderId}", 
+            _logger.LogDebug("Retrieved {StoppageCount} equipment stoppages for work order {WorkOrderId}",
                 stoppages.Count, workOrderId);
 
             return stoppages;
@@ -490,7 +490,7 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
 
             sql += " ORDER BY start_time ASC";
 
-            _logger.LogDebug("Retrieving equipment stoppages for classification {CategoryCode}-{Subcode}", 
+            _logger.LogDebug("Retrieving equipment stoppages for classification {CategoryCode}-{Subcode}",
                 categoryCode, subcode ?? "all");
 
             var stoppageData = await connection.QueryAsync<EquipmentStoppageRowData>(sql, parameters);
@@ -498,14 +498,14 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
 
             var stoppages = stoppageList.Select(ReconstructStoppageFromRow).ToList();
 
-            _logger.LogDebug("Retrieved {StoppageCount} equipment stoppages for classification {CategoryCode}-{Subcode}", 
+            _logger.LogDebug("Retrieved {StoppageCount} equipment stoppages for classification {CategoryCode}-{Subcode}",
                 stoppages.Count, categoryCode, subcode ?? "all");
 
             return stoppages;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve equipment stoppages for classification {CategoryCode}-{Subcode}", 
+            _logger.LogError(ex, "Failed to retrieve equipment stoppages for classification {CategoryCode}-{Subcode}",
                 categoryCode, subcode ?? "all");
             throw;
         }
@@ -749,7 +749,7 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
                 UpdatedAt = stoppage.UpdatedAt
             };
 
-            _logger.LogDebug("Creating equipment stoppage for line {LineId} at {StartTime}", 
+            _logger.LogDebug("Creating equipment stoppage for line {LineId} at {StartTime}",
                 stoppage.LineId, stoppage.StartTime);
 
             var id = await connection.QuerySingleAsync<int>(sql, parameters);
@@ -958,7 +958,7 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
                 parameters.Add("lineId", lineId);
             }
 
-            _logger.LogDebug("Calculating stoppage statistics for period {StartTime} to {EndTime}" + 
+            _logger.LogDebug("Calculating stoppage statistics for period {StartTime} to {EndTime}" +
                 (lineId != null ? $" for line {lineId}" : ""), startTime, endTime);
 
             var result = await connection.QuerySingleAsync(sql, parameters);
@@ -976,7 +976,7 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
                 ManualStoppages: result.ManualStoppages
             );
 
-            _logger.LogDebug("Calculated stoppage statistics: {TotalStoppages} total, {ClassifiedStoppages} classified", 
+            _logger.LogDebug("Calculated stoppage statistics: {TotalStoppages} total, {ClassifiedStoppages} classified",
                 statistics.TotalStoppages, statistics.ClassifiedStoppages);
 
             return statistics;
@@ -1172,7 +1172,7 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
             sql += @" GROUP BY DATE_TRUNC('day', start_time), category_code, src.category_name, subcode, srs.subcode_name
                      ORDER BY Period, category_code, subcode";
 
-            _logger.LogDebug("Retrieving classification trends for period {StartTime} to {EndTime}" + 
+            _logger.LogDebug("Retrieving classification trends for period {StartTime} to {EndTime}" +
                 (lineId != null ? $" for line {lineId}" : ""), startTime, endTime);
 
             var trendsData = await connection.QueryAsync(sql, parameters);
@@ -1281,7 +1281,7 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
                      ORDER BY TotalDurationMinutes DESC
                      LIMIT @topCount";
 
-            _logger.LogDebug("Retrieving top {TopCount} stoppage reasons for period {StartTime} to {EndTime}" + 
+            _logger.LogDebug("Retrieving top {TopCount} stoppage reasons for period {StartTime} to {EndTime}" +
                 (lineId != null ? $" for line {lineId}" : ""), topCount, startTime, endTime);
 
             var reasonsData = await connection.QueryAsync(sql, parameters);
@@ -1358,19 +1358,19 @@ public sealed class EquipmentStoppageRepository : IEquipmentStoppageRepository
                 endTime
             };
 
-            _logger.LogDebug("Bulk associating stoppages with work order {WorkOrderId} for line {LineId} between {StartTime} and {EndTime}", 
+            _logger.LogDebug("Bulk associating stoppages with work order {WorkOrderId} for line {LineId} between {StartTime} and {EndTime}",
                 workOrderId, lineId, startTime, endTime);
 
             var rowsAffected = await connection.ExecuteAsync(sql, parameters);
 
-            _logger.LogInformation("Associated {StoppageCount} stoppages with work order {WorkOrderId} for line {LineId}", 
+            _logger.LogInformation("Associated {StoppageCount} stoppages with work order {WorkOrderId} for line {LineId}",
                 rowsAffected, workOrderId, lineId);
 
             return rowsAffected;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to bulk associate stoppages with work order {WorkOrderId} for line {LineId}", 
+            _logger.LogError(ex, "Failed to bulk associate stoppages with work order {WorkOrderId} for line {LineId}",
                 workOrderId, lineId);
             throw;
         }

@@ -12,7 +12,7 @@
   <ItemGroup>
     <!-- Data Access -->
     <PackageReference Include="Dapper" Version="2.1.24" />
-    <PackageReference Include="Npgsql" Version="8.0.5" />
+    <PackageReference Include="Npgsql" Version="9.0.0" />
     
     <!-- Configuration and DI -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(MicrosoftExtensionsVersion)" />
@@ -27,6 +27,7 @@
     <!-- Retry Policies -->
     <PackageReference Include="Polly" Version="$(PollyVersion)" />
     <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="$(MicrosoftExtensionsVersion)" />
     
     <!-- Monitoring and Metrics -->
     <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="$(MicrosoftExtensionsVersion)" />
@@ -41,6 +42,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Domain\Industrial.Adam.Oee.Domain.csproj" />
     <ProjectReference Include="..\Application\Industrial.Adam.Oee.Application.csproj" />
+    <ProjectReference Include="..\..\Industrial.Adam.EquipmentScheduling\Application\Industrial.Adam.EquipmentScheduling.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>

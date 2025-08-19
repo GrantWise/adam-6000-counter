@@ -16,6 +16,7 @@ public sealed class OeeCalculationServiceTests
 {
     private readonly Mock<ICounterDataRepository> _counterDataRepositoryMock;
     private readonly Mock<IWorkOrderRepository> _workOrderRepositoryMock;
+    private readonly Mock<IEquipmentAvailabilityService> _equipmentAvailabilityServiceMock;
     private readonly Mock<ILogger<OeeCalculationService>> _loggerMock;
     private readonly OeeCalculationService _sut;
 
@@ -23,10 +24,12 @@ public sealed class OeeCalculationServiceTests
     {
         _counterDataRepositoryMock = new Mock<ICounterDataRepository>();
         _workOrderRepositoryMock = new Mock<IWorkOrderRepository>();
+        _equipmentAvailabilityServiceMock = new Mock<IEquipmentAvailabilityService>();
         _loggerMock = new Mock<ILogger<OeeCalculationService>>();
         _sut = new OeeCalculationService(
             _counterDataRepositoryMock.Object,
             _workOrderRepositoryMock.Object,
+            _equipmentAvailabilityServiceMock.Object,
             _loggerMock.Object
         );
     }
@@ -38,6 +41,7 @@ public sealed class OeeCalculationServiceTests
         var action = () => new OeeCalculationService(
             null!,
             _workOrderRepositoryMock.Object,
+            _equipmentAvailabilityServiceMock.Object,
             _loggerMock.Object
         );
 
@@ -52,6 +56,7 @@ public sealed class OeeCalculationServiceTests
         var action = () => new OeeCalculationService(
             _counterDataRepositoryMock.Object,
             null!,
+            _equipmentAvailabilityServiceMock.Object,
             _loggerMock.Object
         );
 
@@ -66,6 +71,7 @@ public sealed class OeeCalculationServiceTests
         var action = () => new OeeCalculationService(
             _counterDataRepositoryMock.Object,
             _workOrderRepositoryMock.Object,
+            _equipmentAvailabilityServiceMock.Object,
             null!
         );
 

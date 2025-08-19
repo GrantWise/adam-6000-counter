@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Polly;
+using Polly.Extensions.Http;
 
 namespace Industrial.Adam.Oee.Infrastructure;
 
@@ -43,6 +44,7 @@ public static class DependencyInjection
         services.Configure<OeeResilienceSettings>(configuration.GetSection("Oee:Resilience"));
         services.Configure<OeeStoppageSettings>(configuration.GetSection("Oee:Stoppage"));
         services.Configure<OeeSignalRSettings>(configuration.GetSection("Oee:SignalR"));
+        services.Configure<EquipmentSchedulingSettings>(configuration.GetSection("Oee:EquipmentScheduling"));
         services.Configure<StoppageMonitoringOptions>(configuration.GetSection("StoppageMonitoring"));
         // Add database connection factory with proper error handling
         services.AddSingleton<IDbConnectionFactory>(provider =>
@@ -94,6 +96,45 @@ public static class DependencyInjection
         // Add cache services
         services.AddMemoryCache();
         services.AddSingleton<ICacheService, CacheService>();
+
+        // Add Equipment Scheduling HTTP client with resilience policies
+        services.AddHttpClient<EquipmentAvailabilityService>((serviceProvider, client) =>
+        {
+            var settings = serviceProvider.GetRequiredService<IOptions<EquipmentSchedulingSettings>>().Value;
+            var logger = serviceProvider.GetRequiredService<ILogger<EquipmentAvailabilityService>>();
+
+            // Validate settings
+            var validationErrors = settings.Validate();
+            if (validationErrors.Any())
+            {
+                var errorMessage = "Equipment Scheduling configuration validation failed:\n" + 
+                                   string.Join("\n", validationErrors.Select(e => "  • " + e));
+                logger.LogError(errorMessage);
+                throw new InvalidOperationException(errorMessage);
+            }
+
+            // Configure HTTP client
+            client.BaseAddress = new Uri(settings.GetApiBaseUrl());
+            client.Timeout = settings.RequestTimeout;
+
+            client.DefaultRequestHeaders.Add("User-Agent", "Industrial.Adam.Oee/1.0");
+            client.DefaultRequestHeaders.Add("Accept", "application/json");
+
+            logger.LogInformation("Configured Equipment Scheduling HTTP client with base URL: {BaseUrl}", settings.GetApiBaseUrl());
+        })
+        .ConfigurePrimaryHttpMessageHandler(() =>
+        {
+            return new HttpClientHandler()
+            {
+                // Configure connection pooling and keep-alive
+                MaxConnectionsPerServer = 10,
+                UseCookies = false
+            };
+        })
+        .AddStandardResilienceHandler();
+
+        // Register Equipment Availability Service as scoped
+        services.AddScoped<IEquipmentAvailabilityService, EquipmentAvailabilityService>();
 
         // Add application services
         services.AddScoped<IOeeApplicationService, OeeApplicationService>();
@@ -166,6 +207,14 @@ public static class DependencyInjection
             {
                 errors.Add("Missing 'Oee:Resilience' configuration section. " +
                           "Add resilience settings: { \"Oee\": { \"Resilience\": { \"DatabaseRetry\": { \"MaxRetryAttempts\": 3 } } } }");
+            }
+
+            // Check Equipment Scheduling configuration
+            var equipmentSchedulingSection = oeeSection.GetSection("EquipmentScheduling");
+            if (!equipmentSchedulingSection.Exists())
+            {
+                errors.Add("Missing 'Oee:EquipmentScheduling' configuration section. " +
+                          "Add Equipment Scheduling settings: { \"Oee\": { \"EquipmentScheduling\": { \"BaseUrl\": \"http://localhost:5000\", \"ApiVersion\": \"v1\" } } }");
             }
         }
 

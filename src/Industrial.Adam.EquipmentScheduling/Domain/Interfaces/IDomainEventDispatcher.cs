@@ -11,7 +11,7 @@ public interface IDomainEventDispatcher
     /// <param name="domainEvent">The domain event to dispatch</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task representing the asynchronous operation</returns>
-    Task DispatchAsync(IDomainEvent domainEvent, CancellationToken cancellationToken = default);
+    public Task DispatchAsync(IDomainEvent domainEvent, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Dispatches multiple domain events to all registered handlers
@@ -19,5 +19,5 @@ public interface IDomainEventDispatcher
     /// <param name="domainEvents">The collection of domain events to dispatch</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task representing the asynchronous operation</returns>
-    Task DispatchManyAsync(IEnumerable<IDomainEvent> domainEvents, CancellationToken cancellationToken = default);
+    public Task DispatchManyAsync(IEnumerable<IDomainEvent> domainEvents, CancellationToken cancellationToken = default);
 }

@@ -72,7 +72,7 @@ public sealed class EquipmentLineRepository : IEquipmentLineRepository
 
             var equipmentLine = MapToEquipmentLine(equipmentLineData);
 
-            _logger.LogDebug("Retrieved equipment line {LineId} ({LineName})", 
+            _logger.LogDebug("Retrieved equipment line {LineId} ({LineName})",
                 equipmentLine.LineId, equipmentLine.LineName);
 
             return equipmentLine;
@@ -127,7 +127,7 @@ public sealed class EquipmentLineRepository : IEquipmentLineRepository
 
             var equipmentLine = MapToEquipmentLine(equipmentLineData);
 
-            _logger.LogDebug("Retrieved equipment line {LineId} ({LineName})", 
+            _logger.LogDebug("Retrieved equipment line {LineId} ({LineName})",
                 equipmentLine.LineId, equipmentLine.LineName);
 
             return equipmentLine;
@@ -176,29 +176,29 @@ public sealed class EquipmentLineRepository : IEquipmentLineRepository
                 WHERE adam_device_id = @adamDeviceId 
                   AND adam_channel = @adamChannel";
 
-            _logger.LogDebug("Retrieving equipment line for ADAM device {AdamDeviceId}:{AdamChannel}", 
+            _logger.LogDebug("Retrieving equipment line for ADAM device {AdamDeviceId}:{AdamChannel}",
                 adamDeviceId, adamChannel);
 
-            var equipmentLineData = await connection.QuerySingleOrDefaultAsync<EquipmentLineData>(sql, 
+            var equipmentLineData = await connection.QuerySingleOrDefaultAsync<EquipmentLineData>(sql,
                 new { adamDeviceId, adamChannel });
 
             if (equipmentLineData == null)
             {
-                _logger.LogDebug("No equipment line found for ADAM device {AdamDeviceId}:{AdamChannel}", 
+                _logger.LogDebug("No equipment line found for ADAM device {AdamDeviceId}:{AdamChannel}",
                     adamDeviceId, adamChannel);
                 return null;
             }
 
             var equipmentLine = MapToEquipmentLine(equipmentLineData);
 
-            _logger.LogDebug("Retrieved equipment line {LineId} for ADAM device {AdamDeviceId}:{AdamChannel}", 
+            _logger.LogDebug("Retrieved equipment line {LineId} for ADAM device {AdamDeviceId}:{AdamChannel}",
                 equipmentLine.LineId, adamDeviceId, adamChannel);
 
             return equipmentLine;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve equipment line for ADAM device {AdamDeviceId}:{AdamChannel}", 
+            _logger.LogError(ex, "Failed to retrieve equipment line for ADAM device {AdamDeviceId}:{AdamChannel}",
                 adamDeviceId, adamChannel);
             throw;
         }
@@ -336,7 +336,7 @@ public sealed class EquipmentLineRepository : IEquipmentLineRepository
             var equipmentLineDataList = await connection.QueryAsync<EquipmentLineData>(sql, new { adamDeviceId });
             var equipmentLines = equipmentLineDataList.Select(MapToEquipmentLine).ToList();
 
-            _logger.LogInformation("Retrieved {Count} equipment lines for ADAM device {AdamDeviceId}", 
+            _logger.LogInformation("Retrieved {Count} equipment lines for ADAM device {AdamDeviceId}",
                 equipmentLines.Count, adamDeviceId);
 
             return equipmentLines;
@@ -396,13 +396,13 @@ public sealed class EquipmentLineRepository : IEquipmentLineRepository
                 equipmentLine.UpdatedAt
             };
 
-            _logger.LogDebug("Creating equipment line {LineId} ({LineName})", 
+            _logger.LogDebug("Creating equipment line {LineId} ({LineName})",
                 equipmentLine.LineId, equipmentLine.LineName);
 
             var newId = await connection.QuerySingleAsync<int>(sql, parameters);
 
             _logger.LogInformation("Created equipment line {LineId} ({LineName}) with ID {Id} for ADAM device {AdamDeviceId}:{AdamChannel}",
-                equipmentLine.LineId, equipmentLine.LineName, newId, 
+                equipmentLine.LineId, equipmentLine.LineName, newId,
                 equipmentLine.AdamDeviceId, equipmentLine.AdamChannel);
 
             return newId;
@@ -461,7 +461,7 @@ public sealed class EquipmentLineRepository : IEquipmentLineRepository
 
             if (wasUpdated)
             {
-                _logger.LogInformation("Updated equipment line {LineId} (ID: {Id})", 
+                _logger.LogInformation("Updated equipment line {LineId} (ID: {Id})",
                     equipmentLine.LineId, equipmentLine.Id);
             }
             else
@@ -473,7 +473,7 @@ public sealed class EquipmentLineRepository : IEquipmentLineRepository
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to update equipment line {LineId} (ID: {Id})", 
+            _logger.LogError(ex, "Failed to update equipment line {LineId} (ID: {Id})",
                 equipmentLine.LineId, equipmentLine.Id);
             throw;
         }
@@ -560,7 +560,7 @@ public sealed class EquipmentLineRepository : IEquipmentLineRepository
     /// <param name="excludeLineId">Line ID to exclude from check (for updates)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if mapping is available, false if already used</returns>
-    public async Task<bool> IsAdamDeviceMappingAvailableAsync(string adamDeviceId, int adamChannel, 
+    public async Task<bool> IsAdamDeviceMappingAvailableAsync(string adamDeviceId, int adamChannel,
         string? excludeLineId = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(adamDeviceId))
@@ -596,14 +596,14 @@ public sealed class EquipmentLineRepository : IEquipmentLineRepository
             var mappingExists = await connection.QuerySingleAsync<bool>(sql, parameters);
             var isAvailable = !mappingExists;
 
-            _logger.LogDebug("ADAM device mapping {AdamDeviceId}:{AdamChannel} available: {IsAvailable}", 
+            _logger.LogDebug("ADAM device mapping {AdamDeviceId}:{AdamChannel} available: {IsAvailable}",
                 adamDeviceId, adamChannel, isAvailable);
 
             return isAvailable;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to check ADAM device mapping availability for {AdamDeviceId}:{AdamChannel}", 
+            _logger.LogError(ex, "Failed to check ADAM device mapping availability for {AdamDeviceId}:{AdamChannel}",
                 adamDeviceId, adamChannel);
             throw;
         }

@@ -39,6 +39,8 @@
     <ProjectReference Include="..\Application\Industrial.Adam.Oee.Application.csproj" />
     <ProjectReference Include="..\Infrastructure\Industrial.Adam.Oee.Infrastructure.csproj" />
     <ProjectReference Include="..\WebApi\Industrial.Adam.Oee.WebApi.csproj" />
+    <ProjectReference Include="..\..\Industrial.Adam.EquipmentScheduling\Application\Industrial.Adam.EquipmentScheduling.Application.csproj" />
+    <ProjectReference Include="..\..\Industrial.Adam.EquipmentScheduling\Domain\Industrial.Adam.EquipmentScheduling.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -46,6 +48,7 @@
     <Using Include="FluentAssertions" />
     <Using Include="Moq" />
     <Using Include="AutoFixture" />
+    <Using Include="Industrial.Adam.Oee.WebApi" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,399 @@
+using Industrial.Adam.Oee.Domain.Entities;
+using Industrial.Adam.Oee.Domain.Interfaces;
+using Industrial.Adam.Oee.Domain.Services;
+using Industrial.Adam.Oee.Domain.ValueObjects;
+using Microsoft.Extensions.Logging;
+using Moq;
+using Xunit;
+
+namespace Industrial.Adam.Oee.Tests.Integration.Services;
+
+/// <summary>
+/// Integration tests for OEE calculation with Equipment Scheduling integration
+/// Tests the complete flow from OEE calculation to Equipment Scheduling API calls
+/// </summary>
+public sealed class OeeCalculationIntegrationTests
+{
+    private readonly Mock<ICounterDataRepository> _counterDataRepositoryMock;
+    private readonly Mock<IWorkOrderRepository> _workOrderRepositoryMock;
+    private readonly Mock<IEquipmentAvailabilityService> _equipmentAvailabilityServiceMock;
+    private readonly Mock<ILogger<OeeCalculationService>> _loggerMock;
+    private readonly OeeCalculationService _oeeCalculationService;
+
+    public OeeCalculationIntegrationTests()
+    {
+        _counterDataRepositoryMock = new Mock<ICounterDataRepository>();
+        _workOrderRepositoryMock = new Mock<IWorkOrderRepository>();
+        _equipmentAvailabilityServiceMock = new Mock<IEquipmentAvailabilityService>();
+        _loggerMock = new Mock<ILogger<OeeCalculationService>>();
+
+        _oeeCalculationService = new OeeCalculationService(
+            _counterDataRepositoryMock.Object,
+            _workOrderRepositoryMock.Object,
+            _equipmentAvailabilityServiceMock.Object,
+            _loggerMock.Object);
+    }
+
+    [Fact]
+    public async Task CalculateOeeForPeriodAsync_WithPlannedAvailability_UsesEquipmentSchedulingData()
+    {
+        // Arrange
+        var deviceId = "LINE001";
+        var startTime = new DateTime(2024, 1, 15, 8, 0, 0, DateTimeKind.Utc);
+        var endTime = new DateTime(2024, 1, 15, 16, 0, 0, DateTimeKind.Utc);
+
+        // Setup planned availability from Equipment Scheduling
+        var plannedShifts = new List<ScheduledShift>
+        {
+            new("DAY_SHIFT", new TimeOnly(8, 0), new TimeOnly(16, 0), 8m)
+        };
+        var dailyAvailability = new DailyAvailability(startTime.Date, 8m, plannedShifts);
+        var availabilitySummary = new AvailabilitySummary(deviceId, startTime.Date, endTime.Date, new[] { dailyAvailability });
+
+        _equipmentAvailabilityServiceMock
+            .Setup(x => x.GetAvailabilitySummaryAsync(deviceId, startTime.Date, endTime.Date, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(availabilitySummary);
+
+        // Setup counter data with sufficient data points
+        var counterData = CreateMockCounterData(startTime, endTime, 100);
+        _counterDataRepositoryMock
+            .Setup(x => x.GetDataForPeriodAsync(deviceId, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(counterData);
+
+        _counterDataRepositoryMock
+            .Setup(x => x.HasProductionActivityAsync(deviceId, 0, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Setup aggregated data for performance and quality calculations
+        var aggregatedData = new CounterDataAggregates(
+            totalCount: 800,
+            averageRate: 1.67m, // ~100 pieces per minute
+            runTimeMinutes: 480m, // 8 hours
+            firstReading: startTime,
+            lastReading: endTime
+        );
+
+        _counterDataRepositoryMock
+            .Setup(x => x.GetAggregatedDataAsync(deviceId, 0, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(aggregatedData);
+
+        // Setup reject data for quality calculation
+        var rejectAggregatedData = new CounterDataAggregates(
+            totalCount: 50,
+            averageRate: 0.1m,
+            runTimeMinutes: 480m,
+            firstReading: startTime,
+            lastReading: endTime
+        );
+
+        _counterDataRepositoryMock
+            .Setup(x => x.GetAggregatedDataAsync(deviceId, 1, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(rejectAggregatedData);
+
+        // Act
+        var result = await _oeeCalculationService.CalculateOeeForPeriodAsync(deviceId, startTime, endTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(deviceId, result.DeviceId);
+        Assert.Equal(startTime, result.StartTime);
+        Assert.Equal(endTime, result.EndTime);
+
+        // Verify availability calculation uses planned hours
+        Assert.NotNull(result.Availability);
+        // Planned time should be 8 hours (480 minutes), actual runtime 8 hours
+        // Availability should be 100% (480/480)
+        Assert.Equal(1.0m, result.Availability.AvailabilityRatio);
+
+        // Verify performance calculation
+        Assert.NotNull(result.Performance);
+        Assert.Equal(800m, result.Performance.TotalPiecesProduced);
+
+        // Verify quality calculation
+        Assert.NotNull(result.Quality);
+        Assert.Equal(800m, result.Quality.GoodPieces);
+        Assert.Equal(50m, result.Quality.DefectivePieces);
+
+        // Verify Equipment Scheduling service was called
+        _equipmentAvailabilityServiceMock.Verify(
+            x => x.GetAvailabilitySummaryAsync(deviceId, startTime.Date, endTime.Date, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CalculateOeeForPeriodAsync_WithEquipmentSchedulingFailure_FallsBackToTraditionalCalculation()
+    {
+        // Arrange
+        var deviceId = "LINE001";
+        var startTime = new DateTime(2024, 1, 15, 8, 0, 0, DateTimeKind.Utc);
+        var endTime = new DateTime(2024, 1, 15, 16, 0, 0, DateTimeKind.Utc);
+
+        // Setup Equipment Scheduling service to throw exception
+        _equipmentAvailabilityServiceMock
+            .Setup(x => x.GetAvailabilitySummaryAsync(deviceId, startTime.Date, endTime.Date, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Equipment Scheduling service unavailable"));
+
+        // Setup counter data for fallback calculation
+        var counterData = CreateMockCounterData(startTime, endTime, 100);
+        _counterDataRepositoryMock
+            .Setup(x => x.GetDataForPeriodAsync(deviceId, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(counterData);
+
+        _counterDataRepositoryMock
+            .Setup(x => x.HasProductionActivityAsync(deviceId, 0, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var aggregatedData = new CounterDataAggregates(
+            totalCount: 600,
+            averageRate: 1.25m,
+            runTimeMinutes: 400m, // 6.67 hours actual runtime
+            firstReading: startTime,
+            lastReading: endTime
+        );
+
+        _counterDataRepositoryMock
+            .Setup(x => x.GetAggregatedDataAsync(deviceId, 0, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(aggregatedData);
+
+        // Act
+        var result = await _oeeCalculationService.CalculateOeeForPeriodAsync(deviceId, startTime, endTime);
+
+        // Assert
+        Assert.NotNull(result);
+
+        // Verify fallback calculation was used (based on time period instead of planned hours)
+        Assert.NotNull(result.Availability);
+        // Fallback should use time period: 400 minutes actual / 480 minutes planned = 83.33%
+        Assert.True(result.Availability.AvailabilityRatio > 0.8m && result.Availability.AvailabilityRatio < 0.85m);
+
+        // Verify Equipment Scheduling service was attempted
+        _equipmentAvailabilityServiceMock.Verify(
+            x => x.GetAvailabilitySummaryAsync(deviceId, startTime.Date, endTime.Date, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // Verify warning was logged about fallback
+        VerifyLoggedWarning("Failed to get planned availability");
+    }
+
+    [Fact]
+    public async Task CalculateOeeForPeriodAsync_WithPartialDaySchedule_CalculatesCorrectPlannedTime()
+    {
+        // Arrange
+        var deviceId = "LINE001";
+        var startTime = new DateTime(2024, 1, 15, 10, 0, 0, DateTimeKind.Utc); // 10 AM
+        var endTime = new DateTime(2024, 1, 15, 14, 0, 0, DateTimeKind.Utc);   // 2 PM (4 hours)
+
+        // Setup Equipment Scheduling with 8-16 shift, but we're only calculating 10-14
+        var plannedShifts = new List<ScheduledShift>
+        {
+            new("DAY_SHIFT", new TimeOnly(8, 0), new TimeOnly(16, 0), 8m)
+        };
+        var dailyAvailability = new DailyAvailability(startTime.Date, 8m, plannedShifts);
+        var availabilitySummary = new AvailabilitySummary(deviceId, startTime.Date, endTime.Date, new[] { dailyAvailability });
+
+        _equipmentAvailabilityServiceMock
+            .Setup(x => x.GetAvailabilitySummaryAsync(deviceId, startTime.Date, endTime.Date, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(availabilitySummary);
+
+        // Setup counter data
+        var counterData = CreateMockCounterData(startTime, endTime, 50);
+        _counterDataRepositoryMock
+            .Setup(x => x.GetDataForPeriodAsync(deviceId, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(counterData);
+
+        _counterDataRepositoryMock
+            .Setup(x => x.HasProductionActivityAsync(deviceId, 0, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var aggregatedData = new CounterDataAggregates(
+            totalCount: 240, // 4 hours * 60 pieces/hour
+            averageRate: 1.0m,
+            runTimeMinutes: 240m, // 4 hours actual runtime
+            firstReading: startTime,
+            lastReading: endTime
+        );
+
+        _counterDataRepositoryMock
+            .Setup(x => x.GetAggregatedDataAsync(deviceId, 0, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(aggregatedData);
+
+        // Act
+        var result = await _oeeCalculationService.CalculateOeeForPeriodAsync(deviceId, startTime, endTime);
+
+        // Assert
+        Assert.NotNull(result);
+
+        // Verify availability calculation considers only the 4-hour window within the shift
+        // Planned time for 10 AM - 2 PM within an 8 AM - 4 PM shift should be 4 hours (240 minutes)
+        // Actual runtime 4 hours, so availability should be 100%
+        Assert.NotNull(result.Availability);
+        Assert.Equal(1.0m, result.Availability.AvailabilityRatio);
+    }
+
+    [Fact]
+    public async Task CalculateOeeForPeriodAsync_WithMultipleDaySchedule_AggregatesCorrectly()
+    {
+        // Arrange
+        var deviceId = "LINE001";
+        var startTime = new DateTime(2024, 1, 15, 10, 0, 0, DateTimeKind.Utc);
+        var endTime = new DateTime(2024, 1, 16, 14, 0, 0, DateTimeKind.Utc); // Spans two days
+
+        // Setup Equipment Scheduling for both days
+        var day1Shifts = new List<ScheduledShift>
+        {
+            new("DAY_SHIFT", new TimeOnly(8, 0), new TimeOnly(16, 0), 8m)
+        };
+        var day2Shifts = new List<ScheduledShift>
+        {
+            new("DAY_SHIFT", new TimeOnly(8, 0), new TimeOnly(16, 0), 8m)
+        };
+
+        var dailyAvailabilities = new List<DailyAvailability>
+        {
+            new(startTime.Date, 8m, day1Shifts),
+            new(endTime.Date, 8m, day2Shifts)
+        };
+
+        var availabilitySummary = new AvailabilitySummary(deviceId, startTime.Date, endTime.Date, dailyAvailabilities);
+
+        _equipmentAvailabilityServiceMock
+            .Setup(x => x.GetAvailabilitySummaryAsync(deviceId, startTime.Date, endTime.Date, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(availabilitySummary);
+
+        // Setup counter data
+        var counterData = CreateMockCounterData(startTime, endTime, 200);
+        _counterDataRepositoryMock
+            .Setup(x => x.GetDataForPeriodAsync(deviceId, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(counterData);
+
+        _counterDataRepositoryMock
+            .Setup(x => x.HasProductionActivityAsync(deviceId, 0, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Total time: Day 1 (10 AM - 4 PM = 6 hours) + Day 2 (8 AM - 2 PM = 6 hours) = 12 hours
+        var aggregatedData = new CounterDataAggregates(
+            totalCount: 600, // 12 hours * 50 pieces/hour
+            averageRate: 0.83m,
+            runTimeMinutes: 720m, // 12 hours actual runtime
+            firstReading: startTime,
+            lastReading: endTime
+        );
+
+        _counterDataRepositoryMock
+            .Setup(x => x.GetAggregatedDataAsync(deviceId, 0, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(aggregatedData);
+
+        // Act
+        var result = await _oeeCalculationService.CalculateOeeForPeriodAsync(deviceId, startTime, endTime);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(startTime, result.StartTime);
+        Assert.Equal(endTime, result.EndTime);
+
+        // Verify multi-day availability calculation
+        Assert.NotNull(result.Availability);
+        // Should have 12 hours planned (720 minutes) and 12 hours actual (720 minutes) = 100%
+        Assert.Equal(1.0m, result.Availability.AvailabilityRatio);
+    }
+
+    [Fact]
+    public async Task CalculateOeeForPeriodAsync_WithLowConfidenceSchedulingData_AdjustsPlannedTime()
+    {
+        // Arrange
+        var deviceId = "LINE001";
+        var startTime = new DateTime(2024, 1, 15, 8, 0, 0, DateTimeKind.Utc);
+        var endTime = new DateTime(2024, 1, 15, 16, 0, 0, DateTimeKind.Utc);
+
+        // Setup planned availability with low confidence (50%)
+        var plannedShifts = new List<ScheduledShift>
+        {
+            new("DAY_SHIFT", new TimeOnly(8, 0), new TimeOnly(16, 0), 8m)
+        };
+        var dailyAvailability = new DailyAvailability(startTime.Date, 8m, plannedShifts, confidence: 0.5m);
+        var availabilitySummary = new AvailabilitySummary(deviceId, startTime.Date, endTime.Date, new[] { dailyAvailability });
+
+        _equipmentAvailabilityServiceMock
+            .Setup(x => x.GetAvailabilitySummaryAsync(deviceId, startTime.Date, endTime.Date, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(availabilitySummary);
+
+        // Setup counter data
+        var counterData = CreateMockCounterData(startTime, endTime, 100);
+        _counterDataRepositoryMock
+            .Setup(x => x.GetDataForPeriodAsync(deviceId, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(counterData);
+
+        _counterDataRepositoryMock
+            .Setup(x => x.HasProductionActivityAsync(deviceId, 0, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var aggregatedData = new CounterDataAggregates(
+            totalCount: 480, // 8 hours * 60 pieces/hour
+            averageRate: 1.0m,
+            runTimeMinutes: 480m, // 8 hours actual runtime
+            firstReading: startTime,
+            lastReading: endTime
+        );
+
+        _counterDataRepositoryMock
+            .Setup(x => x.GetAggregatedDataAsync(deviceId, 0, startTime, endTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(aggregatedData);
+
+        // Act
+        var result = await _oeeCalculationService.CalculateOeeForPeriodAsync(deviceId, startTime, endTime);
+
+        // Assert
+        Assert.NotNull(result);
+
+        // Verify availability calculation adjusts for confidence
+        // Planned time: 480 minutes * 0.5 confidence = 240 minutes adjusted
+        // Actual runtime: 480 minutes
+        // Availability should be 480/240 = 200% (capped at some reasonable level in implementation)
+        Assert.NotNull(result.Availability);
+        Assert.True(result.Availability.AvailabilityRatio > 1.0m); // Should exceed 100% due to confidence adjustment
+    }
+
+    // Helper methods
+
+    private static List<CounterReading> CreateMockCounterData(DateTime startTime, DateTime endTime, int dataPointCount)
+    {
+        var data = new List<CounterReading>();
+        var interval = (endTime - startTime).TotalSeconds / dataPointCount;
+
+        for (int i = 0; i < dataPointCount; i++)
+        {
+            var timestamp = startTime.AddSeconds(i * interval);
+            data.Add(new CounterReading(
+                "DEVICE001",
+                0, // Production channel
+                timestamp,
+                i * 10 // Incremental count
+            ));
+        }
+
+        return data;
+    }
+
+    private void VerifyLoggedWarning(string expectedMessagePart)
+    {
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains(expectedMessagePart)),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.AtLeastOnce);
+    }
+}
+
+/// <summary>
+/// Mock implementation of CounterDataAggregates for testing
+/// </summary>
+public record CounterDataAggregates(
+    long TotalCount,
+    decimal AverageRate,
+    decimal RunTimeMinutes,
+    DateTime FirstReading,
+    DateTime LastReading
+);

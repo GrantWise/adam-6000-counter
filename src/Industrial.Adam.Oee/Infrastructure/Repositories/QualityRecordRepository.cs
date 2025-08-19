@@ -64,7 +64,7 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
             var qualityRecordDataList = await connection.QueryAsync<QualityRecordData>(sql, new { workOrderId });
             var qualityRecords = qualityRecordDataList.Select(MapToQualityRecord).ToList();
 
-            _logger.LogDebug("Retrieved {Count} quality records for work order {WorkOrderId}", 
+            _logger.LogDebug("Retrieved {Count} quality records for work order {WorkOrderId}",
                 qualityRecords.Count, workOrderId);
 
             return qualityRecords;
@@ -85,9 +85,9 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Collection of quality records in the date range</returns>
     public async Task<IEnumerable<QualityRecord>> GetByWorkOrderIdAndDateRangeAsync(
-        string workOrderId, 
-        DateTime startDate, 
-        DateTime endDate, 
+        string workOrderId,
+        DateTime startDate,
+        DateTime endDate,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(workOrderId))
@@ -125,7 +125,7 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
             var qualityRecordDataList = await connection.QueryAsync<QualityRecordData>(sql, parameters);
             var qualityRecords = qualityRecordDataList.Select(MapToQualityRecord).ToList();
 
-            _logger.LogDebug("Retrieved {Count} quality records for work order {WorkOrderId} in date range", 
+            _logger.LogDebug("Retrieved {Count} quality records for work order {WorkOrderId} in date range",
                 qualityRecords.Count, workOrderId);
 
             return qualityRecords;
@@ -173,7 +173,7 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
             var qualityRecordDataList = await connection.QueryAsync<QualityRecordData>(sql, new { scrapReasonCode });
             var qualityRecords = qualityRecordDataList.Select(MapToQualityRecord).ToList();
 
-            _logger.LogInformation("Retrieved {Count} quality records for scrap reason code {ScrapReasonCode}", 
+            _logger.LogInformation("Retrieved {Count} quality records for scrap reason code {ScrapReasonCode}",
                 qualityRecords.Count, scrapReasonCode);
 
             return qualityRecords;
@@ -235,8 +235,8 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Collection of quality records in the date range</returns>
     public async Task<IEnumerable<QualityRecord>> GetByDateRangeAsync(
-        DateTime startDate, 
-        DateTime endDate, 
+        DateTime startDate,
+        DateTime endDate,
         CancellationToken cancellationToken = default)
     {
         if (endDate < startDate)
@@ -433,7 +433,7 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
 
             var rowsAffected = await connection.ExecuteAsync(sql, new { workOrderId });
 
-            _logger.LogInformation("Deleted {Count} quality records for work order {WorkOrderId}", 
+            _logger.LogInformation("Deleted {Count} quality records for work order {WorkOrderId}",
                 rowsAffected, workOrderId);
 
             return rowsAffected;
@@ -471,7 +471,7 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
 
             var rowsAffected = await connection.ExecuteAsync(sql, new { days });
 
-            _logger.LogInformation("Deleted {Count} quality records older than {Days} days", 
+            _logger.LogInformation("Deleted {Count} quality records older than {Days} days",
                 rowsAffected, days);
 
             return rowsAffected;
@@ -564,7 +564,7 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Quality statistics by work order ID</returns>
     public async Task<Dictionary<string, QualityStatistics>> GetQualityStatisticsBatchAsync(
-        IEnumerable<string> workOrderIds, 
+        IEnumerable<string> workOrderIds,
         CancellationToken cancellationToken = default)
     {
         if (workOrderIds == null)
@@ -605,7 +605,7 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
 
             _logger.LogDebug("Calculating quality statistics for {Count} work orders", workOrderIdsList.Count);
 
-            var statisticsDataList = await connection.QueryAsync<QualityStatisticsData>(sql, 
+            var statisticsDataList = await connection.QueryAsync<QualityStatisticsData>(sql,
                 new { workOrderIds = workOrderIdsList.ToArray() });
 
             var statisticsByWorkOrder = statisticsDataList.ToDictionary(
@@ -624,7 +624,7 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
                 )
             );
 
-            _logger.LogInformation("Calculated quality statistics for {Count} work orders with data", 
+            _logger.LogInformation("Calculated quality statistics for {Count} work orders with data",
                 statisticsByWorkOrder.Count);
 
             return statisticsByWorkOrder;
@@ -645,9 +645,9 @@ public sealed class QualityRecordRepository : IQualityRecordRepository
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Quality trend data points</returns>
     public async Task<IEnumerable<QualityTrendData>> GetQualityTrendDataAsync(
-        DateTime startDate, 
-        DateTime endDate, 
-        int intervalHours = 1, 
+        DateTime startDate,
+        DateTime endDate,
+        int intervalHours = 1,
         CancellationToken cancellationToken = default)
     {
         if (endDate < startDate)

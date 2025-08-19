@@ -21,10 +21,10 @@ public class DependencyInjectionTests
     {
         // Arrange
         var services = new ServiceCollection();
-        
+
         // Add required services
         services.AddLogging();
-        
+
         // Create minimal configuration for OEE infrastructure
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -45,7 +45,7 @@ public class DependencyInjectionTests
         Assert.NotNull(serviceProvider.GetService<ISimpleJobQueueRepository>());
         Assert.NotNull(serviceProvider.GetService<IEquipmentLineRepository>());
         Assert.NotNull(serviceProvider.GetService<IQualityRecordRepository>());
-        
+
         // Verify existing repositories still work
         Assert.NotNull(serviceProvider.GetService<IWorkOrderRepository>());
         Assert.NotNull(serviceProvider.GetService<ICounterDataRepository>());
@@ -60,7 +60,7 @@ public class DependencyInjectionTests
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
-        
+
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {

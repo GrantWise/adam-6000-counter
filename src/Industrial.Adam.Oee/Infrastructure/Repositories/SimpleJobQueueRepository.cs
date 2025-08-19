@@ -78,7 +78,7 @@ public sealed class SimpleJobQueueRepository : ISimpleJobQueueRepository
             // Reconstruct the aggregate from the denormalized data
             var queue = ReconstructJobQueueFromRows(jobDataList);
 
-            _logger.LogDebug("Retrieved job queue for line {LineId} with {JobCount} jobs", 
+            _logger.LogDebug("Retrieved job queue for line {LineId} with {JobCount} jobs",
                 lineId, queue.JobCount);
 
             return queue;
@@ -127,7 +127,7 @@ public sealed class SimpleJobQueueRepository : ISimpleJobQueueRepository
         try
         {
             using var connection = await _connectionFactory.CreateConnectionAsync();
-            
+
             // Begin transaction for atomic updates
             using var transaction = connection.BeginTransaction();
 
@@ -181,7 +181,7 @@ public sealed class SimpleJobQueueRepository : ISimpleJobQueueRepository
 
                 transaction.Commit();
 
-                _logger.LogInformation("Saved job queue for line {LineId} with {JobCount} jobs", 
+                _logger.LogInformation("Saved job queue for line {LineId} with {JobCount} jobs",
                     jobQueue.LineId, jobQueue.JobCount);
             }
             catch
@@ -276,7 +276,7 @@ public sealed class SimpleJobQueueRepository : ISimpleJobQueueRepository
             using var connection = await _connectionFactory.CreateConnectionAsync();
 
             const string sql = "SELECT EXISTS(SELECT 1 FROM simple_job_queues WHERE work_order_id = @workOrderId)";
-            
+
             var exists = await connection.QuerySingleAsync<bool>(sql, new { workOrderId });
 
             _logger.LogDebug("Work order {WorkOrderId} queued status: {IsQueued}", workOrderId, exists);
@@ -317,7 +317,7 @@ public sealed class SimpleJobQueueRepository : ISimpleJobQueueRepository
 
             if (wasRemoved)
             {
-                _logger.LogInformation("Removed work order {WorkOrderId} from {QueueCount} queue(s)", 
+                _logger.LogInformation("Removed work order {WorkOrderId} from {QueueCount} queue(s)",
                     workOrderId, rowsAffected);
             }
             else
@@ -350,12 +350,12 @@ public sealed class SimpleJobQueueRepository : ISimpleJobQueueRepository
         // Set the creation/update times from the first row (they should all be the same)
         // Note: We need to use reflection or create a constructor that accepts these times
         // For now, we'll manually add jobs and accept that timestamps may not perfectly match
-        
+
         foreach (var row in jobRows)
         {
             // Add the job to the queue
             queue.AddJob(row.WorkOrderId, row.ProductDescription, row.Priority);
-            
+
             // If the job was started, mark it as started
             if (row.OperatorId != null)
             {

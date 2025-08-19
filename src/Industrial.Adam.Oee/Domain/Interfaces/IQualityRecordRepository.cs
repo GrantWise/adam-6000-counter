@@ -25,9 +25,9 @@ public interface IQualityRecordRepository
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Collection of quality records in the date range</returns>
     public Task<IEnumerable<QualityRecord>> GetByWorkOrderIdAndDateRangeAsync(
-        string workOrderId, 
-        DateTime startDate, 
-        DateTime endDate, 
+        string workOrderId,
+        DateTime startDate,
+        DateTime endDate,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -53,8 +53,8 @@ public interface IQualityRecordRepository
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Collection of quality records in the date range</returns>
     public Task<IEnumerable<QualityRecord>> GetByDateRangeAsync(
-        DateTime startDate, 
-        DateTime endDate, 
+        DateTime startDate,
+        DateTime endDate,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -104,7 +104,7 @@ public interface IQualityRecordRepository
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Quality statistics by work order ID</returns>
     public Task<Dictionary<string, QualityStatistics>> GetQualityStatisticsBatchAsync(
-        IEnumerable<string> workOrderIds, 
+        IEnumerable<string> workOrderIds,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -116,9 +116,9 @@ public interface IQualityRecordRepository
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Quality trend data points</returns>
     public Task<IEnumerable<QualityTrendData>> GetQualityTrendDataAsync(
-        DateTime startDate, 
-        DateTime endDate, 
-        int intervalHours = 1, 
+        DateTime startDate,
+        DateTime endDate,
+        int intervalHours = 1,
         CancellationToken cancellationToken = default);
 }
 
