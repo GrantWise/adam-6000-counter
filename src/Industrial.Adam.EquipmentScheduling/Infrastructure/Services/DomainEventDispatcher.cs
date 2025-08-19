@@ -45,17 +45,17 @@ public sealed class DomainEventDispatcher : IDomainEventDispatcher
 
         try
         {
-            _logger.LogDebug("Dispatching domain event {EventType} with ID {EventId}", 
+            _logger.LogDebug("Dispatching domain event {EventType} with ID {EventId}",
                 domainEvent.GetType().Name, domainEvent.Id);
 
             await DispatchToHandlersAsync(domainEvent, cancellationToken);
 
-            _logger.LogDebug("Successfully dispatched domain event {EventType} with ID {EventId}", 
+            _logger.LogDebug("Successfully dispatched domain event {EventType} with ID {EventId}",
                 domainEvent.GetType().Name, domainEvent.Id);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to dispatch domain event {EventType} with ID {EventId}", 
+            _logger.LogError(ex, "Failed to dispatch domain event {EventType} with ID {EventId}",
                 domainEvent.GetType().Name, domainEvent.Id);
             throw;
         }
@@ -108,7 +108,7 @@ public sealed class DomainEventDispatcher : IDomainEventDispatcher
     {
         var eventType = domainEvent.GetType();
         var handlerType = typeof(IDomainEventHandler<>).MakeGenericType(eventType);
-        
+
         // Resolve all handlers for this event type from the DI container
         var handlers = _serviceProvider.GetServices(handlerType);
         var handlersList = handlers.ToList();
@@ -119,7 +119,7 @@ public sealed class DomainEventDispatcher : IDomainEventDispatcher
             return;
         }
 
-        _logger.LogDebug("Found {HandlerCount} handlers for domain event {EventType}", 
+        _logger.LogDebug("Found {HandlerCount} handlers for domain event {EventType}",
             handlersList.Count, eventType.Name);
 
         var handleTasks = new List<Task>();
@@ -140,15 +140,15 @@ public sealed class DomainEventDispatcher : IDomainEventDispatcher
                 }
                 else
                 {
-                    _logger.LogWarning("Handler {HandlerType} does not implement HandleAsync method", 
+                    _logger.LogWarning("Handler {HandlerType} does not implement HandleAsync method",
                         handler.GetType().Name);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error invoking handler {HandlerType} for event {EventType}", 
+                _logger.LogError(ex, "Error invoking handler {HandlerType} for event {EventType}",
                     handler.GetType().Name, eventType.Name);
-                
+
                 // Continue processing other handlers even if one fails
                 // This provides resilience and prevents one failing handler from stopping the entire pipeline
             }
@@ -160,7 +160,7 @@ public sealed class DomainEventDispatcher : IDomainEventDispatcher
             try
             {
                 await Task.WhenAll(handleTasks);
-                _logger.LogDebug("All {HandlerCount} handlers completed for event {EventType}", 
+                _logger.LogDebug("All {HandlerCount} handlers completed for event {EventType}",
                     handlersList.Count, eventType.Name);
             }
             catch (Exception ex)

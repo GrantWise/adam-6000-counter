@@ -83,6 +83,10 @@ public static class DependencyInjection
         // Add repositories
         services.AddScoped<ICounterDataRepository, SimpleCounterDataRepository>();
         services.AddScoped<IWorkOrderRepository, WorkOrderRepository>();
+        services.AddScoped<ISimpleJobQueueRepository, SimpleJobQueueRepository>();
+        services.AddScoped<IEquipmentLineRepository, EquipmentLineRepository>();
+        services.AddScoped<IQualityRecordRepository, QualityRecordRepository>();
+        services.AddScoped<IEquipmentStoppageRepository, EquipmentStoppageRepository>();
 
         // Add domain services
         services.AddScoped<ISimpleJobQueueService, SimpleJobQueueService>();

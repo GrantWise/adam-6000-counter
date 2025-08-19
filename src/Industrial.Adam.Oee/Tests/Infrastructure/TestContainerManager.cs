@@ -23,8 +23,9 @@ public static class TestContainerManager
 
     /// <summary>
     /// Base port for test containers - each test class gets a unique port range
+    /// Uses a random base port to avoid conflicts with other test runs
     /// </summary>
-    private const int BasePort = 55000;
+    private static readonly int BasePort = new Random().Next(50000, 60000);
 
     /// <summary>
     /// Creates a test container with a unique port for the calling test class
@@ -237,7 +238,7 @@ public static class TestContainerManager
     private static int GetNextPortOffset(string testClassName)
     {
         return _portCounters.AddOrUpdate(testClassName,
-            key => _portCounters.Count,
+            key => _portCounters.Count * 10, // Give each test class a 10-port range
             (key, current) => current);
     }
 }
