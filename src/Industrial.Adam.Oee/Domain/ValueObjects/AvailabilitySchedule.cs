@@ -162,6 +162,10 @@ public sealed class AvailabilitySchedule : ValueObject
         return new AvailabilitySchedule(lineId, weekStart, dailyHours.AsReadOnly());
     }
 
+    /// <summary>
+    /// Gets the components used for equality comparison
+    /// </summary>
+    /// <returns>An enumerable of objects representing the value object's components</returns>
     protected override IEnumerable<object> GetEqualityComponents()
     {
         yield return LineId;
@@ -178,6 +182,10 @@ public sealed class AvailabilitySchedule : ValueObject
         }
     }
 
+    /// <summary>
+    /// Returns a string representation of the availability schedule
+    /// </summary>
+    /// <returns>A formatted string containing schedule summary</returns>
     public override string ToString() =>
         $"AvailabilitySchedule: {LineId}, Week {WeekStart:yyyy-MM-dd}, {TotalWeeklyHours:F1}h total";
 }

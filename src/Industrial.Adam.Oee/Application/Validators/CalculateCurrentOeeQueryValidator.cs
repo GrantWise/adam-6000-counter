@@ -8,6 +8,9 @@ namespace Industrial.Adam.Oee.Application.Validators;
 /// </summary>
 public class CalculateCurrentOeeQueryValidator : AbstractValidator<CalculateCurrentOeeQuery>
 {
+    /// <summary>
+    /// Initializes a new instance of the CalculateCurrentOeeQueryValidator class
+    /// </summary>
     public CalculateCurrentOeeQueryValidator()
     {
         RuleFor(x => x.DeviceId)

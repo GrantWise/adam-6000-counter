@@ -18,6 +18,14 @@ public class StartWorkOrderCommandHandler : IRequestHandler<StartWorkOrderComman
     private readonly IEquipmentLineService _equipmentLineService;
     private readonly ILogger<StartWorkOrderCommandHandler> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the StartWorkOrderCommandHandler class
+    /// </summary>
+    /// <param name="workOrderRepository">Repository for work order operations</param>
+    /// <param name="counterDataRepository">Repository for counter data operations</param>
+    /// <param name="jobSequencingService">Service for job sequencing operations</param>
+    /// <param name="equipmentLineService">Service for equipment line operations</param>
+    /// <param name="logger">Logger instance</param>
     public StartWorkOrderCommandHandler(
         IWorkOrderRepository workOrderRepository,
         ICounterDataRepository counterDataRepository,
@@ -32,6 +40,12 @@ public class StartWorkOrderCommandHandler : IRequestHandler<StartWorkOrderComman
         _logger = logger;
     }
 
+    /// <summary>
+    /// Handles the StartWorkOrderCommand request
+    /// </summary>
+    /// <param name="request">The command request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>A task representing the asynchronous operation with the created work order ID</returns>
     public async Task<string> Handle(StartWorkOrderCommand request, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Starting work order {WorkOrderId} for equipment line {LineId}",

@@ -46,13 +46,37 @@ public interface IOeeApplicationService
 /// </summary>
 public class DeviceStatusDto
 {
+    /// <summary>
+    /// Device identifier
+    /// </summary>
     public string DeviceId { get; set; } = string.Empty;
+    /// <summary>
+    /// Current status of the device
+    /// </summary>
     public string Status { get; set; } = string.Empty;
+    /// <summary>
+    /// Current production rate
+    /// </summary>
     public decimal CurrentRate { get; set; }
+    /// <summary>
+    /// Indicates if device has an active work order
+    /// </summary>
     public bool HasActiveWorkOrder { get; set; }
+    /// <summary>
+    /// Active work order identifier, if any
+    /// </summary>
     public string? ActiveWorkOrderId { get; set; }
+    /// <summary>
+    /// Indicates if device is currently in stoppage
+    /// </summary>
     public bool IsInStoppage { get; set; }
+    /// <summary>
+    /// Duration of current stoppage in minutes
+    /// </summary>
     public decimal? StoppageDurationMinutes { get; set; }
+    /// <summary>
+    /// Timestamp of last status update
+    /// </summary>
     public DateTime LastUpdate { get; set; }
 }
 
@@ -61,9 +85,24 @@ public class DeviceStatusDto
 /// </summary>
 public class WorkOrderValidationResult
 {
+    /// <summary>
+    /// Indicates if the work order is valid
+    /// </summary>
     public bool IsValid { get; set; }
+    /// <summary>
+    /// List of validation issues
+    /// </summary>
     public IEnumerable<string> Issues { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// List of validation warnings
+    /// </summary>
     public IEnumerable<string> Warnings { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Indicates if processing can proceed despite issues
+    /// </summary>
     public bool CanProceed { get; set; }
+    /// <summary>
+    /// Timestamp when validation was performed
+    /// </summary>
     public DateTime ValidationTimestamp { get; set; }
 }

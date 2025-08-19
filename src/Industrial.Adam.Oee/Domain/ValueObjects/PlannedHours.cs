@@ -93,6 +93,10 @@ public sealed class PlannedHours : ValueObject
     /// </summary>
     public decimal GetEfficiencyFactor() => Confidence;
 
+    /// <summary>
+    /// Gets the components used for equality comparison
+    /// </summary>
+    /// <returns>An enumerable of objects representing the value object's components</returns>
     protected override IEnumerable<object> GetEqualityComponents()
     {
         yield return Date;
@@ -103,6 +107,10 @@ public sealed class PlannedHours : ValueObject
             yield return shift;
     }
 
+    /// <summary>
+    /// Returns a string representation of the planned hours
+    /// </summary>
+    /// <returns>A formatted string containing planned hours details</returns>
     public override string ToString() =>
         $"PlannedHours: {TotalHours:F1}h on {Date:yyyy-MM-dd} ({Shifts.Count} shifts)";
 }
@@ -169,6 +177,10 @@ public sealed class ScheduledShift : ValueObject
         return time >= StartTime && time <= EndTime;
     }
 
+    /// <summary>
+    /// Gets the components used for equality comparison
+    /// </summary>
+    /// <returns>An enumerable of objects representing the value object's components</returns>
     protected override IEnumerable<object> GetEqualityComponents()
     {
         yield return ShiftCode;
@@ -177,6 +189,10 @@ public sealed class ScheduledShift : ValueObject
         yield return Hours;
     }
 
+    /// <summary>
+    /// Returns a string representation of the scheduled shift
+    /// </summary>
+    /// <returns>A formatted string containing shift details</returns>
     public override string ToString() =>
         $"{ShiftCode}: {StartTime:HH:mm}-{EndTime:HH:mm} ({Hours:F1}h)";
 }

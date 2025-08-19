@@ -16,6 +16,12 @@ public class CalculateCurrentOeeQueryHandler : IRequestHandler<CalculateCurrentO
     private readonly IWorkOrderRepository _workOrderRepository;
     private readonly ILogger<CalculateCurrentOeeQueryHandler> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the CalculateCurrentOeeQueryHandler class
+    /// </summary>
+    /// <param name="oeeCalculationService">Service for OEE calculations</param>
+    /// <param name="workOrderRepository">Repository for work order operations</param>
+    /// <param name="logger">Logger instance</param>
     public CalculateCurrentOeeQueryHandler(
         IOeeCalculationService oeeCalculationService,
         IWorkOrderRepository workOrderRepository,
@@ -26,6 +32,12 @@ public class CalculateCurrentOeeQueryHandler : IRequestHandler<CalculateCurrentO
         _logger = logger;
     }
 
+    /// <summary>
+    /// Handles the CalculateCurrentOeeQuery request
+    /// </summary>
+    /// <param name="request">The query request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>A task representing the asynchronous operation with OEE calculation results</returns>
     public async Task<OeeCalculationDto> Handle(CalculateCurrentOeeQuery request, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Calculating current OEE for device {DeviceId}", request.DeviceId);

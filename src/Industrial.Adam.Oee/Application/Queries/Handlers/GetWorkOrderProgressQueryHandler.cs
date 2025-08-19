@@ -14,6 +14,11 @@ public class GetWorkOrderProgressQueryHandler : IRequestHandler<GetWorkOrderProg
     private readonly IWorkOrderRepository _workOrderRepository;
     private readonly ILogger<GetWorkOrderProgressQueryHandler> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the GetWorkOrderProgressQueryHandler class
+    /// </summary>
+    /// <param name="workOrderRepository">Repository for work order operations</param>
+    /// <param name="logger">Logger instance</param>
     public GetWorkOrderProgressQueryHandler(
         IWorkOrderRepository workOrderRepository,
         ILogger<GetWorkOrderProgressQueryHandler> logger)
@@ -22,6 +27,12 @@ public class GetWorkOrderProgressQueryHandler : IRequestHandler<GetWorkOrderProg
         _logger = logger;
     }
 
+    /// <summary>
+    /// Handles the GetWorkOrderProgressQuery request
+    /// </summary>
+    /// <param name="request">The query request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>A task representing the asynchronous operation with work order progress data</returns>
     public async Task<WorkOrderProgressDto?> Handle(GetWorkOrderProgressQuery request, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Getting work order progress for {WorkOrderId}", request.WorkOrderId);

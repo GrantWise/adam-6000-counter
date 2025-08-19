@@ -22,6 +22,14 @@ public class OeeApplicationService : IOeeApplicationService
     private const string OeeCacheKeyPrefix = "oee_current_";
     private const string WorkOrderCacheKeyPrefix = "workorder_active_";
 
+    /// <summary>
+    /// Initializes a new instance of the OeeApplicationService class
+    /// </summary>
+    /// <param name="oeeCalculationService">Service for OEE calculations</param>
+    /// <param name="workOrderRepository">Repository for work order operations</param>
+    /// <param name="counterDataRepository">Repository for counter data operations</param>
+    /// <param name="cache">Memory cache for performance optimization</param>
+    /// <param name="logger">Logger instance</param>
     public OeeApplicationService(
         IOeeCalculationService oeeCalculationService,
         IWorkOrderRepository workOrderRepository,

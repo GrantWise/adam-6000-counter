@@ -14,6 +14,11 @@ public class GetActiveWorkOrderQueryHandler : IRequestHandler<GetActiveWorkOrder
     private readonly IWorkOrderRepository _workOrderRepository;
     private readonly ILogger<GetActiveWorkOrderQueryHandler> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the GetActiveWorkOrderQueryHandler class
+    /// </summary>
+    /// <param name="workOrderRepository">Repository for work order operations</param>
+    /// <param name="logger">Logger instance</param>
     public GetActiveWorkOrderQueryHandler(
         IWorkOrderRepository workOrderRepository,
         ILogger<GetActiveWorkOrderQueryHandler> logger)
@@ -22,6 +27,12 @@ public class GetActiveWorkOrderQueryHandler : IRequestHandler<GetActiveWorkOrder
         _logger = logger;
     }
 
+    /// <summary>
+    /// Handles the GetActiveWorkOrderQuery request
+    /// </summary>
+    /// <param name="request">The query request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>A task representing the asynchronous operation with the active work order data</returns>
     public async Task<WorkOrderDto?> Handle(GetActiveWorkOrderQuery request, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Getting active work order for device {DeviceId}", request.DeviceId);

@@ -174,6 +174,10 @@ public sealed class ActiveSchedule : ValueObject
         return overlapEnd - overlapStart;
     }
 
+    /// <summary>
+    /// Gets the components used for equality comparison
+    /// </summary>
+    /// <returns>An enumerable of objects representing the value object's components</returns>
     protected override IEnumerable<object> GetEqualityComponents()
     {
         yield return ScheduleId;
@@ -189,6 +193,10 @@ public sealed class ActiveSchedule : ValueObject
             yield return Notes;
     }
 
+    /// <summary>
+    /// Returns a string representation of the active schedule
+    /// </summary>
+    /// <returns>A formatted string containing schedule details</returns>
     public override string ToString() =>
         $"ActiveSchedule: {ScheduleId} for {LineId}, {PlannedStartTime:yyyy-MM-dd HH:mm} - {PlannedEndTime:HH:mm} ({Status})";
 }

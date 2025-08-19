@@ -147,6 +147,10 @@ public sealed class ServiceHealthResult : ValueObject
     /// <returns>True if response time is within threshold</returns>
     public bool IsResponseTimeAcceptable(TimeSpan threshold) => ResponseTime <= threshold;
 
+    /// <summary>
+    /// Gets the components used for equality comparison
+    /// </summary>
+    /// <returns>An enumerable of objects representing the value object's components</returns>
     protected override IEnumerable<object> GetEqualityComponents()
     {
         yield return ServiceName;
@@ -169,6 +173,10 @@ public sealed class ServiceHealthResult : ValueObject
         }
     }
 
+    /// <summary>
+    /// Returns a string representation of the service health result
+    /// </summary>
+    /// <returns>A formatted string containing service health details</returns>
     public override string ToString() =>
         $"ServiceHealth: {ServiceName} is {Status} (Response: {ResponseTime.TotalMilliseconds:F0}ms)";
 }

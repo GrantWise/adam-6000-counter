@@ -262,11 +262,29 @@ public sealed class CacheService : ICacheService
 /// </summary>
 public static class CacheKeys
 {
+    /// <summary>
+    /// Cache key template for active work order data
+    /// </summary>
     public const string ActiveWorkOrder = "work_order:active:{0}";
+    /// <summary>
+    /// Cache key template for work order data by ID
+    /// </summary>
     public const string WorkOrderById = "work_order:id:{0}";
+    /// <summary>
+    /// Cache key template for device configuration data
+    /// </summary>
     public const string DeviceConfiguration = "device_config:{0}";
+    /// <summary>
+    /// Cache key template for current OEE metrics
+    /// </summary>
     public const string CurrentOeeMetrics = "oee:current:{0}";
+    /// <summary>
+    /// Cache key template for counter aggregate data
+    /// </summary>
     public const string CounterAggregates = "counter:aggregates:{0}:{1}:{2}:{3}";
+    /// <summary>
+    /// Cache key template for current production rate
+    /// </summary>
     public const string CurrentRate = "counter:rate:{0}:{1}";
 
     /// <summary>

@@ -14,6 +14,11 @@ public class GetOeeHistoryQueryHandler : IRequestHandler<GetOeeHistoryQuery, IEn
     private readonly IOeeCalculationService _oeeCalculationService;
     private readonly ILogger<GetOeeHistoryQueryHandler> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the GetOeeHistoryQueryHandler class
+    /// </summary>
+    /// <param name="oeeCalculationService">Service for OEE calculations</param>
+    /// <param name="logger">Logger instance</param>
     public GetOeeHistoryQueryHandler(
         IOeeCalculationService oeeCalculationService,
         ILogger<GetOeeHistoryQueryHandler> logger)
@@ -22,6 +27,12 @@ public class GetOeeHistoryQueryHandler : IRequestHandler<GetOeeHistoryQuery, IEn
         _logger = logger;
     }
 
+    /// <summary>
+    /// Handles the GetOeeHistoryQuery request
+    /// </summary>
+    /// <param name="request">The query request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>A task representing the asynchronous operation with OEE history data</returns>
     public async Task<IEnumerable<OeeCalculationDto>> Handle(GetOeeHistoryQuery request, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Getting OEE history for device {DeviceId} from {StartTime} to {EndTime}",

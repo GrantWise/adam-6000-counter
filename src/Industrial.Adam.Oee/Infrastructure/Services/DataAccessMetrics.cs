@@ -222,12 +222,33 @@ public sealed class ScopedQueryTracker : IDisposable
 /// </summary>
 public static class DataAccessErrorTypes
 {
+    /// <summary>
+    /// Database connection error type
+    /// </summary>
     public const string Connection = "connection";
+    /// <summary>
+    /// Operation timeout error type
+    /// </summary>
     public const string Timeout = "timeout";
+    /// <summary>
+    /// Database constraint violation error type
+    /// </summary>
     public const string Constraint = "constraint";
+    /// <summary>
+    /// Resource not found error type
+    /// </summary>
     public const string NotFound = "not_found";
+    /// <summary>
+    /// Data serialization error type
+    /// </summary>
     public const string Serialization = "serialization";
+    /// <summary>
+    /// Permission/authorization error type
+    /// </summary>
     public const string Permission = "permission";
+    /// <summary>
+    /// Unknown or unclassified error type
+    /// </summary>
     public const string Unknown = "unknown";
 
     /// <summary>

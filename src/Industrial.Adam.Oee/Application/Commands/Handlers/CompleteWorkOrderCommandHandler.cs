@@ -15,6 +15,12 @@ public class CompleteWorkOrderCommandHandler : IRequestHandler<CompleteWorkOrder
     private readonly ICounterDataRepository _counterDataRepository;
     private readonly ILogger<CompleteWorkOrderCommandHandler> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the CompleteWorkOrderCommandHandler class
+    /// </summary>
+    /// <param name="workOrderRepository">Repository for work order operations</param>
+    /// <param name="counterDataRepository">Repository for counter data operations</param>
+    /// <param name="logger">Logger instance</param>
     public CompleteWorkOrderCommandHandler(
         IWorkOrderRepository workOrderRepository,
         ICounterDataRepository counterDataRepository,
@@ -25,6 +31,12 @@ public class CompleteWorkOrderCommandHandler : IRequestHandler<CompleteWorkOrder
         _logger = logger;
     }
 
+    /// <summary>
+    /// Handles the CompleteWorkOrderCommand request
+    /// </summary>
+    /// <param name="request">The command request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>A task representing the asynchronous operation</returns>
     public async Task Handle(CompleteWorkOrderCommand request, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Completing work order {WorkOrderId}", request.WorkOrderId);

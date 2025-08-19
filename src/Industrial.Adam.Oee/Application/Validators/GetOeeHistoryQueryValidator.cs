@@ -8,6 +8,9 @@ namespace Industrial.Adam.Oee.Application.Validators;
 /// </summary>
 public class GetOeeHistoryQueryValidator : AbstractValidator<GetOeeHistoryQuery>
 {
+    /// <summary>
+    /// Initializes a new instance of the GetOeeHistoryQueryValidator class
+    /// </summary>
     public GetOeeHistoryQueryValidator()
     {
         RuleFor(x => x.DeviceId)

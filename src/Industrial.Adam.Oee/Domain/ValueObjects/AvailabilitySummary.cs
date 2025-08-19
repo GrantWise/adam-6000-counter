@@ -152,6 +152,10 @@ public sealed class AvailabilitySummary : ValueObject
         return new AvailabilitySummary(lineId, startDate, endDate, dailyBreakdown);
     }
 
+    /// <summary>
+    /// Gets the components used for equality comparison
+    /// </summary>
+    /// <returns>An enumerable of objects representing the value object's components</returns>
     protected override IEnumerable<object> GetEqualityComponents()
     {
         yield return LineId;
@@ -165,6 +169,10 @@ public sealed class AvailabilitySummary : ValueObject
             yield return daily;
     }
 
+    /// <summary>
+    /// Returns a string representation of the availability summary
+    /// </summary>
+    /// <returns>A formatted string containing summary details</returns>
     public override string ToString() =>
         $"AvailabilitySummary: {LineId}, {StartDate:yyyy-MM-dd} to {EndDate:yyyy-MM-dd}, {AvailabilityPercentage:P1} availability";
 }
@@ -242,6 +250,10 @@ public sealed class DailyAvailability : ValueObject
     /// </summary>
     public decimal GetDailyAvailabilityPercentage() => PlannedHours / 24m;
 
+    /// <summary>
+    /// Gets the components used for equality comparison
+    /// </summary>
+    /// <returns>An enumerable of objects representing the value object's components</returns>
     protected override IEnumerable<object> GetEqualityComponents()
     {
         yield return Date;
@@ -253,6 +265,10 @@ public sealed class DailyAvailability : ValueObject
             yield return shift;
     }
 
+    /// <summary>
+    /// Returns a string representation of the daily availability
+    /// </summary>
+    /// <returns>A formatted string containing daily availability details</returns>
     public override string ToString() =>
         $"DailyAvailability: {Date:yyyy-MM-dd}, {PlannedHours:F1}h ({Shifts.Count} shifts)";
 }

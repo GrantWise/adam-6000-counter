@@ -8,6 +8,9 @@ namespace Industrial.Adam.Oee.Application.Validators;
 /// </summary>
 public class CompleteWorkOrderCommandValidator : AbstractValidator<CompleteWorkOrderCommand>
 {
+    /// <summary>
+    /// Initializes a new instance of the CompleteWorkOrderCommandValidator class
+    /// </summary>
     public CompleteWorkOrderCommandValidator()
     {
         RuleFor(x => x.WorkOrderId)
