@@ -41,39 +41,70 @@ public sealed class ScheduleGenerationService
         _logger.LogInformation("Generating schedules for resource {ResourceId} from {StartDate} to {EndDate}",
             resourceId, startDate.Date, endDate.Date);
 
-        var schedules = new List<EquipmentSchedule>();
-        var currentDate = startDate.Date;
-
-        while (currentDate <= endDate.Date)
+        try
         {
-            var assignment = await _patternAssignmentRepository.GetActiveAssignmentAsync(
-                resourceId, currentDate, cancellationToken);
+            var schedules = new List<EquipmentSchedule>();
+            var currentDate = startDate.Date;
+            var processedDays = 0;
+            var skippedDays = 0;
 
-            if (assignment != null)
+            while (currentDate <= endDate.Date)
             {
-                var pattern = await _operatingPatternRepository.GetByIdAsync(
-                    assignment.PatternId, cancellationToken);
+                try
+                {
+                    var assignment = await _patternAssignmentRepository.GetActiveAssignmentAsync(
+                        resourceId, currentDate, cancellationToken).ConfigureAwait(false);
 
-                if (pattern != null)
-                {
-                    var dailySchedules = GenerateDailySchedules(
-                        resourceId, currentDate, pattern, assignment);
-                    schedules.AddRange(dailySchedules);
+                    if (assignment != null)
+                    {
+                        var pattern = await _operatingPatternRepository.GetByIdAsync(
+                            assignment.PatternId, cancellationToken).ConfigureAwait(false);
+
+                        if (pattern != null)
+                        {
+                            var dailySchedules = GenerateDailySchedules(
+                                resourceId, currentDate, pattern, assignment);
+                            schedules.AddRange(dailySchedules);
+                            processedDays++;
+
+                            _logger.LogDebug("Generated {DailyScheduleCount} schedules for resource {ResourceId} on {Date}",
+                                dailySchedules.Count(), resourceId, currentDate);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Pattern {PatternId} not found for assignment {AssignmentId} on {Date}",
+                                assignment.PatternId, assignment.Id, currentDate);
+                            skippedDays++;
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogDebug("No active assignment found for resource {ResourceId} on {Date}",
+                            resourceId, currentDate);
+                        skippedDays++;
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    _logger.LogWarning("Pattern {PatternId} not found for assignment {AssignmentId}",
-                        assignment.PatternId, assignment.Id);
+                    _logger.LogError(ex, "Failed to generate schedules for resource {ResourceId} on {Date}",
+                        resourceId, currentDate);
+                    skippedDays++;
                 }
+
+                currentDate = currentDate.AddDays(1);
             }
 
-            currentDate = currentDate.AddDays(1);
+            _logger.LogInformation("Generated {ScheduleCount} schedules for resource {ResourceId} - Processed: {ProcessedDays} days, Skipped: {SkippedDays} days",
+                schedules.Count, resourceId, processedDays, skippedDays);
+
+            return schedules;
         }
-
-        _logger.LogInformation("Generated {ScheduleCount} schedules for resource {ResourceId}",
-            schedules.Count, resourceId);
-
-        return schedules;
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate schedules for resource {ResourceId} from {StartDate} to {EndDate}",
+                resourceId, startDate, endDate);
+            throw;
+        }
     }
 
     /// <summary>
@@ -219,6 +250,9 @@ public sealed class ScheduleGenerationService
 
         try
         {
+            _logger.LogDebug("Generating custom schedules for resource {ResourceId} on {Date} using pattern {PatternId}",
+                resourceId, date, pattern.Id);
+
             // Parse the custom pattern configuration
             // This is a simplified implementation - in reality, this would parse
             // the JSON configuration to create the appropriate schedules
@@ -235,12 +269,20 @@ public sealed class ScheduleGenerationService
                     isException: assignment.IsOverride);
 
                 schedules.Add(schedule);
+
+                _logger.LogDebug("Generated custom schedule with {PlannedHours} hours for resource {ResourceId} on {Date}",
+                    dailyHours, resourceId, date);
+            }
+            else
+            {
+                _logger.LogDebug("No planned hours for resource {ResourceId} on {Date} ({DayOfWeek})",
+                    resourceId, date, date.DayOfWeek);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to generate custom schedules for resource {ResourceId} on {Date}",
-                resourceId, date);
+            _logger.LogError(ex, "Failed to generate custom schedules for resource {ResourceId} on {Date} using pattern {PatternId}",
+                resourceId, date, pattern.Id);
         }
 
         return schedules;

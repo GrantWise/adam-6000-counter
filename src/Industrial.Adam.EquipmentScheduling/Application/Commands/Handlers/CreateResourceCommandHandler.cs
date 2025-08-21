@@ -32,7 +32,7 @@ public sealed class CreateResourceCommandHandler :
         _logger.LogInformation("Creating resource with code {Code}", request.Code);
 
         // Check if code already exists
-        if (await _resourceRepository.ExistsByCodeAsync(request.Code, cancellationToken: cancellationToken))
+        if (await _resourceRepository.ExistsByCodeAsync(request.Code, cancellationToken: cancellationToken).ConfigureAwait(false))
         {
             throw new InvalidOperationException($"Resource with code '{request.Code}' already exists");
         }
@@ -41,7 +41,7 @@ public sealed class CreateResourceCommandHandler :
         Resource? parentResource = null;
         if (request.ParentId.HasValue)
         {
-            parentResource = await _resourceRepository.GetByIdAsync(request.ParentId.Value, cancellationToken);
+            parentResource = await _resourceRepository.GetByIdAsync(request.ParentId.Value, cancellationToken).ConfigureAwait(false);
             if (parentResource == null)
             {
                 throw new InvalidOperationException($"Parent resource with ID {request.ParentId.Value} not found");
@@ -62,7 +62,7 @@ public sealed class CreateResourceCommandHandler :
             resource.SetParent(parentResource.Id, parentResource.HierarchyPath);
         }
 
-        await _resourceRepository.AddAsync(resource, cancellationToken);
+        await _resourceRepository.AddAsync(resource, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Created resource {ResourceId} with code {Code}", resource.Id, resource.Code);
 
@@ -73,14 +73,14 @@ public sealed class CreateResourceCommandHandler :
     {
         _logger.LogInformation("Updating resource {ResourceId}", request.Id);
 
-        var resource = await _resourceRepository.GetByIdAsync(request.Id, cancellationToken);
+        var resource = await _resourceRepository.GetByIdAsync(request.Id, cancellationToken).ConfigureAwait(false);
         if (resource == null)
         {
             throw new InvalidOperationException($"Resource with ID {request.Id} not found");
         }
 
         resource.UpdateResource(request.Name, request.RequiresScheduling, request.Description);
-        await _resourceRepository.UpdateAsync(resource, cancellationToken);
+        await _resourceRepository.UpdateAsync(resource, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Updated resource {ResourceId}", resource.Id);
 
@@ -92,7 +92,7 @@ public sealed class CreateResourceCommandHandler :
         _logger.LogInformation("Setting parent for resource {ResourceId} to {ParentId}",
             request.ResourceId, request.ParentId);
 
-        var resource = await _resourceRepository.GetByIdAsync(request.ResourceId, cancellationToken);
+        var resource = await _resourceRepository.GetByIdAsync(request.ResourceId, cancellationToken).ConfigureAwait(false);
         if (resource == null)
         {
             throw new InvalidOperationException($"Resource with ID {request.ResourceId} not found");
@@ -100,7 +100,7 @@ public sealed class CreateResourceCommandHandler :
 
         if (request.ParentId.HasValue)
         {
-            var parentResource = await _resourceRepository.GetByIdAsync(request.ParentId.Value, cancellationToken);
+            var parentResource = await _resourceRepository.GetByIdAsync(request.ParentId.Value, cancellationToken).ConfigureAwait(false);
             if (parentResource == null)
             {
                 throw new InvalidOperationException($"Parent resource with ID {request.ParentId.Value} not found");
@@ -113,7 +113,7 @@ public sealed class CreateResourceCommandHandler :
             resource.RemoveParent();
         }
 
-        await _resourceRepository.UpdateAsync(resource, cancellationToken);
+        await _resourceRepository.UpdateAsync(resource, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Set parent for resource {ResourceId}", resource.Id);
 
@@ -124,14 +124,14 @@ public sealed class CreateResourceCommandHandler :
     {
         _logger.LogInformation("Activating resource {ResourceId}", request.ResourceId);
 
-        var resource = await _resourceRepository.GetByIdAsync(request.ResourceId, cancellationToken);
+        var resource = await _resourceRepository.GetByIdAsync(request.ResourceId, cancellationToken).ConfigureAwait(false);
         if (resource == null)
         {
             throw new InvalidOperationException($"Resource with ID {request.ResourceId} not found");
         }
 
         resource.Activate();
-        await _resourceRepository.UpdateAsync(resource, cancellationToken);
+        await _resourceRepository.UpdateAsync(resource, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Activated resource {ResourceId}", resource.Id);
 
@@ -142,14 +142,14 @@ public sealed class CreateResourceCommandHandler :
     {
         _logger.LogInformation("Deactivating resource {ResourceId}", request.ResourceId);
 
-        var resource = await _resourceRepository.GetByIdAsync(request.ResourceId, cancellationToken);
+        var resource = await _resourceRepository.GetByIdAsync(request.ResourceId, cancellationToken).ConfigureAwait(false);
         if (resource == null)
         {
             throw new InvalidOperationException($"Resource with ID {request.ResourceId} not found");
         }
 
         resource.Deactivate();
-        await _resourceRepository.UpdateAsync(resource, cancellationToken);
+        await _resourceRepository.UpdateAsync(resource, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Deactivated resource {ResourceId}", resource.Id);
 

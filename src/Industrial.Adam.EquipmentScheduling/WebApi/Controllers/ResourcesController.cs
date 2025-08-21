@@ -4,6 +4,7 @@ using Industrial.Adam.EquipmentScheduling.Application.Queries;
 using Industrial.Adam.EquipmentScheduling.Domain.Enums;
 using Industrial.Adam.EquipmentScheduling.WebApi.Models;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Industrial.Adam.EquipmentScheduling.WebApi.Controllers;
@@ -14,11 +15,17 @@ namespace Industrial.Adam.EquipmentScheduling.WebApi.Controllers;
 [ApiController]
 [Route("api/equipment-scheduling/[controller]")]
 [Produces("application/json")]
+[Authorize("RequireProduction")]
 public sealed class ResourcesController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly ILogger<ResourcesController> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the ResourcesController
+    /// </summary>
+    /// <param name="mediator">MediatR instance for CQRS operations</param>
+    /// <param name="logger">Logger instance</param>
     public ResourcesController(IMediator mediator, ILogger<ResourcesController> logger)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
@@ -40,15 +47,25 @@ public sealed class ResourcesController : ControllerBase
     {
         _logger.LogDebug("Getting resource {ResourceId}", id);
 
-        var query = new GetResourceByIdQuery(id);
-        var resource = await _mediator.Send(query, cancellationToken);
-
-        if (resource == null)
+        try
         {
-            return NotFound(ApiResponse.Failed($"Resource with ID {id} not found"));
-        }
+            var query = new GetResourceByIdQuery(id);
+            var resource = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ApiResponse<ResourceDto>.Ok(resource));
+            if (resource == null)
+            {
+                _logger.LogWarning("Resource {ResourceId} not found", id);
+                return NotFound(ApiResponse.Failed($"Resource with ID {id} not found"));
+            }
+
+            _logger.LogDebug("Successfully retrieved resource {ResourceId}", id);
+            return Ok(ApiResponse<ResourceDto>.Ok(resource));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve resource {ResourceId}", id);
+            throw;
+        }
     }
 
     /// <summary>
@@ -66,15 +83,25 @@ public sealed class ResourcesController : ControllerBase
     {
         _logger.LogDebug("Getting resource by code {Code}", code);
 
-        var query = new GetResourceByCodeQuery(code);
-        var resource = await _mediator.Send(query, cancellationToken);
-
-        if (resource == null)
+        try
         {
-            return NotFound(ApiResponse.Failed($"Resource with code '{code}' not found"));
-        }
+            var query = new GetResourceByCodeQuery(code);
+            var resource = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ApiResponse<ResourceDto>.Ok(resource));
+            if (resource == null)
+            {
+                _logger.LogWarning("Resource with code '{Code}' not found", code);
+                return NotFound(ApiResponse.Failed($"Resource with code '{code}' not found"));
+            }
+
+            _logger.LogDebug("Successfully retrieved resource with code {Code}", code);
+            return Ok(ApiResponse<ResourceDto>.Ok(resource));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve resource by code {Code}", code);
+            throw;
+        }
     }
 
     /// <summary>
@@ -93,10 +120,21 @@ public sealed class ResourcesController : ControllerBase
     {
         _logger.LogDebug("Getting resources by type {Type}, activeOnly: {ActiveOnly}", type, activeOnly);
 
-        var query = new GetResourcesByTypeQuery(type, activeOnly);
-        var resources = await _mediator.Send(query, cancellationToken);
+        try
+        {
+            var query = new GetResourcesByTypeQuery(type, activeOnly);
+            var resources = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ApiResponse<IEnumerable<ResourceDto>>.Ok(resources));
+            _logger.LogInformation("Successfully retrieved {ResourceCount} resources of type {Type}",
+                resources.Count(), type);
+            return Ok(ApiResponse<IEnumerable<ResourceDto>>.Ok(resources));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve resources by type {Type}, activeOnly: {ActiveOnly}",
+                type, activeOnly);
+            throw;
+        }
     }
 
     /// <summary>
@@ -116,7 +154,7 @@ public sealed class ResourcesController : ControllerBase
         _logger.LogDebug("Getting child resources for parent {ParentId}, activeOnly: {ActiveOnly}", parentId, activeOnly);
 
         var query = new GetChildResourcesQuery(parentId, activeOnly);
-        var resources = await _mediator.Send(query, cancellationToken);
+        var resources = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
         return Ok(ApiResponse<IEnumerable<ResourceDto>>.Ok(resources));
     }
@@ -138,7 +176,7 @@ public sealed class ResourcesController : ControllerBase
         _logger.LogDebug("Getting resource hierarchy, rootId: {RootId}, activeOnly: {ActiveOnly}", rootId, activeOnly);
 
         var query = new GetResourceHierarchyQuery(rootId, activeOnly);
-        var hierarchy = await _mediator.Send(query, cancellationToken);
+        var hierarchy = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
         return Ok(ApiResponse<IEnumerable<ResourceHierarchyDto>>.Ok(hierarchy));
     }
@@ -158,7 +196,7 @@ public sealed class ResourcesController : ControllerBase
         _logger.LogDebug("Getting schedulable resources, activeOnly: {ActiveOnly}", activeOnly);
 
         var query = new GetSchedulableResourcesQuery(activeOnly);
-        var resources = await _mediator.Send(query, cancellationToken);
+        var resources = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
         return Ok(ApiResponse<IEnumerable<ResourceDto>>.Ok(resources));
     }
@@ -189,7 +227,7 @@ public sealed class ResourcesController : ControllerBase
 
         try
         {
-            var resource = await _mediator.Send(command, cancellationToken);
+            var resource = await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
             return CreatedAtAction(nameof(GetResource), new { id = resource.Id }, ApiResponse<ResourceDto>.Ok(resource));
         }
         catch (InvalidOperationException ex)
@@ -224,7 +262,7 @@ public sealed class ResourcesController : ControllerBase
 
         try
         {
-            var resource = await _mediator.Send(command, cancellationToken);
+            var resource = await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
             return Ok(ApiResponse<ResourceDto>.Ok(resource));
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
@@ -255,7 +293,7 @@ public sealed class ResourcesController : ControllerBase
 
         try
         {
-            await _mediator.Send(command, cancellationToken);
+            await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
             return Ok(ApiResponse.Ok());
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
@@ -283,7 +321,7 @@ public sealed class ResourcesController : ControllerBase
 
         try
         {
-            await _mediator.Send(command, cancellationToken);
+            await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
             return Ok(ApiResponse.Ok());
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
@@ -311,7 +349,7 @@ public sealed class ResourcesController : ControllerBase
 
         try
         {
-            await _mediator.Send(command, cancellationToken);
+            await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
             return Ok(ApiResponse.Ok());
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))

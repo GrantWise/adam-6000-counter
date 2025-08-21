@@ -25,7 +25,11 @@ public class SimulatorController : ControllerBase
     /// <summary>
     /// Get current simulator status
     /// </summary>
+    /// <returns>Current simulator statistics including production state, counters, and timing information</returns>
+    /// <response code="200">Returns simulator status and statistics</response>
     [HttpGet("status")]
+    [ProducesResponseType(typeof(object), 200)]
+    [Produces("application/json")]
     public ActionResult<object> GetStatus()
     {
         return Ok(_simulationEngine.GetStatistics());
@@ -34,7 +38,14 @@ public class SimulatorController : ControllerBase
     /// <summary>
     /// Reset a specific channel counter
     /// </summary>
+    /// <param name="channel">Channel number (0-15)</param>
+    /// <returns>Confirmation message</returns>
+    /// <response code="200">Channel counter reset successfully</response>
+    /// <response code="400">Invalid channel number (must be 0-15)</response>
     [HttpPost("channels/{channel}/reset")]
+    [ProducesResponseType(typeof(object), 200)]
+    [ProducesResponseType(typeof(string), 400)]
+    [Produces("application/json")]
     public ActionResult ResetCounter(int channel)
     {
         if (channel < 0 || channel >= 16)
@@ -51,7 +62,15 @@ public class SimulatorController : ControllerBase
     /// <summary>
     /// Force a production stoppage
     /// </summary>
+    /// <param name="request">Stoppage request with type (minor/major) and optional reason</param>
+    /// <returns>Confirmation message</returns>
+    /// <response code="200">Production stoppage initiated successfully</response>
+    /// <response code="400">Invalid stoppage type (must be 'minor' or 'major')</response>
     [HttpPost("production/force-stoppage")]
+    [ProducesResponseType(typeof(object), 200)]
+    [ProducesResponseType(typeof(string), 400)]
+    [Produces("application/json")]
+    [Consumes("application/json")]
     public async Task<ActionResult> ForceStoppage([FromBody] StoppageRequest request)
     {
         if (request.Type != "minor" && request.Type != "major")
@@ -81,7 +100,13 @@ public class SimulatorController : ControllerBase
     /// <summary>
     /// Start a new production job
     /// </summary>
+    /// <param name="request">Optional job request with name and target quantity</param>
+    /// <returns>Confirmation message</returns>
+    /// <response code="200">New production job started successfully</response>
     [HttpPost("production/start-job")]
+    [ProducesResponseType(typeof(object), 200)]
+    [Produces("application/json")]
+    [Consumes("application/json")]
     public async Task<ActionResult> StartNewJob([FromBody] JobRequest? request = null)
     {
         _simulationEngine.StartNewJob();
@@ -102,7 +127,12 @@ public class SimulatorController : ControllerBase
     /// <summary>
     /// Get production history
     /// </summary>
+    /// <param name="hours">Number of hours of history to retrieve (default: 24)</param>
+    /// <returns>List of production events from the specified time period</returns>
+    /// <response code="200">Returns production history events</response>
     [HttpGet("history")]
+    [ProducesResponseType(typeof(List<ProductionEvent>), 200)]
+    [Produces("application/json")]
     public async Task<ActionResult<List<ProductionEvent>>> GetHistory([FromQuery] int hours = 24)
     {
         var events = await _database.GetRecentEventsAsync("SIM001", hours);
@@ -112,7 +142,11 @@ public class SimulatorController : ControllerBase
     /// <summary>
     /// Health check endpoint
     /// </summary>
+    /// <returns>Health status of the simulator</returns>
+    /// <response code="200">Returns simulator health status and current production state</response>
     [HttpGet("health")]
+    [ProducesResponseType(typeof(object), 200)]
+    [Produces("application/json")]
     public ActionResult<object> HealthCheck()
     {
         return Ok(new
@@ -124,14 +158,34 @@ public class SimulatorController : ControllerBase
     }
 }
 
+/// <summary>
+/// Request model for forcing a production stoppage
+/// </summary>
 public class StoppageRequest
 {
+    /// <summary>
+    /// Type of stoppage ('minor' or 'major')
+    /// </summary>
     public string Type { get; set; } = "minor";
+
+    /// <summary>
+    /// Optional reason for the stoppage
+    /// </summary>
     public string? Reason { get; set; }
 }
 
+/// <summary>
+/// Request model for starting a new production job
+/// </summary>
 public class JobRequest
 {
+    /// <summary>
+    /// Optional name for the production job
+    /// </summary>
     public string? JobName { get; set; }
+
+    /// <summary>
+    /// Optional target quantity for the job
+    /// </summary>
     public int? TargetQuantity { get; set; }
 }

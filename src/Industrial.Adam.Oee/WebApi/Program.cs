@@ -4,10 +4,16 @@ using Industrial.Adam.Oee.Domain;
 using Industrial.Adam.Oee.Infrastructure;
 using Industrial.Adam.Oee.Infrastructure.SignalR;
 using Industrial.Adam.Oee.WebApi.Middleware;
+using Industrial.Adam.Security.Authentication;
+using Industrial.Adam.Security.Extensions;
+using Industrial.Adam.Security.Models;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add environment file support
+builder.Configuration.AddEnvironmentFiles(builder.Environment.EnvironmentName);
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -46,6 +52,30 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 
+    // JWT Authentication configuration
+    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Enter JWT Bearer token to access protected endpoints"
+    });
+
+    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+
     // Include XML comments if available
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
@@ -55,21 +85,8 @@ builder.Services.AddSwaggerGen(c =>
     }
 });
 
-// Add CORS for React frontend
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("ReactApp", policy =>
-    {
-        policy.WithOrigins(
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "https://oee-app.local"
-            )
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials();
-    });
-});
+// Add Industrial Adam security (JWT authentication + secure CORS)
+builder.Services.AddIndustrialAdamSecurity(builder.Configuration);
 
 // Add OEE Domain services
 builder.Services.AddOeeDomain();
@@ -131,14 +148,51 @@ app.UseSerilogRequestLogging(options =>
 
 app.UseHttpsRedirection();
 
-app.UseCors("ReactApp");
+// Use secure CORS policy
+app.UseCors(app.Environment.IsDevelopment() ? "Development" : "SecurePolicy");
 
+// Add authentication and authorization
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
 // Add SignalR hub
 app.MapHub<StoppageNotificationHub>("/stoppageHub");
+
+// Add authentication endpoints
+app.MapPost("/auth/login", async (AuthenticationRequest request, JwtAuthenticationService authService) =>
+{
+    var response = await authService.AuthenticateAsync(request);
+
+    if (response == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    return Results.Ok(response);
+})
+.AllowAnonymous();
+
+app.MapPost("/auth/refresh", async (RefreshTokenRequest request, JwtAuthenticationService authService) =>
+{
+    var response = await authService.RefreshTokenAsync(request);
+
+    if (response == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    return Results.Ok(response);
+})
+.AllowAnonymous();
+
+app.MapPost("/auth/logout", async (RefreshTokenRequest request, JwtAuthenticationService authService) =>
+{
+    await authService.RevokeTokenAsync(request.RefreshToken);
+    return Results.Ok(new { Message = "Logged out successfully" });
+})
+.RequireAuthorization();
 
 // Add Health Check endpoints
 app.MapHealthChecks("/health");

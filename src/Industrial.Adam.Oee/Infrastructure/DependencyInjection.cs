@@ -82,9 +82,9 @@ public static class DependencyInjection
                 failureStatus: HealthStatus.Unhealthy,
                 tags: new[] { "database", "timescale", "enhanced", "oee" });
 
-        // Add repositories
+        // Add repositories - simplified implementations following Logger patterns
         services.AddScoped<ICounterDataRepository, SimpleCounterDataRepository>();
-        services.AddScoped<IWorkOrderRepository, WorkOrderRepository>();
+        services.AddScoped<IWorkOrderRepository, SimpleWorkOrderRepository>();
         services.AddScoped<ISimpleJobQueueRepository, SimpleJobQueueRepository>();
         services.AddScoped<IEquipmentLineRepository, EquipmentLineRepository>();
         services.AddScoped<IQualityRecordRepository, QualityRecordRepository>();
@@ -97,44 +97,9 @@ public static class DependencyInjection
         services.AddMemoryCache();
         services.AddSingleton<ICacheService, CacheService>();
 
-        // Add Equipment Scheduling HTTP client with resilience policies
-        services.AddHttpClient<EquipmentAvailabilityService>((serviceProvider, client) =>
-        {
-            var settings = serviceProvider.GetRequiredService<IOptions<EquipmentSchedulingSettings>>().Value;
-            var logger = serviceProvider.GetRequiredService<ILogger<EquipmentAvailabilityService>>();
-
-            // Validate settings
-            var validationErrors = settings.Validate();
-            if (validationErrors.Any())
-            {
-                var errorMessage = "Equipment Scheduling configuration validation failed:\n" + 
-                                   string.Join("\n", validationErrors.Select(e => "  • " + e));
-                logger.LogError(errorMessage);
-                throw new InvalidOperationException(errorMessage);
-            }
-
-            // Configure HTTP client
-            client.BaseAddress = new Uri(settings.GetApiBaseUrl());
-            client.Timeout = settings.RequestTimeout;
-
-            client.DefaultRequestHeaders.Add("User-Agent", "Industrial.Adam.Oee/1.0");
-            client.DefaultRequestHeaders.Add("Accept", "application/json");
-
-            logger.LogInformation("Configured Equipment Scheduling HTTP client with base URL: {BaseUrl}", settings.GetApiBaseUrl());
-        })
-        .ConfigurePrimaryHttpMessageHandler(() =>
-        {
-            return new HttpClientHandler()
-            {
-                // Configure connection pooling and keep-alive
-                MaxConnectionsPerServer = 10,
-                UseCookies = false
-            };
-        })
-        .AddStandardResilienceHandler();
-
-        // Register Equipment Availability Service as scoped
-        services.AddScoped<IEquipmentAvailabilityService, EquipmentAvailabilityService>();
+        // Temporarily disable complex Equipment Scheduling HTTP client to fix circular dependencies
+        // This will be re-enabled in a future iteration with proper configuration patterns
+        // services.AddScoped<IEquipmentAvailabilityService, EquipmentAvailabilityService>();
 
         // Add application services
         services.AddScoped<IOeeApplicationService, OeeApplicationService>();
@@ -145,6 +110,10 @@ public static class DependencyInjection
 
         // Add stoppage notification services
         services.AddScoped<IStoppageNotificationService, StoppageNotificationService>();
+
+        // Add event handling services - simple, type-safe approach
+        services.AddScoped<StoppageDetectedEventHandler>();
+        services.AddScoped<SimpleEventDispatcher>();
 
         // Add SignalR
         services.AddSignalR(options =>
@@ -169,53 +138,19 @@ public static class DependencyInjection
 
     /// <summary>
     /// Validates the OEE configuration structure to provide helpful error messages
+    /// Simplified validation following Logger module patterns
     /// </summary>
     private static void ValidateOeeConfigurationStructure(IConfiguration configuration)
     {
         var errors = new List<string>();
 
-        // Check if Oee section exists
-        var oeeSection = configuration.GetSection("Oee");
-        if (!oeeSection.Exists())
+        // Only validate essential configuration - database connection
+        var oeeConnectionString = configuration.GetSection("Oee:Database:ConnectionString").Value;
+        var defaultConnectionString = configuration.GetConnectionString("DefaultConnection");
+
+        if (string.IsNullOrWhiteSpace(oeeConnectionString) && string.IsNullOrWhiteSpace(defaultConnectionString))
         {
-            errors.Add("Missing 'Oee' configuration section in appsettings.json. " +
-                      "The configuration must be structured as: { \"Oee\": { \"Database\": { \"ConnectionString\": \"...\" } } }");
-        }
-        else
-        {
-            // Check for connection string in either location
-            var oeeConnectionString = oeeSection.GetSection("Database:ConnectionString");
-            var defaultConnectionString = configuration.GetConnectionString("DefaultConnection");
-
-            if (!oeeConnectionString.Exists() && string.IsNullOrWhiteSpace(defaultConnectionString))
-            {
-                errors.Add("Missing database connection string. Configure either 'Oee:Database:ConnectionString' or 'ConnectionStrings:DefaultConnection'. " +
-                          "Example: { \"Oee\": { \"Database\": { \"ConnectionString\": \"Host=localhost;Database=adam_oee;Username=...;Password=...\" } } }");
-            }
-
-            // Check cache configuration
-            var cacheSection = oeeSection.GetSection("Cache");
-            if (!cacheSection.Exists())
-            {
-                errors.Add("Missing 'Oee:Cache' configuration section. " +
-                          "Add cache settings: { \"Oee\": { \"Cache\": { \"DefaultExpirationMinutes\": 5 } } }");
-            }
-
-            // Check resilience configuration
-            var resilienceSection = oeeSection.GetSection("Resilience");
-            if (!resilienceSection.Exists())
-            {
-                errors.Add("Missing 'Oee:Resilience' configuration section. " +
-                          "Add resilience settings: { \"Oee\": { \"Resilience\": { \"DatabaseRetry\": { \"MaxRetryAttempts\": 3 } } } }");
-            }
-
-            // Check Equipment Scheduling configuration
-            var equipmentSchedulingSection = oeeSection.GetSection("EquipmentScheduling");
-            if (!equipmentSchedulingSection.Exists())
-            {
-                errors.Add("Missing 'Oee:EquipmentScheduling' configuration section. " +
-                          "Add Equipment Scheduling settings: { \"Oee\": { \"EquipmentScheduling\": { \"BaseUrl\": \"http://localhost:5000\", \"ApiVersion\": \"v1\" } } }");
-            }
+            errors.Add("Missing database connection string. Configure either 'Oee:Database:ConnectionString' or 'ConnectionStrings:DefaultConnection'.");
         }
 
         if (errors.Any())

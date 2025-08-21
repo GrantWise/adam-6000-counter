@@ -19,6 +19,11 @@ public sealed class OperatingPatternsController : ControllerBase
     private readonly IMediator _mediator;
     private readonly ILogger<OperatingPatternsController> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the OperatingPatternsController
+    /// </summary>
+    /// <param name="mediator">MediatR instance for CQRS operations</param>
+    /// <param name="logger">Logger instance</param>
     public OperatingPatternsController(IMediator mediator, ILogger<OperatingPatternsController> logger)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
@@ -37,10 +42,19 @@ public sealed class OperatingPatternsController : ControllerBase
     {
         _logger.LogDebug("Getting all visible operating patterns");
 
-        var query = new GetVisibleOperatingPatternsQuery();
-        var patterns = await _mediator.Send(query, cancellationToken);
+        try
+        {
+            var query = new GetVisibleOperatingPatternsQuery();
+            var patterns = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ApiResponse<IEnumerable<OperatingPatternDto>>.Ok(patterns));
+            _logger.LogInformation("Successfully retrieved {PatternCount} visible operating patterns", patterns.Count());
+            return Ok(ApiResponse<IEnumerable<OperatingPatternDto>>.Ok(patterns));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve visible operating patterns");
+            throw;
+        }
     }
 
     /// <summary>
@@ -58,15 +72,25 @@ public sealed class OperatingPatternsController : ControllerBase
     {
         _logger.LogDebug("Getting operating pattern {PatternId}", id);
 
-        var query = new GetOperatingPatternByIdQuery(id);
-        var pattern = await _mediator.Send(query, cancellationToken);
-
-        if (pattern == null)
+        try
         {
-            return NotFound(ApiResponse.Failed($"Operating pattern with ID {id} not found"));
-        }
+            var query = new GetOperatingPatternByIdQuery(id);
+            var pattern = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ApiResponse<OperatingPatternDto>.Ok(pattern));
+            if (pattern == null)
+            {
+                _logger.LogWarning("Operating pattern {PatternId} not found", id);
+                return NotFound(ApiResponse.Failed($"Operating pattern with ID {id} not found"));
+            }
+
+            _logger.LogDebug("Successfully retrieved operating pattern {PatternId}", id);
+            return Ok(ApiResponse<OperatingPatternDto>.Ok(pattern));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve operating pattern {PatternId}", id);
+            throw;
+        }
     }
 
     /// <summary>
@@ -86,10 +110,21 @@ public sealed class OperatingPatternsController : ControllerBase
     {
         _logger.LogDebug("Getting operating patterns by type {Type}, visibleOnly: {VisibleOnly}", type, visibleOnly);
 
-        var query = new GetOperatingPatternsByTypeQuery(type, visibleOnly);
-        var patterns = await _mediator.Send(query, cancellationToken);
+        try
+        {
+            var query = new GetOperatingPatternsByTypeQuery(type, visibleOnly);
+            var patterns = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ApiResponse<IEnumerable<OperatingPatternDto>>.Ok(patterns));
+            _logger.LogInformation("Successfully retrieved {PatternCount} operating patterns of type {Type}",
+                patterns.Count(), type);
+            return Ok(ApiResponse<IEnumerable<OperatingPatternDto>>.Ok(patterns));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve operating patterns by type {Type}, visibleOnly: {VisibleOnly}",
+                type, visibleOnly);
+            throw;
+        }
     }
 
     /// <summary>
@@ -114,13 +149,25 @@ public sealed class OperatingPatternsController : ControllerBase
 
         if (minHours < 0 || maxHours < minHours)
         {
+            _logger.LogWarning("Invalid hours range specified: {MinHours}-{MaxHours}", minHours, maxHours);
             return BadRequest(ApiResponse.Failed("Invalid hours range specified"));
         }
 
-        var query = new GetOperatingPatternsByHoursRangeQuery(minHours, maxHours, visibleOnly);
-        var patterns = await _mediator.Send(query, cancellationToken);
+        try
+        {
+            var query = new GetOperatingPatternsByHoursRangeQuery(minHours, maxHours, visibleOnly);
+            var patterns = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ApiResponse<IEnumerable<OperatingPatternDto>>.Ok(patterns));
+            _logger.LogInformation("Successfully retrieved {PatternCount} operating patterns in hours range {MinHours}-{MaxHours}",
+                patterns.Count(), minHours, maxHours);
+            return Ok(ApiResponse<IEnumerable<OperatingPatternDto>>.Ok(patterns));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve operating patterns by hours range {MinHours}-{MaxHours}, visibleOnly: {VisibleOnly}",
+                minHours, maxHours, visibleOnly);
+            throw;
+        }
     }
 
     /// <summary>
@@ -138,15 +185,25 @@ public sealed class OperatingPatternsController : ControllerBase
     {
         _logger.LogDebug("Getting pattern availability for pattern {PatternId}", id);
 
-        var query = new GetPatternAvailabilityQuery(id);
-        var availability = await _mediator.Send(query, cancellationToken);
-
-        if (availability == null)
+        try
         {
-            return NotFound(ApiResponse.Failed($"Operating pattern with ID {id} not found"));
-        }
+            var query = new GetPatternAvailabilityQuery(id);
+            var availability = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ApiResponse<PatternAvailabilityDto>.Ok(availability));
+            if (availability == null)
+            {
+                _logger.LogWarning("Pattern availability not found for pattern {PatternId}", id);
+                return NotFound(ApiResponse.Failed($"Operating pattern with ID {id} not found"));
+            }
+
+            _logger.LogDebug("Successfully retrieved pattern availability for pattern {PatternId}", id);
+            return Ok(ApiResponse<PatternAvailabilityDto>.Ok(availability));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve pattern availability for pattern {PatternId}", id);
+            throw;
+        }
     }
 
     /// <summary>
@@ -163,10 +220,20 @@ public sealed class OperatingPatternsController : ControllerBase
     {
         _logger.LogDebug("Getting all pattern availabilities, visibleOnly: {VisibleOnly}", visibleOnly);
 
-        var query = new GetAllPatternAvailabilitiesQuery(visibleOnly);
-        var availabilities = await _mediator.Send(query, cancellationToken);
+        try
+        {
+            var query = new GetAllPatternAvailabilitiesQuery(visibleOnly);
+            var availabilities = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
-        return Ok(ApiResponse<IEnumerable<PatternAvailabilityDto>>.Ok(availabilities));
+            _logger.LogInformation("Successfully retrieved {AvailabilityCount} pattern availabilities",
+                availabilities.Count());
+            return Ok(ApiResponse<IEnumerable<PatternAvailabilityDto>>.Ok(availabilities));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve all pattern availabilities, visibleOnly: {VisibleOnly}", visibleOnly);
+            throw;
+        }
     }
 
     /// <summary>
@@ -182,11 +249,21 @@ public sealed class OperatingPatternsController : ControllerBase
         [FromBody] CreateOperatingPatternCommand command,
         CancellationToken cancellationToken)
     {
+        if (command == null)
+        {
+            _logger.LogWarning("Create operating pattern command is null");
+            return BadRequest(ApiResponse.Failed("Command cannot be null"));
+        }
+
         _logger.LogInformation("Creating operating pattern {Name}", command.Name);
 
         try
         {
-            var pattern = await _mediator.Send(command, cancellationToken);
+            var pattern = await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("Successfully created operating pattern {PatternId} with name {Name}",
+                pattern.Id, pattern.Name);
+
             return CreatedAtAction(
                 nameof(GetOperatingPattern),
                 new { id = pattern.Id },
@@ -194,11 +271,18 @@ public sealed class OperatingPatternsController : ControllerBase
         }
         catch (ArgumentException ex)
         {
+            _logger.LogWarning(ex, "Invalid argument when creating operating pattern {Name}", command.Name);
             return BadRequest(ApiResponse.Failed(ex.Message));
         }
         catch (InvalidOperationException ex)
         {
+            _logger.LogWarning(ex, "Invalid operation when creating operating pattern {Name}", command.Name);
             return BadRequest(ApiResponse.Failed(ex.Message));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create operating pattern {Name}", command.Name);
+            throw;
         }
     }
 }

@@ -4,6 +4,7 @@ using Industrial.Adam.Oee.Application.DTOs;
 using Industrial.Adam.Oee.Application.Queries;
 using Industrial.Adam.Oee.WebApi.Models;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Industrial.Adam.Oee.WebApi.Controllers;
@@ -14,6 +15,7 @@ namespace Industrial.Adam.Oee.WebApi.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
+[Authorize("RequireProduction")]
 public class JobsController : ControllerBase
 {
     private readonly IMediator _mediator;

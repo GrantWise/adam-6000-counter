@@ -18,14 +18,12 @@ namespace Industrial.Adam.Oee.Tests.Infrastructure;
 public static class TestContainerManager
 {
     private static readonly ConcurrentDictionary<string, PostgreSqlContainer> _containers = new();
-    private static readonly ConcurrentDictionary<string, int> _portCounters = new();
     private static readonly object _lock = new();
 
     /// <summary>
-    /// Base port for test containers - each test class gets a unique port range
-    /// Uses a random base port to avoid conflicts with other test runs
+    /// REMOVED: Manual port calculation that caused conflicts
+    /// Now using Docker ephemeral port allocation for automatic conflict resolution
     /// </summary>
-    private static readonly int BasePort = new Random().Next(50000, 60000);
 
     /// <summary>
     /// Creates a test container with a unique port for the calling test class
@@ -35,15 +33,27 @@ public static class TestContainerManager
     {
         lock (_lock)
         {
-            var portOffset = GetNextPortOffset(testClassName);
-            var uniquePort = BasePort + portOffset;
+            // Dispose existing container if present to prevent port conflicts
+            if (_containers.TryGetValue(testClassName, out var existingContainer))
+            {
+                try
+                {
+                    existingContainer.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(10));
+                }
+                catch (Exception)
+                {
+                    // Ignore disposal exceptions during cleanup
+                }
+                _containers.TryRemove(testClassName, out _);
+            }
 
+            // Use Docker ephemeral port allocation to prevent conflicts
             var container = new PostgreSqlBuilder()
                 .WithImage("timescale/timescaledb:latest-pg15")
                 .WithDatabase("adam_counters")
                 .WithUsername("adam_user")
                 .WithPassword("adam_password")
-                .WithPortBinding(uniquePort, 5432)
+                .WithPortBinding(0, 5432) // Port 0 = Docker assigns ephemeral port automatically
                 .WithWaitStrategy(Wait.ForUnixContainer()
                     .UntilPortIsAvailable(5432)
                     .UntilCommandIsCompleted("pg_isready", "-h", "localhost", "-p", "5432"))
@@ -52,6 +62,7 @@ public static class TestContainerManager
                     // Verify container health after startup
                     await VerifyContainerHealthAsync(container);
                 })
+                .WithCleanUp(true)
                 .Build();
 
             _containers[testClassName] = container;
@@ -113,11 +124,11 @@ public static class TestContainerManager
 
         await Task.WhenAll(disposalTasks);
         _containers.Clear();
-        _portCounters.Clear();
     }
 
     /// <summary>
-    /// Sets up basic OEE database schema for testing
+    /// Sets up essential OEE database schema for MVP testing
+    /// Creates only the tables that health checks require as essential
     /// </summary>
     public static async Task SetupOeeDatabaseAsync(IDbConnectionFactory connectionFactory)
     {
@@ -126,7 +137,7 @@ public static class TestContainerManager
         // Enable TimescaleDB extension
         await connection.ExecuteAsync("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;");
 
-        // Create counter_data table (from Industrial.Adam.Logger)
+        // Create counter_data table (from Industrial.Adam.Logger) - always needed
         await connection.ExecuteAsync(@"
             CREATE TABLE IF NOT EXISTS counter_data (
                 timestamp TIMESTAMPTZ NOT NULL,
@@ -142,7 +153,7 @@ public static class TestContainerManager
         await connection.ExecuteAsync(@"
             SELECT create_hypertable('counter_data', 'timestamp', if_not_exists => TRUE);");
 
-        // Create work_orders table (OEE-specific)
+        // Create work_orders table (essential OEE table expected by health checks)
         await connection.ExecuteAsync(@"
             CREATE TABLE IF NOT EXISTS work_orders (
                 work_order_id VARCHAR(50) PRIMARY KEY,
@@ -172,7 +183,7 @@ public static class TestContainerManager
                 )
             );");
 
-        // Create performance indexes
+        // Create the specific indexes that health checks validate as essential
         await connection.ExecuteAsync(@"
             CREATE INDEX IF NOT EXISTS idx_counter_data_device_timestamp_desc 
             ON counter_data(device_id, timestamp DESC)
@@ -232,13 +243,7 @@ public static class TestContainerManager
     }
 
     /// <summary>
-    /// Gets the next available port offset for a test class
-    /// Each test class gets a sequential port number to avoid conflicts
+    /// REMOVED: GetNextPortOffset method no longer needed
+    /// Docker ephemeral port allocation handles port conflicts automatically
     /// </summary>
-    private static int GetNextPortOffset(string testClassName)
-    {
-        return _portCounters.AddOrUpdate(testClassName,
-            key => _portCounters.Count * 10, // Give each test class a 10-port range
-            (key, current) => current);
-    }
 }

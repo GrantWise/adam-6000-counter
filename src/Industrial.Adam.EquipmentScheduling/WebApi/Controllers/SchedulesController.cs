@@ -2,6 +2,7 @@ using Industrial.Adam.EquipmentScheduling.Application.Commands;
 using Industrial.Adam.EquipmentScheduling.Application.DTOs;
 using Industrial.Adam.EquipmentScheduling.WebApi.Models;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Industrial.Adam.EquipmentScheduling.WebApi.Controllers;
@@ -12,11 +13,17 @@ namespace Industrial.Adam.EquipmentScheduling.WebApi.Controllers;
 [ApiController]
 [Route("api/equipment-scheduling/[controller]")]
 [Produces("application/json")]
+[Authorize("RequireProduction")]
 public sealed class SchedulesController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly ILogger<SchedulesController> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the SchedulesController
+    /// </summary>
+    /// <param name="mediator">MediatR instance for CQRS operations</param>
+    /// <param name="logger">Logger instance</param>
     public SchedulesController(IMediator mediator, ILogger<SchedulesController> logger)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
@@ -37,22 +44,36 @@ public sealed class SchedulesController : ControllerBase
         [FromBody] GenerateSchedulesCommand command,
         CancellationToken cancellationToken)
     {
+        if (command == null)
+        {
+            _logger.LogWarning("Generate schedules command is null");
+            return BadRequest(ApiResponse.Failed("Command cannot be null"));
+        }
+
         _logger.LogInformation("Generating schedules for resource {ResourceId} from {StartDate} to {EndDate}",
             command.ResourceId, command.StartDate, command.EndDate);
 
         if (command.StartDate > command.EndDate)
         {
+            _logger.LogWarning("Invalid date range for schedule generation: {StartDate} to {EndDate}",
+                command.StartDate, command.EndDate);
             return BadRequest(ApiResponse.Failed("Start date cannot be after end date"));
         }
 
         if ((command.EndDate - command.StartDate).TotalDays > 365)
         {
+            _logger.LogWarning("Date range too large for schedule generation: {Days} days",
+                (command.EndDate - command.StartDate).TotalDays);
             return BadRequest(ApiResponse.Failed("Date range cannot exceed 365 days"));
         }
 
         try
         {
-            var schedules = await _mediator.Send(command, cancellationToken);
+            var schedules = await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("Successfully generated {ScheduleCount} schedules for resource {ResourceId}",
+                schedules.Count(), command.ResourceId);
+
             return CreatedAtAction(
                 nameof(AvailabilityController.GetEquipmentSchedules),
                 "Availability",
@@ -61,11 +82,19 @@ public sealed class SchedulesController : ControllerBase
         }
         catch (ArgumentException ex)
         {
+            _logger.LogWarning(ex, "Invalid argument when generating schedules for resource {ResourceId}", command.ResourceId);
             return BadRequest(ApiResponse.Failed(ex.Message));
         }
         catch (InvalidOperationException ex)
         {
+            _logger.LogWarning(ex, "Invalid operation when generating schedules for resource {ResourceId}", command.ResourceId);
             return BadRequest(ApiResponse.Failed(ex.Message));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate schedules for resource {ResourceId} from {StartDate} to {EndDate}",
+                command.ResourceId, command.StartDate, command.EndDate);
+            throw;
         }
     }
 
@@ -98,7 +127,7 @@ public sealed class SchedulesController : ControllerBase
 
         try
         {
-            var schedules = await _mediator.Send(command, cancellationToken);
+            var schedules = await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
             return Ok(ApiResponse<IEnumerable<EquipmentScheduleDto>>.Ok(schedules));
         }
         catch (ArgumentException ex)
@@ -141,7 +170,7 @@ public sealed class SchedulesController : ControllerBase
 
         try
         {
-            var schedule = await _mediator.Send(command, cancellationToken);
+            var schedule = await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
             return CreatedAtAction(
                 nameof(GetSchedule),
                 new { id = schedule.Id },
@@ -176,9 +205,18 @@ public sealed class SchedulesController : ControllerBase
     {
         _logger.LogDebug("Getting schedule {ScheduleId}", id);
 
-        // This would need a GetScheduleByIdQuery which we haven't implemented yet
-        // For now, return a placeholder response
-        return NotFound(ApiResponse.Failed($"Schedule with ID {id} not found"));
+        try
+        {
+            // This would need a GetScheduleByIdQuery which we haven't implemented yet
+            // For now, return a placeholder response with proper logging
+            _logger.LogWarning("GetScheduleByIdQuery not implemented yet for schedule {ScheduleId}", id);
+            return NotFound(ApiResponse.Failed($"Schedule with ID {id} not found"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve schedule {ScheduleId}", id);
+            throw;
+        }
     }
 
     /// <summary>
@@ -214,7 +252,7 @@ public sealed class SchedulesController : ControllerBase
         {
             // Create a new command with the ID
             var updateCommand = command with { Id = id };
-            var schedule = await _mediator.Send(updateCommand, cancellationToken);
+            var schedule = await _mediator.Send(updateCommand, cancellationToken).ConfigureAwait(false);
             return Ok(ApiResponse<EquipmentScheduleDto>.Ok(schedule));
         }
         catch (ArgumentException ex)
@@ -242,21 +280,30 @@ public sealed class SchedulesController : ControllerBase
         [FromBody] string? reason = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Cancelling schedule {ScheduleId}", id);
+        _logger.LogInformation("Cancelling schedule {ScheduleId} with reason: {Reason}", id, reason);
 
         try
         {
             var command = new CancelEquipmentScheduleCommand(id, reason);
-            await _mediator.Send(command, cancellationToken);
+            await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("Successfully cancelled schedule {ScheduleId}", id);
             return Ok(ApiResponse.Ok("Schedule cancelled successfully"));
         }
         catch (ArgumentException ex)
         {
+            _logger.LogWarning(ex, "Schedule {ScheduleId} not found for cancellation", id);
             return NotFound(ApiResponse.Failed(ex.Message));
         }
         catch (InvalidOperationException ex)
         {
+            _logger.LogWarning(ex, "Invalid operation when cancelling schedule {ScheduleId}", id);
             return BadRequest(ApiResponse.Failed(ex.Message));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to cancel schedule {ScheduleId}", id);
+            throw;
         }
     }
 
@@ -278,7 +325,7 @@ public sealed class SchedulesController : ControllerBase
         try
         {
             var command = new CompleteEquipmentScheduleCommand(id);
-            await _mediator.Send(command, cancellationToken);
+            await _mediator.Send(command, cancellationToken).ConfigureAwait(false);
             return Ok(ApiResponse.Ok("Schedule completed successfully"));
         }
         catch (ArgumentException ex)

@@ -27,8 +27,27 @@ public sealed class OperatingPatternRepository : IOperatingPatternRepository
     {
         _logger.LogDebug("Getting operating pattern by ID {PatternId}", id);
 
-        return await _context.OperatingPatterns
-            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        try
+        {
+            var pattern = await _context.OperatingPatterns
+                .FirstOrDefaultAsync(p => p.Id == id, cancellationToken).ConfigureAwait(false);
+
+            if (pattern != null)
+            {
+                _logger.LogDebug("Successfully retrieved operating pattern {PatternId}", id);
+            }
+            else
+            {
+                _logger.LogDebug("Operating pattern {PatternId} not found", id);
+            }
+
+            return pattern;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve operating pattern by ID {PatternId}", id);
+            throw;
+        }
     }
 
     public async Task<OperatingPattern?> GetByNameAsync(string name, CancellationToken cancellationToken = default)
@@ -46,17 +65,31 @@ public sealed class OperatingPatternRepository : IOperatingPatternRepository
     {
         _logger.LogDebug("Getting operating patterns by type {Type}, visibleOnly: {VisibleOnly}", type, visibleOnly);
 
-        var query = _context.OperatingPatterns
-            .Where(p => p.Type == type);
-
-        if (visibleOnly)
+        try
         {
-            query = query.Where(p => p.IsVisible);
-        }
+            var query = _context.OperatingPatterns
+                .Where(p => p.Type == type);
 
-        return await query
-            .OrderBy(p => p.Name)
-            .ToListAsync(cancellationToken);
+            if (visibleOnly)
+            {
+                query = query.Where(p => p.IsVisible);
+            }
+
+            var patterns = await query
+                .OrderBy(p => p.Name)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("Successfully retrieved {PatternCount} operating patterns of type {Type}",
+                patterns.Count, type);
+
+            return patterns;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve operating patterns by type {Type}, visibleOnly: {VisibleOnly}",
+                type, visibleOnly);
+            throw;
+        }
     }
 
     public async Task<IEnumerable<OperatingPattern>> GetVisiblePatternsAsync(CancellationToken cancellationToken = default)
@@ -101,10 +134,19 @@ public sealed class OperatingPatternRepository : IOperatingPatternRepository
 
         _logger.LogDebug("Adding operating pattern {Name}", pattern.Name);
 
-        await _context.OperatingPatterns.AddAsync(pattern, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.OperatingPatterns.AddAsync(pattern, cancellationToken).ConfigureAwait(false);
+            await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation("Added operating pattern {PatternId} with name {Name}", pattern.Id, pattern.Name);
+            _logger.LogInformation("Successfully added operating pattern {PatternId} with name {Name}",
+                pattern.Id, pattern.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to add operating pattern {Name}", pattern.Name);
+            throw;
+        }
     }
 
     public async Task UpdateAsync(OperatingPattern pattern, CancellationToken cancellationToken = default)
@@ -114,10 +156,18 @@ public sealed class OperatingPatternRepository : IOperatingPatternRepository
 
         _logger.LogDebug("Updating operating pattern {PatternId}", pattern.Id);
 
-        _context.OperatingPatterns.Update(pattern);
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            _context.OperatingPatterns.Update(pattern);
+            await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation("Updated operating pattern {PatternId}", pattern.Id);
+            _logger.LogInformation("Successfully updated operating pattern {PatternId}", pattern.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update operating pattern {PatternId}", pattern.Id);
+            throw;
+        }
     }
 
     public async Task<bool> ExistsByNameAsync(string name, int? excludeId = null, CancellationToken cancellationToken = default)

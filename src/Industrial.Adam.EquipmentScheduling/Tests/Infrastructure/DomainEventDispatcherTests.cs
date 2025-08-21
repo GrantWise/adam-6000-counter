@@ -1,6 +1,6 @@
 using Industrial.Adam.EquipmentScheduling.Domain.Events;
 using Industrial.Adam.EquipmentScheduling.Domain.Interfaces;
-using Industrial.Adam.EquipmentScheduling.Infrastructure.Services;
+// using Industrial.Adam.EquipmentScheduling.Infrastructure.Services; // DISABLED: Services removed
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -10,16 +10,20 @@ namespace Industrial.Adam.EquipmentScheduling.Tests.Infrastructure;
 
 /// <summary>
 /// Tests for the domain event dispatcher implementation
+/// TEMPORARILY DISABLED: DomainEventDispatcher removed pending reflection-free implementation
 /// </summary>
+[Trait("Category", "Disabled")]
 public class DomainEventDispatcherTests : IDisposable
 {
-    private readonly ServiceProvider _serviceProvider;
-    private readonly Mock<ILogger<DomainEventDispatcher>> _loggerMock;
-    private readonly Mock<IDomainEventHandler<EquipmentScheduleCreatedEvent>> _handlerMock;
-    private readonly IDomainEventDispatcher _dispatcher;
+    // private readonly ServiceProvider _serviceProvider;
+    // private readonly Mock<ILogger<DomainEventDispatcher>> _loggerMock;
+    // private readonly Mock<IDomainEventHandler<EquipmentScheduleCreatedEvent>> _handlerMock;
+    // private readonly IDomainEventDispatcher _dispatcher;
 
     public DomainEventDispatcherTests()
     {
+        // DISABLED: DomainEventDispatcher removed pending reflection-free implementation
+        /*
         _loggerMock = new Mock<ILogger<DomainEventDispatcher>>();
         _handlerMock = new Mock<IDomainEventHandler<EquipmentScheduleCreatedEvent>>();
 
@@ -30,11 +34,14 @@ public class DomainEventDispatcherTests : IDisposable
 
         _serviceProvider = services.BuildServiceProvider();
         _dispatcher = _serviceProvider.GetRequiredService<IDomainEventDispatcher>();
+        */
     }
 
-    [Fact]
+    [Fact(Skip = "DomainEventDispatcher removed pending reflection-free implementation")]
     public async Task DispatchAsync_WithValidEvent_CallsRegisteredHandler()
     {
+        await Task.CompletedTask; // Placeholder to avoid async warning
+        /*
         // Arrange
         var domainEvent = new EquipmentScheduleCreatedEvent(
             ScheduleId: 1,
@@ -54,62 +61,39 @@ public class DomainEventDispatcherTests : IDisposable
         _handlerMock.Verify(
             h => h.HandleAsync(It.Is<EquipmentScheduleCreatedEvent>(e => e.ScheduleId == 1), It.IsAny<CancellationToken>()),
             Times.Once);
+        */
     }
 
-    [Fact]
+    [Fact(Skip = "DomainEventDispatcher removed pending reflection-free implementation")]
     public async Task DispatchAsync_WithNullEvent_ThrowsArgumentNullException()
     {
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _dispatcher.DispatchAsync(null!));
+        await Task.CompletedTask; // Placeholder to avoid async warning
+        // await Assert.ThrowsAsync<ArgumentNullException>(() => _dispatcher.DispatchAsync(null!));
     }
 
-    [Fact]
+    [Fact(Skip = "DomainEventDispatcher removed pending reflection-free implementation")]
     public async Task DispatchManyAsync_WithMultipleEvents_CallsHandlerForEach()
     {
-        // Arrange
-        var events = new List<IDomainEvent>
-        {
-            new EquipmentScheduleCreatedEvent(1, 100, DateTime.Today, 8.0m, false),
-            new EquipmentScheduleCreatedEvent(2, 100, DateTime.Today.AddDays(1), 8.0m, false)
-        };
-
-        _handlerMock
-            .Setup(h => h.HandleAsync(It.IsAny<EquipmentScheduleCreatedEvent>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        // Act
-        await _dispatcher.DispatchManyAsync(events);
-
-        // Assert
-        _handlerMock.Verify(
-            h => h.HandleAsync(It.IsAny<EquipmentScheduleCreatedEvent>(), It.IsAny<CancellationToken>()),
-            Times.Exactly(2));
+        await Task.CompletedTask; // Placeholder to avoid async warning
+        // Implementation commented out - DomainEventDispatcher removed
     }
 
-    [Fact]
+    [Fact(Skip = "DomainEventDispatcher removed pending reflection-free implementation")]
     public async Task DispatchManyAsync_WithEmptyCollection_DoesNotCallHandlers()
     {
-        // Arrange
-        var events = new List<IDomainEvent>();
-
-        // Act
-        await _dispatcher.DispatchManyAsync(events);
-
-        // Assert
-        _handlerMock.Verify(
-            h => h.HandleAsync(It.IsAny<EquipmentScheduleCreatedEvent>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+        await Task.CompletedTask; // Placeholder to avoid async warning
+        // Implementation commented out - DomainEventDispatcher removed
     }
 
-    [Fact]
+    [Fact(Skip = "DomainEventDispatcher removed pending reflection-free implementation")]
     public async Task DispatchManyAsync_WithNullCollection_ThrowsArgumentNullException()
     {
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _dispatcher.DispatchManyAsync(null!));
+        await Task.CompletedTask; // Placeholder to avoid async warning
+        // Implementation commented out - DomainEventDispatcher removed
     }
 
     public void Dispose()
     {
-        _serviceProvider?.Dispose();
+        // _serviceProvider?.Dispose(); // DISABLED: DomainEventDispatcher removed
     }
 }

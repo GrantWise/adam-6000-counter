@@ -29,7 +29,7 @@ public sealed class PatternAssignmentRepository : IPatternAssignmentRepository
         return await _context.PatternAssignments
             .Include(pa => pa.Resource)
             .Include(pa => pa.OperatingPattern)
-            .FirstOrDefaultAsync(pa => pa.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(pa => pa.Id == id, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<PatternAssignment>> GetByResourceIdAsync(long resourceId, CancellationToken cancellationToken = default)
@@ -40,7 +40,7 @@ public sealed class PatternAssignmentRepository : IPatternAssignmentRepository
             .Include(pa => pa.OperatingPattern)
             .Where(pa => pa.ResourceId == resourceId)
             .OrderBy(pa => pa.EffectiveDate)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<PatternAssignment?> GetActiveAssignmentAsync(long resourceId, DateTime date, CancellationToken cancellationToken = default)
@@ -48,14 +48,34 @@ public sealed class PatternAssignmentRepository : IPatternAssignmentRepository
         var checkDate = date.Date;
         _logger.LogDebug("Getting active pattern assignment for resource {ResourceId} on date {Date}", resourceId, checkDate);
 
-        return await _context.PatternAssignments
-            .Include(pa => pa.OperatingPattern)
-            .Where(pa => pa.ResourceId == resourceId)
-            .Where(pa => pa.EffectiveDate <= checkDate)
-            .Where(pa => pa.EndDate == null || pa.EndDate >= checkDate)
-            .OrderByDescending(pa => pa.IsOverride)  // Overrides take precedence
-            .ThenByDescending(pa => pa.EffectiveDate) // Most recent effective date
-            .FirstOrDefaultAsync(cancellationToken);
+        try
+        {
+            var assignment = await _context.PatternAssignments
+                .Include(pa => pa.OperatingPattern)
+                .Where(pa => pa.ResourceId == resourceId)
+                .Where(pa => pa.EffectiveDate <= checkDate)
+                .Where(pa => pa.EndDate == null || pa.EndDate >= checkDate)
+                .OrderByDescending(pa => pa.IsOverride)  // Overrides take precedence
+                .ThenByDescending(pa => pa.EffectiveDate) // Most recent effective date
+                .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
+            if (assignment != null)
+            {
+                _logger.LogDebug("Found active assignment {AssignmentId} for resource {ResourceId} on {Date}",
+                    assignment.Id, resourceId, checkDate);
+            }
+            else
+            {
+                _logger.LogDebug("No active assignment found for resource {ResourceId} on {Date}", resourceId, checkDate);
+            }
+
+            return assignment;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get active assignment for resource {ResourceId} on {Date}", resourceId, checkDate);
+            throw;
+        }
     }
 
     public async Task<IEnumerable<PatternAssignment>> GetByPatternIdAsync(int patternId, bool activeOnly = true, CancellationToken cancellationToken = default)
@@ -75,7 +95,7 @@ public sealed class PatternAssignmentRepository : IPatternAssignmentRepository
         return await query
             .OrderBy(pa => pa.ResourceId)
             .ThenBy(pa => pa.EffectiveDate)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<PatternAssignment>> GetByDateRangeAsync(long resourceId, DateTime startDate, DateTime endDate, CancellationToken cancellationToken = default)
@@ -84,18 +104,36 @@ public sealed class PatternAssignmentRepository : IPatternAssignmentRepository
         var endDateOnly = endDate.Date;
 
         if (endDateOnly < startDateOnly)
+        {
+            _logger.LogWarning("Invalid date range for pattern assignments: {StartDate} to {EndDate}",
+                startDateOnly, endDateOnly);
             throw new ArgumentException("End date cannot be before start date", nameof(endDate));
+        }
 
         _logger.LogDebug("Getting pattern assignments for resource {ResourceId} from {StartDate} to {EndDate}",
             resourceId, startDateOnly, endDateOnly);
 
-        return await _context.PatternAssignments
-            .Include(pa => pa.OperatingPattern)
-            .Where(pa => pa.ResourceId == resourceId)
-            .Where(pa => pa.EffectiveDate <= endDateOnly)
-            .Where(pa => pa.EndDate == null || pa.EndDate >= startDateOnly)
-            .OrderBy(pa => pa.EffectiveDate)
-            .ToListAsync(cancellationToken);
+        try
+        {
+            var assignments = await _context.PatternAssignments
+                .Include(pa => pa.OperatingPattern)
+                .Where(pa => pa.ResourceId == resourceId)
+                .Where(pa => pa.EffectiveDate <= endDateOnly)
+                .Where(pa => pa.EndDate == null || pa.EndDate >= startDateOnly)
+                .OrderBy(pa => pa.EffectiveDate)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("Successfully retrieved {AssignmentCount} pattern assignments for resource {ResourceId} in date range {StartDate} to {EndDate}",
+                assignments.Count, resourceId, startDateOnly, endDateOnly);
+
+            return assignments;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get pattern assignments for resource {ResourceId} from {StartDate} to {EndDate}",
+                resourceId, startDateOnly, endDateOnly);
+            throw;
+        }
     }
 
     public async Task<IEnumerable<PatternAssignment>> GetOverrideAssignmentsAsync(long resourceId, bool activeOnly = true, CancellationToken cancellationToken = default)
@@ -114,7 +152,7 @@ public sealed class PatternAssignmentRepository : IPatternAssignmentRepository
 
         return await query
             .OrderBy(pa => pa.EffectiveDate)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task AddAsync(PatternAssignment assignment, CancellationToken cancellationToken = default)
@@ -125,11 +163,20 @@ public sealed class PatternAssignmentRepository : IPatternAssignmentRepository
         _logger.LogDebug("Adding pattern assignment for resource {ResourceId} with pattern {PatternId}",
             assignment.ResourceId, assignment.PatternId);
 
-        await _context.PatternAssignments.AddAsync(assignment, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.PatternAssignments.AddAsync(assignment, cancellationToken).ConfigureAwait(false);
+            await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation("Added pattern assignment {AssignmentId} for resource {ResourceId}",
-            assignment.Id, assignment.ResourceId);
+            _logger.LogInformation("Successfully added pattern assignment {AssignmentId} for resource {ResourceId}",
+                assignment.Id, assignment.ResourceId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to add pattern assignment for resource {ResourceId} with pattern {PatternId}",
+                assignment.ResourceId, assignment.PatternId);
+            throw;
+        }
     }
 
     public async Task UpdateAsync(PatternAssignment assignment, CancellationToken cancellationToken = default)
@@ -140,7 +187,7 @@ public sealed class PatternAssignmentRepository : IPatternAssignmentRepository
         _logger.LogDebug("Updating pattern assignment {AssignmentId}", assignment.Id);
 
         _context.PatternAssignments.Update(assignment);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Updated pattern assignment {AssignmentId}", assignment.Id);
     }
@@ -165,7 +212,7 @@ public sealed class PatternAssignmentRepository : IPatternAssignmentRepository
 
         return await query
             .OrderBy(pa => pa.EffectiveDate)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<PatternAssignment>> GetExpiringAssignmentsAsync(int days, CancellationToken cancellationToken = default)
@@ -185,6 +232,6 @@ public sealed class PatternAssignmentRepository : IPatternAssignmentRepository
             .Where(pa => pa.EndDate >= today && pa.EndDate <= cutoffDate)
             .OrderBy(pa => pa.EndDate)
             .ThenBy(pa => pa.ResourceId)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 }

@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <!-- WebApi projects automatically get TreatWarningsAsErrors=false from Directory.Build.props -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Industrial.Adam.Logger.Core\Industrial.Adam.Logger.Core.csproj" />
+    <ProjectReference Include="..\Industrial.Adam.Security\Industrial.Adam.Security.csproj" />
   </ItemGroup>
 
 </Project>

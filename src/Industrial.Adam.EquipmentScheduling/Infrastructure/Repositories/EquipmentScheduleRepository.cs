@@ -30,7 +30,7 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
         return await _context.EquipmentSchedules
             .Include(s => s.Resource)
             .Include(s => s.OperatingPattern)
-            .FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(s => s.Id == id, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<EquipmentSchedule>> GetByResourceAndDateAsync(long resourceId, DateTime date, CancellationToken cancellationToken = default)
@@ -42,7 +42,7 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
             .Include(s => s.OperatingPattern)
             .Where(s => s.ResourceId == resourceId && s.ScheduleDate == scheduleDate)
             .OrderBy(s => s.PlannedStartTime)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<EquipmentSchedule>> GetByResourceAndDateRangeAsync(long resourceId, DateTime startDate, DateTime endDate, CancellationToken cancellationToken = default)
@@ -51,18 +51,36 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
         var endDateOnly = endDate.Date;
 
         if (endDateOnly < startDateOnly)
+        {
+            _logger.LogWarning("Invalid date range for schedules: {StartDate} to {EndDate}",
+                startDateOnly, endDateOnly);
             throw new ArgumentException("End date cannot be before start date", nameof(endDate));
+        }
 
         _logger.LogDebug("Getting equipment schedules for resource {ResourceId} from {StartDate} to {EndDate}",
             resourceId, startDateOnly, endDateOnly);
 
-        return await _context.EquipmentSchedules
-            .Include(s => s.OperatingPattern)
-            .Where(s => s.ResourceId == resourceId)
-            .Where(s => s.ScheduleDate >= startDateOnly && s.ScheduleDate <= endDateOnly)
-            .OrderBy(s => s.ScheduleDate)
-            .ThenBy(s => s.PlannedStartTime)
-            .ToListAsync(cancellationToken);
+        try
+        {
+            var schedules = await _context.EquipmentSchedules
+                .Include(s => s.OperatingPattern)
+                .Where(s => s.ResourceId == resourceId)
+                .Where(s => s.ScheduleDate >= startDateOnly && s.ScheduleDate <= endDateOnly)
+                .OrderBy(s => s.ScheduleDate)
+                .ThenBy(s => s.PlannedStartTime)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("Successfully retrieved {ScheduleCount} schedules for resource {ResourceId} in date range {StartDate} to {EndDate}",
+                schedules.Count, resourceId, startDateOnly, endDateOnly);
+
+            return schedules;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get schedules for resource {ResourceId} from {StartDate} to {EndDate}",
+                resourceId, startDateOnly, endDateOnly);
+            throw;
+        }
     }
 
     public async Task<IEnumerable<EquipmentSchedule>> GetByStatusAsync(ScheduleStatus status, long? resourceId = null, CancellationToken cancellationToken = default)
@@ -83,7 +101,7 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
             .OrderBy(s => s.ScheduleDate)
             .ThenBy(s => s.ResourceId)
             .ThenBy(s => s.PlannedStartTime)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<EquipmentSchedule>> GetExceptionSchedulesAsync(long resourceId, DateTime? startDate = null, DateTime? endDate = null, CancellationToken cancellationToken = default)
@@ -108,7 +126,7 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
         return await query
             .OrderBy(s => s.ScheduleDate)
             .ThenBy(s => s.PlannedStartTime)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<EquipmentSchedule>> GetByPatternIdAsync(int patternId, DateTime? startDate = null, DateTime? endDate = null, CancellationToken cancellationToken = default)
@@ -134,7 +152,7 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
             .OrderBy(s => s.ScheduleDate)
             .ThenBy(s => s.ResourceId)
             .ThenBy(s => s.PlannedStartTime)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<EquipmentSchedule>> GetActiveSchedulesAtTimeAsync(DateTime dateTime, long? resourceId = null, CancellationToken cancellationToken = default)
@@ -157,7 +175,7 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
         return await query
             .OrderBy(s => s.ResourceId)
             .ThenBy(s => s.PlannedStartTime)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<(long ResourceId, DateTime Date)>> GetMissingSchedulesAsync(DateTime startDate, DateTime endDate, long? resourceId = null, CancellationToken cancellationToken = default)
@@ -180,7 +198,7 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
             resourceQuery = resourceQuery.Where(r => r.Id == resourceId.Value);
         }
 
-        var resources = await resourceQuery.Select(r => r.Id).ToListAsync(cancellationToken);
+        var resources = await resourceQuery.Select(r => r.Id).ToListAsync(cancellationToken).ConfigureAwait(false);
 
         // Generate all date/resource combinations
         var allCombinations = new List<(long ResourceId, DateTime Date)>();
@@ -198,7 +216,7 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
             .Where(s => resourceId == null || s.ResourceId == resourceId.Value)
             .Select(s => new { s.ResourceId, s.ScheduleDate })
             .Distinct()
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
 
         var existingSet = existingSchedules.Select(es => (es.ResourceId, es.ScheduleDate)).ToHashSet();
 
@@ -214,8 +232,8 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
         _logger.LogDebug("Adding equipment schedule for resource {ResourceId} on date {Date}",
             schedule.ResourceId, schedule.ScheduleDate);
 
-        await _context.EquipmentSchedules.AddAsync(schedule, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _context.EquipmentSchedules.AddAsync(schedule, cancellationToken).ConfigureAwait(false);
+        await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Added equipment schedule {ScheduleId} for resource {ResourceId}",
             schedule.Id, schedule.ResourceId);
@@ -228,14 +246,25 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
 
         var scheduleList = schedules.ToList();
         if (!scheduleList.Any())
+        {
+            _logger.LogDebug("No schedules to add, skipping bulk insert");
             return;
+        }
 
         _logger.LogDebug("Adding {Count} equipment schedules", scheduleList.Count);
 
-        await _context.EquipmentSchedules.AddRangeAsync(scheduleList, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.EquipmentSchedules.AddRangeAsync(scheduleList, cancellationToken).ConfigureAwait(false);
+            await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation("Added {Count} equipment schedules", scheduleList.Count);
+            _logger.LogInformation("Successfully added {Count} equipment schedules", scheduleList.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to add {Count} equipment schedules", scheduleList.Count);
+            throw;
+        }
     }
 
     public async Task UpdateAsync(EquipmentSchedule schedule, CancellationToken cancellationToken = default)
@@ -246,7 +275,7 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
         _logger.LogDebug("Updating equipment schedule {ScheduleId}", schedule.Id);
 
         _context.EquipmentSchedules.Update(schedule);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Updated equipment schedule {ScheduleId}", schedule.Id);
     }
@@ -257,23 +286,41 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
         var endDateOnly = endDate.Date;
 
         if (endDateOnly < startDateOnly)
+        {
+            _logger.LogWarning("Invalid date range for schedule deletion: {StartDate} to {EndDate}",
+                startDateOnly, endDateOnly);
             throw new ArgumentException("End date cannot be before start date", nameof(endDate));
+        }
 
         _logger.LogDebug("Deleting equipment schedules for resource {ResourceId} from {StartDate} to {EndDate}",
             resourceId, startDateOnly, endDateOnly);
 
-        var schedulesToDelete = await _context.EquipmentSchedules
-            .Where(s => s.ResourceId == resourceId)
-            .Where(s => s.ScheduleDate >= startDateOnly && s.ScheduleDate <= endDateOnly)
-            .ToListAsync(cancellationToken);
-
-        if (schedulesToDelete.Any())
+        try
         {
-            _context.EquipmentSchedules.RemoveRange(schedulesToDelete);
-            await _context.SaveChangesAsync(cancellationToken);
+            var schedulesToDelete = await _context.EquipmentSchedules
+                .Where(s => s.ResourceId == resourceId)
+                .Where(s => s.ScheduleDate >= startDateOnly && s.ScheduleDate <= endDateOnly)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
 
-            _logger.LogInformation("Deleted {Count} equipment schedules for resource {ResourceId}",
-                schedulesToDelete.Count, resourceId);
+            if (schedulesToDelete.Any())
+            {
+                _context.EquipmentSchedules.RemoveRange(schedulesToDelete);
+                await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+                _logger.LogInformation("Successfully deleted {Count} equipment schedules for resource {ResourceId}",
+                    schedulesToDelete.Count, resourceId);
+            }
+            else
+            {
+                _logger.LogDebug("No schedules found to delete for resource {ResourceId} in date range {StartDate} to {EndDate}",
+                    resourceId, startDateOnly, endDateOnly);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete schedules for resource {ResourceId} from {StartDate} to {EndDate}",
+                resourceId, startDateOnly, endDateOnly);
+            throw;
         }
     }
 
@@ -300,6 +347,6 @@ public sealed class EquipmentScheduleRepository : IEquipmentScheduleRepository
 
         return await query
             .OrderBy(s => s.PlannedStartTime)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 }

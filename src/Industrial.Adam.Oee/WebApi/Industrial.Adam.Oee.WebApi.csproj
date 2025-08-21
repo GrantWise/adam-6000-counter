@@ -7,6 +7,8 @@
     <PackageTags>industrial;oee;webapi;rest</PackageTags>
     
     <!-- WebApi projects automatically get TreatWarningsAsErrors=false from Directory.Build.props -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
@@ -33,6 +35,7 @@
     <ProjectReference Include="..\Domain\Industrial.Adam.Oee.Domain.csproj" />
     <ProjectReference Include="..\Application\Industrial.Adam.Oee.Application.csproj" />
     <ProjectReference Include="..\Infrastructure\Industrial.Adam.Oee.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Industrial.Adam.Security\Industrial.Adam.Security.csproj" />
   </ItemGroup>
 
 </Project>

@@ -28,7 +28,7 @@ public sealed class ResourceRepository : IResourceRepository
         _logger.LogDebug("Getting resource by ID {ResourceId}", id);
 
         return await _context.Resources
-            .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(r => r.Id == id, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<Resource?> GetByCodeAsync(string code, CancellationToken cancellationToken = default)
@@ -39,7 +39,7 @@ public sealed class ResourceRepository : IResourceRepository
         _logger.LogDebug("Getting resource by code {Code}", code);
 
         return await _context.Resources
-            .FirstOrDefaultAsync(r => r.Code == code.ToUpperInvariant(), cancellationToken);
+            .FirstOrDefaultAsync(r => r.Code == code.ToUpperInvariant(), cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<Resource>> GetByTypeAsync(ResourceType type, bool activeOnly = true, CancellationToken cancellationToken = default)
@@ -56,7 +56,7 @@ public sealed class ResourceRepository : IResourceRepository
 
         return await query
             .OrderBy(r => r.Name)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<Resource>> GetChildrenAsync(long parentId, bool activeOnly = true, CancellationToken cancellationToken = default)
@@ -73,7 +73,7 @@ public sealed class ResourceRepository : IResourceRepository
 
         return await query
             .OrderBy(r => r.Name)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<Resource>> GetByHierarchyPathAsync(string hierarchyPath, bool activeOnly = true, CancellationToken cancellationToken = default)
@@ -94,7 +94,7 @@ public sealed class ResourceRepository : IResourceRepository
         return await query
             .OrderBy(r => r.HierarchyPath)
             .ThenBy(r => r.Name)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<Resource>> GetSchedulableResourcesAsync(bool activeOnly = true, CancellationToken cancellationToken = default)
@@ -111,7 +111,7 @@ public sealed class ResourceRepository : IResourceRepository
 
         return await query
             .OrderBy(r => r.Name)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task AddAsync(Resource resource, CancellationToken cancellationToken = default)
@@ -121,8 +121,8 @@ public sealed class ResourceRepository : IResourceRepository
 
         _logger.LogDebug("Adding resource {Code}", resource.Code);
 
-        await _context.Resources.AddAsync(resource, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _context.Resources.AddAsync(resource, cancellationToken).ConfigureAwait(false);
+        await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Added resource {ResourceId} with code {Code}", resource.Id, resource.Code);
     }
@@ -135,7 +135,7 @@ public sealed class ResourceRepository : IResourceRepository
         _logger.LogDebug("Updating resource {ResourceId}", resource.Id);
 
         _context.Resources.Update(resource);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Updated resource {ResourceId}", resource.Id);
     }
@@ -155,6 +155,6 @@ public sealed class ResourceRepository : IResourceRepository
             query = query.Where(r => r.Id != excludeId.Value);
         }
 
-        return await query.AnyAsync(cancellationToken);
+        return await query.AnyAsync(cancellationToken).ConfigureAwait(false);
     }
 }

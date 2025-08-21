@@ -4,8 +4,15 @@ using Industrial.Adam.Logger.Core.Extensions;
 using Industrial.Adam.Logger.Core.Models;
 using Industrial.Adam.Logger.Core.Services;
 using Industrial.Adam.Logger.Core.Storage;
+using Industrial.Adam.Security.Authentication;
+using Industrial.Adam.Security.Extensions;
+using Industrial.Adam.Security.Models;
+using Microsoft.AspNetCore.Authorization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add environment file support
+builder.Configuration.AddEnvironmentFiles(builder.Environment.EnvironmentName);
 
 // Add services to the container
 builder.Services.AddEndpointsApiExplorer();
@@ -15,20 +22,48 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "ADAM Industrial Logger API",
         Version = "v1",
-        Description = "Minimal API for ADAM-6051 device monitoring and data collection"
+        Description = "Minimal API for ADAM-6051 device monitoring and data collection",
+        Contact = new()
+        {
+            Name = "Industrial Systems Team",
+            Email = "support@industrialsystems.com"
+        }
     });
+
+    // JWT Authentication configuration
+    c.AddSecurityDefinition("Bearer", new()
+    {
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Enter JWT Bearer token to access protected endpoints"
+    });
+
+    c.AddSecurityRequirement(new()
+    {
+        {
+            new()
+            {
+                Reference = new()
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+
+    // Include XML comments
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, "Industrial.Adam.Logger.WebApi.xml");
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
 });
 
-// Add CORS for development and production
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll", policy =>
-    {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
-    });
-});
+// Add Industrial Adam security (JWT authentication + secure CORS)
+builder.Services.AddIndustrialAdamSecurity(builder.Configuration);
 
 // Add ADAM Logger Core services
 builder.Services.AddAdamLogger(builder.Configuration);
@@ -51,7 +86,12 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseCors("AllowAll");
+// Use secure CORS policy
+app.UseCors(app.Environment.IsDevelopment() ? "Development" : "SecurePolicy");
+
+// Add authentication and authorization
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseHttpsRedirection();
 
 // Cache for latest readings
@@ -67,6 +107,61 @@ if (devicePool != null)
         latestReadings.AddOrUpdate(key, reading, (k, existing) => reading);
     };
 }
+
+// ============================================================================
+// AUTHENTICATION ENDPOINTS
+// ============================================================================
+
+app.MapPost("/auth/login", async (AuthenticationRequest request, JwtAuthenticationService authService) =>
+{
+    var response = await authService.AuthenticateAsync(request);
+
+    if (response == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    return Results.Ok(response);
+})
+.WithName("Login")
+.WithSummary("Authenticate user and obtain JWT token")
+.WithDescription("Authenticates user credentials and returns a JWT access token with refresh token for secure API access")
+.Produces<object>(200)
+.Produces(401)
+.WithTags("Authentication")
+.AllowAnonymous();
+
+app.MapPost("/auth/refresh", async (RefreshTokenRequest request, JwtAuthenticationService authService) =>
+{
+    var response = await authService.RefreshTokenAsync(request);
+
+    if (response == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    return Results.Ok(response);
+})
+.WithName("RefreshToken")
+.WithSummary("Refresh JWT access token")
+.WithDescription("Uses a valid refresh token to obtain a new JWT access token and refresh token pair")
+.Produces<object>(200)
+.Produces(401)
+.WithTags("Authentication")
+.AllowAnonymous();
+
+app.MapPost("/auth/logout", async (RefreshTokenRequest request, JwtAuthenticationService authService) =>
+{
+    await authService.RevokeTokenAsync(request.RefreshToken);
+    return Results.Ok(new { Message = "Logged out successfully" });
+})
+.WithName("Logout")
+.WithSummary("Logout and revoke refresh token")
+.WithDescription("Revokes the provided refresh token and invalidates the current session")
+.Produces<object>(200)
+.Produces(401)
+.WithTags("Authentication")
+.RequireAuthorization();
 
 // ============================================================================
 // HEALTH ENDPOINTS
@@ -95,7 +190,13 @@ app.MapGet("/health", (AdamLoggerService loggerService) =>
 
     return Results.Ok(result);
 })
-.WithName("GetHealth");
+.WithName("GetHealth")
+.WithSummary("Get service health status")
+.WithDescription("Returns overall health status of the ADAM Logger service including device connectivity")
+.Produces<object>(200)
+.Produces(401)
+.WithTags("Health")
+.RequireAuthorization("RequireOperational");
 
 app.MapGet("/health/detailed", async (AdamLoggerService loggerService, ITimescaleStorage timescaleStorage) =>
 {
@@ -133,7 +234,13 @@ app.MapGet("/health/detailed", async (AdamLoggerService loggerService, ITimescal
 
     return Results.Ok(result);
 })
-.WithName("GetDetailedHealth");
+.WithName("GetDetailedHealth")
+.WithSummary("Get detailed health status")
+.WithDescription("Returns comprehensive health check including service, database, and individual device status")
+.Produces<object>(200)
+.Produces(401)
+.WithTags("Health")
+.RequireAuthorization("RequireOperational");
 
 // ============================================================================
 // DEVICE ENDPOINTS  
@@ -144,7 +251,13 @@ app.MapGet("/devices", (AdamLoggerService loggerService) =>
     var status = loggerService.GetStatus();
     return Results.Ok(status.DeviceHealth);
 })
-.WithName("GetDevices");
+.WithName("GetDevices")
+.WithSummary("Get all devices status")
+.WithDescription("Returns health and connectivity status for all configured ADAM devices")
+.Produces<object>(200)
+.Produces(401)
+.WithTags("Devices")
+.RequireAuthorization("RequireOperational");
 
 app.MapGet("/devices/{deviceId}", (string deviceId, AdamLoggerService loggerService) =>
 {
@@ -156,7 +269,14 @@ app.MapGet("/devices/{deviceId}", (string deviceId, AdamLoggerService loggerServ
 
     return Results.NotFound(new { Error = $"Device '{deviceId}' not found" });
 })
-.WithName("GetDevice");
+.WithName("GetDevice")
+.WithSummary("Get specific device status")
+.WithDescription("Returns health and connectivity status for a specific ADAM device by ID")
+.Produces<object>(200)
+.Produces<object>(404)
+.Produces(401)
+.WithTags("Devices")
+.RequireAuthorization("RequireOperational");
 
 app.MapPost("/devices/{deviceId}/restart", async (string deviceId, AdamLoggerService loggerService) =>
 {
@@ -178,7 +298,15 @@ app.MapPost("/devices/{deviceId}/restart", async (string deviceId, AdamLoggerSer
             statusCode: 500);
     }
 })
-.WithName("RestartDevice");
+.WithName("RestartDevice")
+.WithSummary("Restart specific device")
+.WithDescription("Restarts connection to a specific ADAM device to resolve connectivity issues")
+.Produces<object>(200)
+.Produces<object>(404)
+.ProducesProblem(500)
+.Produces(401)
+.WithTags("Devices")
+.RequireAuthorization("RequireProduction");
 
 // ============================================================================
 // DATA ENDPOINTS
@@ -198,7 +326,13 @@ app.MapGet("/data/latest", () =>
         Readings = readings
     });
 })
-.WithName("GetLatestData");
+.WithName("GetLatestData")
+.WithSummary("Get latest readings from all devices")
+.WithDescription("Returns the most recent counter readings from all connected ADAM devices")
+.Produces<object>(200)
+.Produces(401)
+.WithTags("Data")
+.RequireAuthorization("RequireOperational");
 
 app.MapGet("/data/latest/{deviceId}", (string deviceId) =>
 {
@@ -220,7 +354,14 @@ app.MapGet("/data/latest/{deviceId}", (string deviceId) =>
         Readings = deviceReadings
     });
 })
-.WithName("GetDeviceLatestData");
+.WithName("GetDeviceLatestData")
+.WithSummary("Get latest readings for specific device")
+.WithDescription("Returns the most recent counter readings for a specific ADAM device")
+.Produces<object>(200)
+.Produces<object>(404)
+.Produces(401)
+.WithTags("Data")
+.RequireAuthorization("RequireOperational");
 
 app.MapGet("/data/stats", (AdamLoggerService loggerService) =>
 {
@@ -252,7 +393,13 @@ app.MapGet("/data/stats", (AdamLoggerService loggerService) =>
         DeviceStatistics = deviceStats
     });
 })
-.WithName("GetDataStatistics");
+.WithName("GetDataStatistics")
+.WithSummary("Get data collection statistics")
+.WithDescription("Returns comprehensive statistics about data collection including device performance and data quality metrics")
+.Produces<object>(200)
+.Produces(401)
+.WithTags("Data")
+.RequireAuthorization("RequireOperational");
 
 // ============================================================================
 // CONFIGURATION ENDPOINTS
@@ -279,7 +426,13 @@ app.MapGet("/config", (IConfiguration configuration) =>
 
     return Results.Ok(safeConfig);
 })
-.WithName("GetConfiguration");
+.WithName("GetConfiguration")
+.WithSummary("Get system configuration")
+.WithDescription("Returns safe system configuration settings (no sensitive data like connection strings)")
+.Produces<object>(200)
+.Produces(401)
+.WithTags("Configuration")
+.RequireAuthorization("RequireAdmin");
 
 // ============================================================================
 // UTILITY ENDPOINTS
@@ -292,7 +445,13 @@ app.MapDelete("/data/cache", () =>
 
     return Results.Ok(new { Message = $"Cleared {count} cached readings" });
 })
-.WithName("ClearDataCache");
+.WithName("ClearDataCache")
+.WithSummary("Clear cached data readings")
+.WithDescription("Clears the in-memory cache of latest device readings (does not affect database storage)")
+.Produces<object>(200)
+.Produces(401)
+.WithTags("Utilities")
+.RequireAuthorization("RequireProduction");
 
 // Add built-in health checks endpoint
 app.MapHealthChecks("/health/checks");

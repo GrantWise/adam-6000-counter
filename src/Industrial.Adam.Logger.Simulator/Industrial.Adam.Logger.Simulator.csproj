@@ -4,6 +4,8 @@
     <!-- TODO: Priority 5 - Add missing XML documentation comments -->
     <!-- Simulator is a WebApi project and should follow WebApi exception pattern -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

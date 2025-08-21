@@ -7,6 +7,8 @@
     <PackageTags>industrial;equipment-scheduling;webapi;rest</PackageTags>
     
     <!-- WebApi projects automatically get TreatWarningsAsErrors=false from Directory.Build.props -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
@@ -37,6 +39,7 @@
     <ProjectReference Include="..\Domain\Industrial.Adam.EquipmentScheduling.Domain.csproj" />
     <ProjectReference Include="..\Application\Industrial.Adam.EquipmentScheduling.Application.csproj" />
     <ProjectReference Include="..\Infrastructure\Industrial.Adam.EquipmentScheduling.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Industrial.Adam.Security\Industrial.Adam.Security.csproj" />
   </ItemGroup>
 
 </Project>

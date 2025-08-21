@@ -7,9 +7,9 @@ services:
     ports:
       - "5433:5432"
     environment:
-      - POSTGRES_DB=adam_counters
-      - POSTGRES_USER=adam_user
-      - POSTGRES_PASSWORD=adam_password
+      - POSTGRES_DB=${TIMESCALE_DATABASE:-adam_counters}
+      - POSTGRES_USER=${TIMESCALE_USERNAME:-adam_user}
+      - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD:-adam_secure_password_2024}
       - TIMESCALEDB_TELEMETRY=off
       # Performance optimization settings
       - POSTGRES_SHARED_PRELOAD_LIBRARIES=timescaledb
@@ -37,7 +37,7 @@ services:
     tmpfs:
       - /tmp:size=100M,noexec,nosuid,nodev
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U adam_user -d adam_counters"]
+      test: ["CMD-SHELL", "pg_isready -U ${TIMESCALE_USERNAME:-adam_user} -d ${TIMESCALE_DATABASE:-adam_counters}"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -50,8 +50,8 @@ services:
     ports:
       - "3002:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-grafana_secure_password_2024}
       - GF_INSTALL_PLUGINS=
       # Increase series limits for industrial data
       - GF_DATAPROXY_MAX_IDLE_CONNECTIONS=1000
@@ -83,6 +83,18 @@ services:
       # Configuration selection
       - DEMO_MODE=${DEMO_MODE:-false}
       - LOG_LEVEL=${LOG_LEVEL:-Information}
+      # Database connection
+      - TIMESCALE_HOST=timescaledb
+      - TIMESCALE_PORT=5432
+      - TIMESCALE_DATABASE=${TIMESCALE_DATABASE:-adam_counters}
+      - TIMESCALE_USERNAME=${TIMESCALE_USERNAME:-adam_user}
+      - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD:-adam_secure_password_2024}
+      # JWT Authentication
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-Industrial_Adam_JWT_Secret_Key_2024_256_Bits_Minimum_Length_Required_For_Security}
+      - JWT_ISSUER=${JWT_ISSUER:-Industrial.Adam.System}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-Industrial.Adam.APIs}
+      # CORS configuration
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
       # Performance optimization settings
       - DOTNET_GCServer=1
       - DOTNET_GCConcurrent=1
@@ -180,7 +192,19 @@ services:
       - "5001:8080"
     environment:
       # Database connection (matches existing TimescaleDB)
-      - ConnectionStrings__DefaultConnection=Host=timescaledb;Port=5432;Database=adam_counters;Username=adam_user;Password=adam_password
+      - ConnectionStrings__DefaultConnection=Host=timescaledb;Port=5432;Database=${TIMESCALE_DATABASE:-adam_counters};Username=${TIMESCALE_USERNAME:-adam_user};Password=${TIMESCALE_PASSWORD:-adam_secure_password_2024}
+      # Database environment variables (for new security system)
+      - TIMESCALE_HOST=timescaledb
+      - TIMESCALE_PORT=5432
+      - TIMESCALE_DATABASE=${TIMESCALE_DATABASE:-adam_counters}
+      - TIMESCALE_USERNAME=${TIMESCALE_USERNAME:-adam_user}
+      - TIMESCALE_PASSWORD=${TIMESCALE_PASSWORD:-adam_secure_password_2024}
+      # JWT Authentication
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-Industrial_Adam_JWT_Secret_Key_2024_256_Bits_Minimum_Length_Required_For_Security}
+      - JWT_ISSUER=${JWT_ISSUER:-Industrial.Adam.System}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-Industrial.Adam.APIs}
+      # CORS configuration
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
       # Application settings
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080

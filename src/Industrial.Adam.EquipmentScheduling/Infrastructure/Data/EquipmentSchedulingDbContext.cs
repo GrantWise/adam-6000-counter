@@ -84,7 +84,7 @@ public sealed class EquipmentSchedulingDbContext : DbContext
             }
         }
 
-        var result = await base.SaveChangesAsync(cancellationToken);
+        var result = await base.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         // TODO: Publish domain events using a domain event dispatcher
         // This would typically be handled by a separate service

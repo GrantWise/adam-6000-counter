@@ -4,10 +4,16 @@ using Industrial.Adam.EquipmentScheduling.Application;
 using Industrial.Adam.EquipmentScheduling.Domain;
 using Industrial.Adam.EquipmentScheduling.Infrastructure;
 using Industrial.Adam.EquipmentScheduling.Infrastructure.Configuration;
+using Industrial.Adam.Security.Authentication;
+using Industrial.Adam.Security.Extensions;
+using Industrial.Adam.Security.Models;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add environment file support
+builder.Configuration.AddEnvironmentFiles(builder.Environment.EnvironmentName);
 
 // Configure Serilog
 builder.Host.UseSerilog((context, configuration) =>
@@ -57,6 +63,30 @@ builder.Services.AddSwaggerGen(options =>
         }
     });
 
+    // JWT Authentication configuration
+    options.AddSecurityDefinition("Bearer", new()
+    {
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Enter JWT Bearer token to access protected endpoints"
+    });
+
+    options.AddSecurityRequirement(new()
+    {
+        {
+            new()
+            {
+                Reference = new()
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+
     // Include XML documentation
     var xmlFilename = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFilename);
@@ -77,16 +107,8 @@ builder.Services.AddSwaggerGen(options =>
     options.SupportNonNullableReferenceTypes();
 });
 
-// CORS
-builder.Services.AddCors(options =>
-{
-    options.AddDefaultPolicy(policy =>
-    {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
-    });
-});
+// Add Industrial Adam security (JWT authentication + secure CORS)
+builder.Services.AddIndustrialAdamSecurity(builder.Configuration);
 
 // Application Services
 builder.Services.AddEquipmentSchedulingDomain();
@@ -131,13 +153,51 @@ else
 }
 
 app.UseHttpsRedirection();
-app.UseCors();
+
+// Use secure CORS policy
+app.UseCors(app.Environment.IsDevelopment() ? "Development" : "SecurePolicy");
 
 app.UseRouting();
 
+// Add authentication and authorization
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Add authentication endpoints
+app.MapPost("/auth/login", async (AuthenticationRequest request, JwtAuthenticationService authService) =>
+{
+    var response = await authService.AuthenticateAsync(request);
+
+    if (response == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    return Results.Ok(response);
+})
+.AllowAnonymous();
+
+app.MapPost("/auth/refresh", async (RefreshTokenRequest request, JwtAuthenticationService authService) =>
+{
+    var response = await authService.RefreshTokenAsync(request);
+
+    if (response == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    return Results.Ok(response);
+})
+.AllowAnonymous();
+
+app.MapPost("/auth/logout", async (RefreshTokenRequest request, JwtAuthenticationService authService) =>
+{
+    await authService.RevokeTokenAsync(request.RefreshToken);
+    return Results.Ok(new { Message = "Logged out successfully" });
+})
+.RequireAuthorization();
 
 // Health check endpoints
 app.MapHealthChecks("/health", new HealthCheckOptions
@@ -200,5 +260,7 @@ finally
     Log.CloseAndFlush();
 }
 
-// Make Program class accessible to test projects
+/// <summary>
+/// Equipment Scheduling WebAPI application entry point
+/// </summary>
 public partial class Program { }

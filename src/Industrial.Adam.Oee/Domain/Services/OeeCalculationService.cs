@@ -234,7 +234,7 @@ public sealed class OeeCalculationService : IOeeCalculationService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to get planned availability for device {DeviceId}, falling back to traditional calculation", deviceId);
-            
+
             // Fallback to traditional availability calculation
             return await CalculateAvailabilityInternalAsync(deviceId, startTime, endTime, null, cancellationToken);
         }

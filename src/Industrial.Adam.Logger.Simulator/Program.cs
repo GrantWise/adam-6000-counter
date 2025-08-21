@@ -13,8 +13,44 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "ADAM-6051 Simulator API",
         Version = "v1",
-        Description = "Control API for ADAM-6051 counter module simulator"
+        Description = "Control API for ADAM-6051 counter module simulator",
+        Contact = new()
+        {
+            Name = "Industrial Systems Team",
+            Email = "support@industrialsystems.com"
+        }
     });
+
+    // JWT Authentication configuration  
+    c.AddSecurityDefinition("Bearer", new()
+    {
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Enter JWT Bearer token to access protected endpoints"
+    });
+
+    c.AddSecurityRequirement(new()
+    {
+        {
+            new()
+            {
+                Reference = new()
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+
+    // Include XML comments
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, "Industrial.Adam.Logger.Simulator.xml");
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
 });
 
 // Add simulator services

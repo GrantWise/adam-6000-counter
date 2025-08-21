@@ -94,17 +94,17 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
             var queryParams = $"?timestamp={timestamp:yyyy-MM-ddTHH:mm:ssZ}";
 
             var response = await _httpClient.GetAsync($"{endpoint}{queryParams}", cancellationToken);
-            
+
             if (response.IsSuccessStatusCode)
             {
                 var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<object>>(JsonOptions, cancellationToken);
-                
+
                 if (apiResponse?.Success == true && apiResponse.Data != null)
                 {
                     // Parse the response data to extract IsOperating flag
                     var responseJson = JsonSerializer.Serialize(apiResponse.Data);
                     var operatingData = JsonSerializer.Deserialize<OperatingStatusResponse>(responseJson, JsonOptions);
-                    
+
                     var isOperating = operatingData?.IsOperating ?? false;
 
                     // Cache the result
@@ -114,24 +114,24 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
                         _memoryCache.Set(cacheKey, isOperating, cacheExpiry);
                     }
 
-                    _logger.LogDebug("Equipment {LineId} operating status at {Timestamp}: {IsOperating}", 
+                    _logger.LogDebug("Equipment {LineId} operating status at {Timestamp}: {IsOperating}",
                         lineId, timestamp, isOperating);
-                    
+
                     activity?.SetTag("oee.is_operating", isOperating);
                     return isOperating;
                 }
             }
 
-            _logger.LogWarning("Failed to get operating status for {LineId} at {Timestamp}: {StatusCode}", 
+            _logger.LogWarning("Failed to get operating status for {LineId} at {Timestamp}: {StatusCode}",
                 lineId, timestamp, response.StatusCode);
-            
+
             return await GetFallbackOperatingStatus(lineId, timestamp);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error checking operating status for {LineId} at {Timestamp}", lineId, timestamp);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            
+
             return await GetFallbackOperatingStatus(lineId, timestamp);
         }
     }
@@ -172,11 +172,11 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
             var queryParams = $"?date={date:yyyy-MM-dd}";
 
             var response = await _httpClient.GetAsync($"{endpoint}{queryParams}", cancellationToken);
-            
+
             if (response.IsSuccessStatusCode)
             {
                 var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<DailyScheduleSummaryDto>>(JsonOptions, cancellationToken);
-                
+
                 if (apiResponse?.Success == true && apiResponse.Data != null)
                 {
                     var plannedHours = MapDailySummaryToPlannedHours(apiResponse.Data, date);
@@ -187,24 +187,24 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
                         _memoryCache.Set(cacheKey, plannedHours, _settings.CacheTtl);
                     }
 
-                    _logger.LogDebug("Retrieved planned hours for {LineId} on {Date}: {TotalHours}h", 
+                    _logger.LogDebug("Retrieved planned hours for {LineId} on {Date}: {TotalHours}h",
                         lineId, date, plannedHours.TotalHours);
-                    
+
                     activity?.SetTag("oee.planned_hours", (double)plannedHours.TotalHours);
                     return plannedHours;
                 }
             }
 
-            _logger.LogWarning("Failed to get planned hours for {LineId} on {Date}: {StatusCode}", 
+            _logger.LogWarning("Failed to get planned hours for {LineId} on {Date}: {StatusCode}",
                 lineId, date, response.StatusCode);
-            
+
             return CreateDefaultPlannedHours(lineId, date);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting planned hours for {LineId} on {Date}", lineId, date);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            
+
             return CreateDefaultPlannedHours(lineId, date);
         }
     }
@@ -246,11 +246,11 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
             var queryParams = $"?startDate={weekStart:yyyy-MM-dd}&endDate={weekEnd:yyyy-MM-dd}";
 
             var response = await _httpClient.GetAsync($"{endpoint}{queryParams}", cancellationToken);
-            
+
             if (response.IsSuccessStatusCode)
             {
                 var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<IEnumerable<EquipmentScheduleDto>>>(JsonOptions, cancellationToken);
-                
+
                 if (apiResponse?.Success == true && apiResponse.Data != null)
                 {
                     var schedule = MapSchedulesToAvailabilitySchedule(lineId, weekStart, apiResponse.Data);
@@ -261,24 +261,24 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
                         _memoryCache.Set(cacheKey, schedule, _settings.ScheduleCacheTtl);
                     }
 
-                    _logger.LogDebug("Retrieved weekly schedule for {LineId} week {WeekStart}: {TotalHours}h total", 
+                    _logger.LogDebug("Retrieved weekly schedule for {LineId} week {WeekStart}: {TotalHours}h total",
                         lineId, weekStart, schedule.TotalWeeklyHours);
-                    
+
                     activity?.SetTag("oee.weekly_hours", (double)schedule.TotalWeeklyHours);
                     return schedule;
                 }
             }
 
-            _logger.LogWarning("Failed to get weekly schedule for {LineId} week {WeekStart}: {StatusCode}", 
+            _logger.LogWarning("Failed to get weekly schedule for {LineId} week {WeekStart}: {StatusCode}",
                 lineId, weekStart, response.StatusCode);
-            
+
             return CreateDefaultWeeklySchedule(lineId, weekStart);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting weekly schedule for {LineId} week {WeekStart}", lineId, weekStart);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            
+
             return CreateDefaultWeeklySchedule(lineId, weekStart);
         }
     }
@@ -303,7 +303,7 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
         // Check cache first
         if (_settings.EnableCaching && _memoryCache.TryGetValue(cacheKey, out AvailabilitySummary? cachedSummary))
         {
-            _logger.LogDebug("Cache hit for availability summary: {LineId} from {StartDate} to {EndDate}", 
+            _logger.LogDebug("Cache hit for availability summary: {LineId} from {StartDate} to {EndDate}",
                 lineId, startDate, endDate);
             activity?.SetTag("oee.cache_hit", true);
             return cachedSummary!;
@@ -322,11 +322,11 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
             var queryParams = $"?startDate={startDate:yyyy-MM-dd}&endDate={endDate:yyyy-MM-dd}";
 
             var response = await _httpClient.GetAsync($"{endpoint}{queryParams}", cancellationToken);
-            
+
             if (response.IsSuccessStatusCode)
             {
                 var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<ScheduleAvailabilityDto>>(JsonOptions, cancellationToken);
-                
+
                 if (apiResponse?.Success == true && apiResponse.Data != null)
                 {
                     var summary = MapAvailabilityToSummary(lineId, apiResponse.Data);
@@ -337,25 +337,25 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
                         _memoryCache.Set(cacheKey, summary, _settings.CacheTtl);
                     }
 
-                    _logger.LogDebug("Retrieved availability summary for {LineId} from {StartDate} to {EndDate}: {AvailabilityPercentage:P1}", 
+                    _logger.LogDebug("Retrieved availability summary for {LineId} from {StartDate} to {EndDate}: {AvailabilityPercentage:P1}",
                         lineId, startDate, endDate, summary.AvailabilityPercentage);
-                    
+
                     activity?.SetTag("oee.availability_percentage", (double)summary.AvailabilityPercentage);
                     return summary;
                 }
             }
 
-            _logger.LogWarning("Failed to get availability summary for {LineId} from {StartDate} to {EndDate}: {StatusCode}", 
+            _logger.LogWarning("Failed to get availability summary for {LineId} from {StartDate} to {EndDate}: {StatusCode}",
                 lineId, startDate, endDate, response.StatusCode);
-            
+
             return CreateDefaultAvailabilitySummary(lineId, startDate, endDate);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting availability summary for {LineId} from {StartDate} to {EndDate}", 
+            _logger.LogError(ex, "Error getting availability summary for {LineId} from {StartDate} to {EndDate}",
                 lineId, startDate, endDate);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            
+
             return CreateDefaultAvailabilitySummary(lineId, startDate, endDate);
         }
     }
@@ -394,11 +394,11 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
             var queryParams = $"?resourceId={resourceId}";
 
             var response = await _httpClient.GetAsync($"{endpoint}{queryParams}", cancellationToken);
-            
+
             if (response.IsSuccessStatusCode)
             {
                 var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<IEnumerable<EquipmentScheduleDto>>>(JsonOptions, cancellationToken);
-                
+
                 if (apiResponse?.Success == true && apiResponse.Data != null)
                 {
                     var activeSchedules = apiResponse.Data.Select(s => MapScheduleToActiveSchedule(lineId, s)).ToList();
@@ -411,21 +411,21 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
                     }
 
                     _logger.LogDebug("Retrieved {Count} active schedules for {LineId}", activeSchedules.Count, lineId);
-                    
+
                     activity?.SetTag("oee.active_schedules_count", activeSchedules.Count);
                     return activeSchedules;
                 }
             }
 
             _logger.LogWarning("Failed to get active schedules for {LineId}: {StatusCode}", lineId, response.StatusCode);
-            
+
             return Array.Empty<ActiveSchedule>();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting active schedules for {LineId}", lineId);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            
+
             return Array.Empty<ActiveSchedule>();
         }
     }
@@ -443,7 +443,7 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
         try
         {
             var endpoint = _settings.HealthCheckEndpoint.TrimStart('/');
-            
+
             using var healthCheckCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             healthCheckCts.CancelAfter(_settings.HealthCheckTimeout);
 
@@ -453,20 +453,20 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
             if (response.IsSuccessStatusCode)
             {
                 var healthResult = ServiceHealthResult.Healthy("Equipment Scheduling", stopwatch.Elapsed);
-                _logger.LogDebug("Equipment Scheduling service health check passed in {ResponseTime}ms", 
+                _logger.LogDebug("Equipment Scheduling service health check passed in {ResponseTime}ms",
                     stopwatch.ElapsedMilliseconds);
-                
+
                 activity?.SetTag("oee.health_status", "healthy");
                 activity?.SetTag("oee.response_time_ms", stopwatch.ElapsedMilliseconds);
                 return healthResult;
             }
             else
             {
-                var healthResult = ServiceHealthResult.Unhealthy("Equipment Scheduling", stopwatch.Elapsed, 
+                var healthResult = ServiceHealthResult.Unhealthy("Equipment Scheduling", stopwatch.Elapsed,
                     $"HTTP {response.StatusCode}: {response.ReasonPhrase}");
-                _logger.LogWarning("Equipment Scheduling service health check failed: {StatusCode} {ReasonPhrase}", 
+                _logger.LogWarning("Equipment Scheduling service health check failed: {StatusCode} {ReasonPhrase}",
                     response.StatusCode, response.ReasonPhrase);
-                
+
                 activity?.SetTag("oee.health_status", "unhealthy");
                 return healthResult;
             }
@@ -476,7 +476,7 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
             stopwatch.Stop();
             var healthResult = ServiceHealthResult.Unavailable("Equipment Scheduling", "Health check was cancelled");
             _logger.LogWarning("Equipment Scheduling service health check was cancelled");
-            
+
             activity?.SetTag("oee.health_status", "cancelled");
             return healthResult;
         }
@@ -485,7 +485,7 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
             stopwatch.Stop();
             var healthResult = ServiceHealthResult.Unavailable("Equipment Scheduling", ex.Message);
             _logger.LogError(ex, "Equipment Scheduling service health check failed");
-            
+
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.SetTag("oee.health_status", "unavailable");
             return healthResult;
@@ -503,7 +503,7 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
         var hour = timestamp.Hour;
         var isBusinessHours = hour >= 8 && hour <= 18; // 8 AM to 6 PM
 
-        _logger.LogDebug("Using fallback operating status for {LineId} at {Timestamp}: {IsOperating}", 
+        _logger.LogDebug("Using fallback operating status for {LineId} at {Timestamp}: {IsOperating}",
             lineId, timestamp, isBusinessHours);
 
         return await Task.FromResult(isBusinessHours);
@@ -521,11 +521,11 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
 
         if (defaultHours > 0)
         {
-            shifts.Add(new ScheduledShift("DEFAULT", TimeOnly.MinValue, 
+            shifts.Add(new ScheduledShift("DEFAULT", TimeOnly.MinValue,
                 TimeOnly.FromTimeSpan(TimeSpan.FromHours((double)defaultHours)), defaultHours));
         }
 
-        _logger.LogDebug("Using default planned hours for {LineId} on {Date}: {Hours}h", 
+        _logger.LogDebug("Using default planned hours for {LineId} on {Date}: {Hours}h",
             lineId, date, defaultHours);
 
         return new PlannedHours(date, defaultHours, shifts, confidence: 0.5m);
@@ -555,15 +555,15 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
 
         for (var date = startDate.Date; date <= endDate.Date; date = date.AddDays(1))
         {
-            var shifts = defaultHours > 0 
-                ? new[] { new ScheduledShift("DEFAULT", TimeOnly.MinValue, 
+            var shifts = defaultHours > 0
+                ? new[] { new ScheduledShift("DEFAULT", TimeOnly.MinValue,
                     TimeOnly.FromTimeSpan(TimeSpan.FromHours((double)defaultHours)), defaultHours) }
                 : Array.Empty<ScheduledShift>();
 
             dailyBreakdown.Add(new DailyAvailability(date, defaultHours, shifts, confidence: 0.5m));
         }
 
-        _logger.LogDebug("Using default availability summary for {LineId} from {StartDate} to {EndDate}", 
+        _logger.LogDebug("Using default availability summary for {LineId} from {StartDate} to {EndDate}",
             lineId, startDate, endDate);
 
         return new AvailabilitySummary(lineId, startDate, endDate, dailyBreakdown);
@@ -594,12 +594,12 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
 
         // Group schedules by date and create PlannedHours
         var scheduleGroups = schedules.GroupBy(s => s.ScheduleDate.Date);
-        
+
         foreach (var group in scheduleGroups)
         {
             var date = group.Key;
             var daySchedules = group.ToList();
-            
+
             var shifts = daySchedules.Select(s => new ScheduledShift(
                 s.ShiftCode ?? "SHIFT",
                 s.PlannedStartTime?.TimeOfDay.ToTimeOnly() ?? TimeOnly.MinValue,
@@ -623,7 +623,7 @@ public sealed class EquipmentAvailabilityService : IEquipmentAvailabilityService
             {
                 var date = group.Key;
                 var daySchedules = group.ToList();
-                
+
                 var shifts = daySchedules.Select(s => new ScheduledShift(
                     s.ShiftCode ?? "SHIFT",
                     s.PlannedStartTime?.TimeOfDay.ToTimeOnly() ?? TimeOnly.MinValue,

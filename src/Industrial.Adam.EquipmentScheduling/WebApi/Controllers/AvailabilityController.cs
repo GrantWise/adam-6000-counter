@@ -2,6 +2,7 @@ using Industrial.Adam.EquipmentScheduling.Application.DTOs;
 using Industrial.Adam.EquipmentScheduling.Application.Queries;
 using Industrial.Adam.EquipmentScheduling.WebApi.Models;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Industrial.Adam.EquipmentScheduling.WebApi.Controllers;
@@ -12,11 +13,17 @@ namespace Industrial.Adam.EquipmentScheduling.WebApi.Controllers;
 [ApiController]
 [Route("api/equipment-scheduling/[controller]")]
 [Produces("application/json")]
+[Authorize("RequireOperational")]
 public sealed class AvailabilityController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly ILogger<AvailabilityController> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the AvailabilityController
+    /// </summary>
+    /// <param name="mediator">MediatR instance for CQRS operations</param>
+    /// <param name="logger">Logger instance</param>
     public AvailabilityController(IMediator mediator, ILogger<AvailabilityController> logger)
     {
         _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
@@ -58,7 +65,7 @@ public sealed class AvailabilityController : ControllerBase
 
         try
         {
-            var availability = await _mediator.Send(query, cancellationToken);
+            var availability = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
             return Ok(ApiResponse<ScheduleAvailabilityDto>.Ok(availability));
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
@@ -98,7 +105,7 @@ public sealed class AvailabilityController : ControllerBase
         }
 
         var query = new GetEquipmentSchedulesQuery(resourceId, startDate.Date, endDate.Date);
-        var schedules = await _mediator.Send(query, cancellationToken);
+        var schedules = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
         return Ok(ApiResponse<IEnumerable<EquipmentScheduleDto>>.Ok(schedules));
     }
@@ -122,7 +129,7 @@ public sealed class AvailabilityController : ControllerBase
             resourceId, date.Date);
 
         var query = new GetDailyScheduleSummaryQuery(resourceId, date.Date);
-        var summary = await _mediator.Send(query, cancellationToken);
+        var summary = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
         if (summary == null)
         {
@@ -147,7 +154,7 @@ public sealed class AvailabilityController : ControllerBase
         _logger.LogDebug("Getting current active schedules, resourceId: {ResourceId}", resourceId);
 
         var query = new GetCurrentActiveSchedulesQuery(resourceId);
-        var schedules = await _mediator.Send(query, cancellationToken);
+        var schedules = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
         return Ok(ApiResponse<IEnumerable<EquipmentScheduleDto>>.Ok(schedules));
     }
@@ -183,7 +190,7 @@ public sealed class AvailabilityController : ControllerBase
         }
 
         var query = new GetScheduleConflictsQuery(resourceId, startDate.Date, endDate.Date);
-        var conflicts = await _mediator.Send(query, cancellationToken);
+        var conflicts = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
         return Ok(ApiResponse<IEnumerable<string>>.Ok(conflicts));
     }
@@ -207,7 +214,7 @@ public sealed class AvailabilityController : ControllerBase
         _logger.LogDebug("Checking if resource {ResourceId} is operating at {Timestamp}", resourceId, checkTime);
 
         var query = new GetCurrentActiveSchedulesQuery(resourceId);
-        var activeSchedules = await _mediator.Send(query, cancellationToken);
+        var activeSchedules = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
         var isOperating = activeSchedules.Any(s =>
             s.PlannedStartTime <= checkTime &&
@@ -257,7 +264,7 @@ public sealed class AvailabilityController : ControllerBase
         }
 
         var query = new GetMissingSchedulesQuery(startDate.Date, endDate.Date, resourceId);
-        var missingSchedules = await _mediator.Send(query, cancellationToken);
+        var missingSchedules = await _mediator.Send(query, cancellationToken).ConfigureAwait(false);
 
         // Convert tuples to anonymous objects for JSON serialization
         var response = missingSchedules.Select(ms => new
