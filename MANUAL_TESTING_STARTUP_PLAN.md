@@ -1,46 +1,50 @@
 # Industrial ADAM Platform - Manual Testing Startup Plan (No Docker)
 
-**For comprehensive manual testing and debugging - all services run directly on host**
+**For comprehensive manual testing and debugging - all services run directly on host**  
+**🖥️ WSL Setup: Using Windows PostgreSQL from WSL**
 
 ## Prerequisites
 
-- ✅ .NET 9 SDK installed
-- ✅ Node.js 18+ installed  
-- ✅ PostgreSQL 15+ with TimescaleDB extension installed locally
-- ✅ Git repository cloned
+- ✅ .NET 9 SDK installed in WSL
+- ✅ Node.js 18+ installed in WSL
+- ✅ PostgreSQL 15+ with TimescaleDB extension installed on Windows host
+- ✅ Git repository cloned in WSL
 - ✅ Multiple terminal windows/tabs available
+- ✅ Network connectivity from WSL to Windows PostgreSQL
 
 ## Overview of Services
 
-| Service | Purpose | Port | Directory |
-|---------|---------|------|-----------|
-| PostgreSQL + TimescaleDB | Database | 5432 | Local installation |
-| Logger API | Device communication & data acquisition | 5000 | `src/Industrial.Adam.Logger.WebApi` |
-| OEE API | Overall Equipment Effectiveness | 5001 | `src/Industrial.Adam.Oee/WebApi` |
-| Equipment Scheduling API | Production scheduling | 5141 | `src/Industrial.Adam.EquipmentScheduling/WebApi` |
-| Security API | Authentication & user management | 5139 | `src/Industrial.Adam.Security` |
-| Admin Dashboard API | System administration | 5002 | `src/Industrial.Adam.AdminDashboard/WebApi` |
-| Platform Frontend | React web interface | 3001 | `platform-frontend` |
+| Service | Purpose | Port | Location |
+|---------|---------|------|----------|
+| PostgreSQL + TimescaleDB | Database | 5432 | Windows host (172.31.47.17) |
+| Logger API | Device communication & data acquisition | 5000 | `src/Industrial.Adam.Logger.WebApi` (WSL) |
+| OEE API | Overall Equipment Effectiveness | 5001 | `src/Industrial.Adam.Oee/WebApi` (WSL) |
+| Equipment Scheduling API | Production scheduling | 5141 | `src/Industrial.Adam.EquipmentScheduling/WebApi` (WSL) |
+| Security API | Authentication & user management | 5139 | `src/Industrial.Adam.Security` (WSL) |
+| Admin Dashboard API | System administration | 5002 | `src/Industrial.Adam.AdminDashboard/WebApi` (WSL) |
+| Platform Frontend | React web interface | 3001 | `platform-frontend` (WSL) |
 
-## Step 1: Database Setup (Local PostgreSQL)
+## Step 1: Database Setup (Windows PostgreSQL from WSL)
 
-### 1.1 Start Local PostgreSQL
-```bash
-# Start PostgreSQL service (varies by OS)
-# Ubuntu/Debian:
-sudo systemctl start postgresql
-
-# macOS (Homebrew):
-brew services start postgresql
-
-# Windows:
-# Start PostgreSQL service from Services panel
+### 1.1 Verify PostgreSQL is Running on Windows
+```powershell
+# On Windows PowerShell/Command Prompt - verify PostgreSQL service is running
+Get-Service postgresql*
+# OR
+sc query postgresql*
 ```
 
-### 1.2 Create Database and User
+### 1.2 Test WSL to Windows PostgreSQL Connectivity
 ```bash
-# Connect as postgres superuser
-sudo -u postgres psql
+# From WSL, test connection to your Windows PostgreSQL
+# Replace with your actual Windows username if different
+psql -h 172.31.47.17 -U postgres -d postgres -c "SELECT version();"
+```
+
+### 1.3 Create Database and User
+```bash
+# Connect to Windows PostgreSQL from WSL as postgres superuser
+psql -h 172.31.47.17 -U postgres
 
 # In PostgreSQL shell:
 CREATE DATABASE adam_counters;
@@ -49,21 +53,23 @@ GRANT ALL PRIVILEGES ON DATABASE adam_counters TO industrial_system;
 \q
 ```
 
-### 1.3 Install TimescaleDB Extension
+### 1.4 Install TimescaleDB Extension (if not already installed)
 ```bash
-# Connect to the adam_counters database
-psql -U industrial_system -d adam_counters -h localhost
+# Connect to the adam_counters database on Windows from WSL
+psql -h 172.31.47.17 -U industrial_system -d adam_counters
 
 # In database shell:
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 \q
 ```
 
-### 1.4 Verify Database Connection
+### 1.5 Verify Database Connection with Service Credentials
 ```bash
 # Test connection with exact credentials used by services
-psql postgresql://industrial_system:IndustrialCounter2024!@#$@localhost:5432/adam_counters -c "SELECT 1;"
+psql postgresql://industrial_system:IndustrialCounter2024!@#$@172.31.47.17:5432/adam_counters -c "SELECT 1;"
 ```
+
+**Expected Result:** Should return `1` without errors.
 
 **Expected:** Should return `1` without errors.
 
@@ -77,9 +83,9 @@ psql postgresql://industrial_system:IndustrialCounter2024!@#$@localhost:5432/ada
 ```bash
 cd /home/grant/adam-6000-counter/src/Industrial.Adam.Logger.WebApi
 
-# Set environment variables and start
+# Set environment variables and start (using Windows PostgreSQL IP)
 ASPNETCORE_URLS=http://localhost:5000 \
-TIMESCALE_HOST=localhost \
+TIMESCALE_HOST=172.31.47.17 \
 TIMESCALE_PORT=5432 \
 TIMESCALE_DATABASE=adam_counters \
 TIMESCALE_USERNAME=industrial_system \
@@ -105,7 +111,7 @@ dotnet run
 cd /home/grant/adam-6000-counter/src/Industrial.Adam.Oee/WebApi
 
 ASPNETCORE_URLS=http://localhost:5001 \
-TIMESCALE_HOST=localhost \
+TIMESCALE_HOST=172.31.47.17 \
 TIMESCALE_PORT=5432 \
 TIMESCALE_DATABASE=adam_counters \
 TIMESCALE_USERNAME=industrial_system \
@@ -130,7 +136,7 @@ dotnet run
 cd /home/grant/adam-6000-counter/src/Industrial.Adam.EquipmentScheduling/WebApi
 
 ASPNETCORE_URLS=http://localhost:5141 \
-TIMESCALE_HOST=localhost \
+TIMESCALE_HOST=172.31.47.17 \
 TIMESCALE_PORT=5432 \
 TIMESCALE_DATABASE=adam_counters \
 TIMESCALE_USERNAME=industrial_system \
@@ -150,7 +156,7 @@ dotnet run
 cd /home/grant/adam-6000-counter/src/Industrial.Adam.Security
 
 ASPNETCORE_URLS=http://localhost:5139 \
-TIMESCALE_HOST=localhost \
+TIMESCALE_HOST=172.31.47.17 \
 TIMESCALE_PORT=5432 \
 TIMESCALE_DATABASE=adam_counters \
 TIMESCALE_USERNAME=industrial_system \
@@ -170,7 +176,7 @@ dotnet run
 cd /home/grant/adam-6000-counter/src/Industrial.Adam.AdminDashboard/WebApi
 
 ASPNETCORE_URLS=http://localhost:5002 \
-TIMESCALE_HOST=localhost \
+TIMESCALE_HOST=172.31.47.17 \
 TIMESCALE_PORT=5432 \
 TIMESCALE_DATABASE=adam_counters \
 TIMESCALE_USERNAME=industrial_system \
@@ -230,7 +236,7 @@ cd /home/grant/adam-6000-counter
 
 ### Database Connection
 ```
-Host: localhost
+Host: 172.31.47.17 (Windows PostgreSQL from WSL)
 Port: 5432 (standard PostgreSQL port)
 Database: adam_counters
 Username: industrial_system
@@ -264,8 +270,8 @@ Operator User:
 Run these commands to verify all services are operational:
 
 ```bash
-# Database connectivity
-psql postgresql://industrial_system:IndustrialCounter2024!@#$@localhost:5432/adam_counters -c "SELECT 1;"
+# Database connectivity (Windows PostgreSQL from WSL)
+psql postgresql://industrial_system:IndustrialCounter2024!@#$@172.31.47.17:5432/adam_counters -c "SELECT 1;"
 
 # API Health Checks
 curl http://localhost:5000/health  # Logger API
@@ -286,26 +292,43 @@ ss -tlnp | grep -E ':(5000|5001|5141|5139|5002|3001|5432)'  # Check ports
 
 ## Troubleshooting Guide
 
-### Database Issues
+### WSL to Windows PostgreSQL Issues
 
-**"Connection refused to localhost:5432"**
+**"Connection refused to 172.31.47.17:5432"**
 ```bash
-# Check PostgreSQL service status
-sudo systemctl status postgresql
+# 1. Check if PostgreSQL is running on Windows
+# From Windows PowerShell:
+# Get-Service postgresql*
 
-# Check if port 5432 is open
-ss -tlnp | grep :5432
+# 2. Test network connectivity from WSL
+ping 172.31.47.17
+telnet 172.31.47.17 5432
 
-# Check PostgreSQL logs
-sudo journalctl -u postgresql -f
+# 3. Check Windows Firewall (may need to allow PostgreSQL port 5432)
+# 4. Verify PostgreSQL is configured to accept external connections
+```
+
+**"PostgreSQL not accepting connections from WSL"**
+```bash
+# Check PostgreSQL configuration files on Windows:
+# - postgresql.conf: should have listen_addresses = '*' or '172.31.47.17'
+# - pg_hba.conf: should allow connections from WSL subnet
+
+# Example pg_hba.conf entry:
+# host    all             all             172.31.0.0/16           md5
 ```
 
 **"Authentication failed for user industrial_system"**
 ```bash
-# Verify user exists and has permissions
-sudo -u postgres psql -c "\du industrial_system"
-sudo -u postgres psql -c "\l adam_counters"
+# Connect from WSL and verify user exists
+psql -h 172.31.47.17 -U postgres -c "\du industrial_system"
+psql -h 172.31.47.17 -U postgres -c "\l adam_counters"
+
+# If user doesn't exist, recreate:
+psql -h 172.31.47.17 -U postgres -c "CREATE USER industrial_system WITH PASSWORD 'IndustrialCounter2024!@#$';"
 ```
+
+### Database Issues
 
 ### API Startup Issues
 
