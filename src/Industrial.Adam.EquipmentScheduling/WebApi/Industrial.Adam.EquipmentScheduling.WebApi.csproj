@@ -39,7 +39,7 @@
     <ProjectReference Include="..\Domain\Industrial.Adam.EquipmentScheduling.Domain.csproj" />
     <ProjectReference Include="..\Application\Industrial.Adam.EquipmentScheduling.Application.csproj" />
     <ProjectReference Include="..\Infrastructure\Industrial.Adam.EquipmentScheduling.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\Industrial.Adam.Security\Industrial.Adam.Security.csproj" />
+    <ProjectReference Include="..\..\Industrial.Adam.Security\Infrastructure\Industrial.Adam.Security.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

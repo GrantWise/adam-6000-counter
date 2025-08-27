@@ -23,7 +23,7 @@
     <ProjectReference Include="..\Domain\Industrial.Adam.AdminDashboard.Domain.csproj" />
     <ProjectReference Include="..\Application\Industrial.Adam.AdminDashboard.Application.csproj" />
     <ProjectReference Include="..\Infrastructure\Industrial.Adam.AdminDashboard.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\Industrial.Adam.Security\Industrial.Adam.Security.csproj" />
+    <ProjectReference Include="..\..\Industrial.Adam.Security\Infrastructure\Industrial.Adam.Security.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -3,9 +3,9 @@ using Industrial.Adam.AdminDashboard.Application;
 using Industrial.Adam.AdminDashboard.Domain;
 using Industrial.Adam.AdminDashboard.Infrastructure;
 using Industrial.Adam.AdminDashboard.Infrastructure.SignalR;
-using Industrial.Adam.Security.Authentication;
-using Industrial.Adam.Security.Extensions;
-using Industrial.Adam.Security.Models;
+using Industrial.Adam.Security.Infrastructure.Services;
+using Industrial.Adam.Security.Infrastructure.Extensions;
+using Industrial.Adam.Security.Application.DTOs;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 
@@ -89,6 +89,14 @@ builder.Services.AddIndustrialAdamSecurity(builder.Configuration);
 builder.Services.AddAdminDashboardDomain();
 builder.Services.AddAdminDashboardApplication();
 builder.Services.AddAdminDashboardInfrastructure(builder.Configuration);
+
+// Add SignalR for real-time health monitoring
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = true;
+    options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+});
 
 // Add Health Checks
 builder.Services.AddHealthChecks()

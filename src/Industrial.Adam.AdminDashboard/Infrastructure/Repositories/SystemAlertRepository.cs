@@ -278,7 +278,9 @@ public class SystemAlertRepository : ISystemAlertRepository
                 : null,
             CreatedAt = DateTime.SpecifyKind(result.created_at, DateTimeKind.Utc),
             ServiceName = result.service_name,
-            AdditionalData = result.additional_data
+            AdditionalData = result.additional_data,
+            CreatedBy = "SYSTEM",
+            ModifiedBy = "SYSTEM"
         };
     }
 

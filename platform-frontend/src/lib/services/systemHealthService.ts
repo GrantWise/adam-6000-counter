@@ -14,7 +14,9 @@ import type {
   SystemAlert, 
   DatabaseHealth,
   HealthTimelineEvent,
-  PaginatedResponse 
+  PaginatedResponse,
+  DataQuality,
+  DataWithQuality
 } from '@/types'
 
 /**
@@ -26,64 +28,76 @@ class SystemHealthService {
   private readonly alertsUrl = '/api/admin/alerts'
 
   /**
-   * Get status of all microservices
+   * Get status of all microservices - Uses real health endpoints
    */
   async getServiceStatuses(): Promise<ApiResponse<ServiceStatus[]>> {
     try {
-      // Test Logger API health
-      const loggerHealthRes = await apiClient.get('/health/checks', {}, 'logger')
-      
-      // Mock service status data based on actual health checks
+      // Get health status from all services in parallel
+      const [loggerHealth, oeeHealth, securityHealth, schedulingHealth] = await Promise.allSettled([
+        apiClient.get('/health', {}, 'logger'),
+        apiClient.get('/health', {}, 'oee'),
+        apiClient.get('/health', {}, 'security'),
+        apiClient.get('/health', {}, 'scheduling')
+      ])
+
       const services: ServiceStatus[] = [
         {
           serviceName: 'Logger API',
-          status: loggerHealthRes.success ? 'healthy' : 'error',
-          uptime: Date.now() - 3600000, // 1 hour ago
+          status: loggerHealth.status === 'fulfilled' && loggerHealth.value.success ? 'healthy' : 'error',
+          uptime: loggerHealth.status === 'fulfilled' && loggerHealth.value.data?.uptime ? loggerHealth.value.data.uptime : 0,
           lastCheck: new Date(),
-          responseTime: 45,
-          version: '1.0.0',
+          responseTimeMs: loggerHealth.status === 'fulfilled' ? loggerHealth.value.data?.responseTime || 0 : 0,
+          errorCount: 0,
+          version: loggerHealth.status === 'fulfilled' ? loggerHealth.value.data?.version || '1.0.0' : 'Unknown',
           endpoint: 'http://localhost:5139',
-          details: {
-            database: 'TimescaleDB connected',
-            devices: '3 devices connected',
-            memoryUsage: '156MB'
-          }
+          details: loggerHealth.status === 'fulfilled' && loggerHealth.value.data ? loggerHealth.value.data.details : { error: 'Health check failed' }
         },
         {
           serviceName: 'OEE API',
-          status: 'healthy',
-          uptime: Date.now() - 7200000, // 2 hours ago
+          status: oeeHealth.status === 'fulfilled' && oeeHealth.value.success ? 'healthy' : 'error',
+          uptime: oeeHealth.status === 'fulfilled' && oeeHealth.value.data?.uptime ? oeeHealth.value.data.uptime : 0,
           lastCheck: new Date(),
-          responseTime: 32,
-          version: '1.0.0',
-          endpoint: 'http://localhost:5001',
-          details: {
-            calculations: 'Running',
-            schedules: '15 active schedules',
-            memoryUsage: '203MB'
-          }
+          responseTimeMs: oeeHealth.status === 'fulfilled' ? oeeHealth.value.data?.responseTime || 0 : 0,
+          errorCount: 0,
+          version: oeeHealth.status === 'fulfilled' ? oeeHealth.value.data?.version || '1.0.0' : 'Unknown',
+          endpoint: 'http://localhost:5140',
+          details: oeeHealth.status === 'fulfilled' && oeeHealth.value.data ? oeeHealth.value.data.details : { error: 'Health check failed' }
+        },
+        {
+          serviceName: 'Security API',
+          status: securityHealth.status === 'fulfilled' && securityHealth.value.success ? 'healthy' : 'error',
+          uptime: securityHealth.status === 'fulfilled' && securityHealth.value.data?.uptime ? securityHealth.value.data.uptime : 0,
+          lastCheck: new Date(),
+          responseTimeMs: securityHealth.status === 'fulfilled' ? securityHealth.value.data?.responseTime || 0 : 0,
+          errorCount: 0,
+          version: securityHealth.status === 'fulfilled' ? securityHealth.value.data?.version || '1.0.0' : 'Unknown',
+          endpoint: 'http://localhost:5139',
+          details: securityHealth.status === 'fulfilled' && securityHealth.value.data ? securityHealth.value.data.details : { error: 'Health check failed' }
         },
         {
           serviceName: 'Equipment Scheduling API',
-          status: 'warning',
-          uptime: Date.now() - 1800000, // 30 minutes ago
+          status: schedulingHealth.status === 'fulfilled' && schedulingHealth.value.success ? 'healthy' : 'error',
+          uptime: schedulingHealth.status === 'fulfilled' && schedulingHealth.value.data?.uptime ? schedulingHealth.value.data.uptime : 0,
           lastCheck: new Date(),
-          responseTime: 89,
-          version: '1.0.0',
+          responseTimeMs: schedulingHealth.status === 'fulfilled' ? schedulingHealth.value.data?.responseTime || 0 : 0,
+          errorCount: 0,
+          version: schedulingHealth.status === 'fulfilled' ? schedulingHealth.value.data?.version || '1.0.0' : 'Unknown',
           endpoint: 'http://localhost:5141',
-          details: {
-            status: 'High CPU usage detected',
-            schedules: '23 scheduled jobs',
-            memoryUsage: '445MB'
-          }
+          details: schedulingHealth.status === 'fulfilled' && schedulingHealth.value.data ? schedulingHealth.value.data.details : { error: 'Health check failed' }
         }
       ]
       
-      // Validate the response data
-      const response = { success: true, data: services }
-      return processApiResponse(response, (data) => isArrayOf(data, isServiceStatus), [])
+      return { success: true, data: services }
     } catch (error) {
-      return { success: false, error: error as ApiError }
+      return { 
+        success: false, 
+        error: { 
+          code: 'HEALTH_CHECK_FAILED',
+          message: 'Failed to retrieve service health status',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError 
+      }
     }
   }
 
@@ -91,101 +105,205 @@ class SystemHealthService {
    * Get specific service status by name
    */
   async getServiceStatus(serviceName: string): Promise<ApiResponse<ServiceStatus>> {
-    return apiClient.get<ServiceStatus>(`${this.baseUrl}/health/detailed`, {}, 'logger')
+    const serviceMap: Record<string, 'logger' | 'oee' | 'security' | 'scheduling'> = {
+      'Logger API': 'logger',
+      'OEE API': 'oee',
+      'Security API': 'security', 
+      'Equipment Scheduling API': 'scheduling'
+    }
+    
+    const service = serviceMap[serviceName]
+    if (!service) {
+      return {
+        success: false,
+        error: {
+          code: 'SERVICE_NOT_FOUND',
+          message: `Service ${serviceName} not found`,
+          timestamp: new Date(),
+          retryable: false
+        }
+      }
+    }
+    
+    return apiClient.get<ServiceStatus>('/health', {}, service)
   }
 
   /**
-   * Get current system metrics (CPU, RAM, disk, network)
+   * Get current system metrics from Admin Dashboard API - NO SYNTHETIC DATA
    */
-  async getSystemMetrics(): Promise<ApiResponse<SystemMetrics>> {
+  async getSystemMetrics(): Promise<ApiResponse<DataWithQuality<SystemMetrics>>> {
     try {
-      // Mock system metrics - in a real implementation this would come from actual system monitoring
-      const metrics: SystemMetrics = {
-        timestamp: new Date(),
-        cpu: {
-          usage: Math.random() * 30 + 15, // 15-45%
-          cores: 8,
-          temperature: Math.random() * 10 + 55 // 55-65°C
-        },
-        memory: {
-          used: Math.random() * 2048 + 2048, // 2-4GB
-          total: 8192, // 8GB
-          percentage: 0
-        },
-        disk: {
-          used: Math.random() * 200 + 100, // 100-300GB
-          total: 1000, // 1TB
-          percentage: 0,
-          readSpeed: Math.random() * 50 + 100,
-          writeSpeed: Math.random() * 30 + 80
-        },
-        network: {
-          inbound: Math.random() * 10 + 5, // 5-15 Mbps
-          outbound: Math.random() * 5 + 2, // 2-7 Mbps
-          latency: Math.random() * 10 + 5 // 5-15ms
+      // Try to get real metrics from Admin Dashboard API
+      const response = await apiClient.get<SystemMetrics>('/api/admin/system/metrics', {}, 'security')
+      
+      if (response.success && response.data) {
+        return {
+          success: true,
+          data: {
+            value: response.data,
+            quality: 'good',
+            timestamp: new Date(),
+            isRealData: true,
+            source: 'api',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard API',
+              dataIntegrity: 'verified',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
+      } else {
+        // Return unavailable data instead of synthetic
+        return {
+          success: true,
+          data: {
+            value: null,
+            quality: 'unavailable',
+            timestamp: new Date(),
+            isRealData: false,
+            source: 'fallback',
+            warning: 'System metrics unavailable - Admin Dashboard API not responding',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard API',
+              dataIntegrity: 'synthetic',
+              complianceFlags: ['CFR21Part11', 'DATA_UNAVAILABLE']
+            }
+          }
         }
       }
-      
-      // Calculate percentages
-      metrics.memory.percentage = (metrics.memory.used / metrics.memory.total) * 100
-      metrics.disk.percentage = (metrics.disk.used / metrics.disk.total) * 100
-      
-      // Validate the response data
-      const response = { success: true, data: metrics }
-      return processApiResponse(response, isSystemMetrics)
     } catch (error) {
-      return { success: false, error: error as ApiError }
+      return { 
+        success: false, 
+        error: { 
+          code: 'METRICS_UNAVAILABLE',
+          message: 'System metrics data not available',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError 
+      }
     }
   }
 
   /**
-   * Get historical system metrics for time range
+   * Get historical system metrics for time range - NO SYNTHETIC DATA
    */
   async getMetricsHistory(
     timeRange: '1h' | '6h' | '24h' | '7d' = '24h'
-  ): Promise<ApiResponse<SystemMetrics[]>> {
-    // Mock historical data for now - return current metrics as array
-    const currentMetrics = await this.getSystemMetrics()
-    if (currentMetrics.success && currentMetrics.data) {
-      return Promise.resolve({
-        success: true,
-        data: [currentMetrics.data]
-      })
+  ): Promise<ApiResponse<DataWithQuality<SystemMetrics[]>>> {
+    try {
+      const response = await apiClient.get<SystemMetrics[]>(`/api/admin/system/metrics/history?timeRange=${timeRange}`, {}, 'security')
+      
+      if (response.success && response.data) {
+        return {
+          success: true,
+          data: {
+            value: response.data,
+            quality: 'good',
+            timestamp: new Date(),
+            isRealData: true,
+            source: 'api',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard API',
+              dataIntegrity: 'verified',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
+      } else {
+        return {
+          success: true,
+          data: {
+            value: [],
+            quality: 'unavailable',
+            timestamp: new Date(),
+            isRealData: false,
+            source: 'fallback',
+            warning: 'Historical metrics data not available',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard API',
+              dataIntegrity: 'synthetic',
+              complianceFlags: ['CFR21Part11', 'DATA_UNAVAILABLE']
+            }
+          }
+        }
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        error: { 
+          code: 'METRICS_HISTORY_UNAVAILABLE',
+          message: 'Historical metrics data not available',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError 
+      }
     }
-    return Promise.resolve({ success: true, data: [] })
   }
 
   /**
-   * Get TimescaleDB health and performance metrics
+   * Get TimescaleDB health from real database endpoint - NO SYNTHETIC DATA
    */
-  async getDatabaseHealth(): Promise<ApiResponse<DatabaseHealth>> {
+  async getDatabaseHealth(): Promise<ApiResponse<DataWithQuality<DatabaseHealth>>> {
     try {
-      // Test actual database connection through Logger API
-      const healthRes = await apiClient.get('/health/checks', {}, 'logger')
+      // Get real database health from Logger API
+      const response = await apiClient.get<DatabaseHealth>('/api/database/health', {}, 'logger')
       
-      // Mock database health data
-      const dbHealth: DatabaseHealth = {
-        connected: healthRes.success,
-        connectionString: 'TimescaleDB on localhost:5433',
-        responseTime: Math.random() * 20 + 10, // 10-30ms
-        activeConnections: Math.floor(Math.random() * 5) + 3, // 3-8 connections
-        maxConnections: 100,
-        database: 'adam_counters',
-        version: '14.9',
-        uptime: Date.now() - 86400000, // 24 hours ago
-        stats: {
-          totalQueries: Math.floor(Math.random() * 1000000) + 500000,
-          queriesPerSecond: Math.random() * 50 + 25,
-          dataSize: '2.3GB',
-          indexSize: '456MB'
+      if (response.success && response.data) {
+        return {
+          success: true,
+          data: {
+            value: response.data,
+            quality: 'good',
+            timestamp: new Date(),
+            isRealData: true,
+            source: 'api',
+            auditInfo: {
+              sourceSystem: 'Logger API Database Health',
+              dataIntegrity: 'verified',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
+      } else {
+        // Check basic connectivity as fallback
+        const basicHealthRes = await apiClient.get('/health', {}, 'logger')
+        
+        return {
+          success: true,
+          data: {
+            value: {
+              connected: basicHealthRes.success,
+              responseTimeMs: 0,
+              connectionCount: 0,
+              maxConnections: 0,
+              version: 'Unknown',
+              diskUsage: 0,
+              queryPerformance: {
+                slowQueries: 0,
+                avgQueryTime: 0
+              }
+            },
+            quality: basicHealthRes.success ? 'uncertain' : 'bad',
+            timestamp: new Date(),
+            warning: 'Detailed database metrics unavailable - only basic connectivity verified',
+            auditInfo: {
+              sourceSystem: 'Logger API Basic Health',
+              dataIntegrity: 'partial',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
         }
       }
-      
-      // Validate the response data
-      const response = { success: true, data: dbHealth }
-      return processApiResponse(response, isDatabaseHealth)
     } catch (error) {
-      return { success: false, error: error as ApiError }
+      return { 
+        success: false, 
+        error: { 
+          code: 'DATABASE_HEALTH_UNAVAILABLE',
+          message: 'Database health information not available',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError 
+      }
     }
   }
 
@@ -218,7 +336,7 @@ class SystemHealthService {
   }
 
   /**
-   * Get active system alerts with pagination and filtering
+   * Get active system alerts from Admin Dashboard API - NO SYNTHETIC DATA
    */
   async getAlerts(params?: {
     page?: number
@@ -227,17 +345,73 @@ class SystemHealthService {
     type?: 'error' | 'warning' | 'info'
     acknowledged?: boolean
     resolved?: boolean
-  }): Promise<ApiResponse<PaginatedResponse<SystemAlert>>> {
-    // Mock alerts for now since backend doesn't have alert system yet
-    return Promise.resolve({
-      success: true,
-      data: {
-        data: [],
-        total: 0,
-        page: params?.page || 1,
-        pageSize: params?.pageSize || 10
+  }): Promise<ApiResponse<DataWithQuality<PaginatedResponse<SystemAlert>>>> {
+    try {
+      const queryParams = new URLSearchParams()
+      if (params?.page) queryParams.append('page', params.page.toString())
+      if (params?.pageSize) queryParams.append('pageSize', params.pageSize.toString())
+      if (params?.severity) queryParams.append('severity', params.severity)
+      if (params?.type) queryParams.append('type', params.type)
+      if (params?.acknowledged !== undefined) queryParams.append('acknowledged', params.acknowledged.toString())
+      if (params?.resolved !== undefined) queryParams.append('resolved', params.resolved.toString())
+      
+      const response = await apiClient.get<PaginatedResponse<SystemAlert>>(`${this.alertsUrl}?${queryParams.toString()}`, {}, 'security')
+      
+      if (response.success) {
+        return {
+          success: true,
+          data: {
+            value: response.data || {
+              data: [],
+              total: 0,
+              page: params?.page || 1,
+              pageSize: params?.pageSize || 10
+            },
+            quality: 'good',
+            timestamp: new Date(),
+            isRealData: true,
+            source: 'api',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard Alerts API',
+              dataIntegrity: 'verified',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
+      } else {
+        return {
+          success: true,
+          data: {
+            value: {
+              data: [],
+              total: 0,
+              page: params?.page || 1,
+              pageSize: params?.pageSize || 10
+            },
+            quality: 'unavailable',
+            timestamp: new Date(),
+            isRealData: false,
+            source: 'fallback',
+            warning: 'Alert system data not available',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard Alerts API',
+              dataIntegrity: 'unavailable',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
       }
-    })
+    } catch (error) {
+      return { 
+        success: false, 
+        error: { 
+          code: 'ALERTS_UNAVAILABLE',
+          message: 'System alerts data not available',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError 
+      }
+    }
   }
 
   /**
@@ -251,16 +425,14 @@ class SystemHealthService {
    * Acknowledge an alert
    */
   async acknowledgeAlert(alertId: string): Promise<ApiResponse<void>> {
-    // Mock acknowledgment for now
-    return Promise.resolve({ success: true, data: undefined })
+    return apiClient.patch<void>(`${this.alertsUrl}/${alertId}/acknowledge`, {}, {}, 'security')
   }
 
   /**
    * Resolve an alert
    */
   async resolveAlert(alertId: string, resolution?: string): Promise<ApiResponse<void>> {
-    // Mock resolution for now
-    return Promise.resolve({ success: true, data: undefined })
+    return apiClient.patch<void>(`${this.alertsUrl}/${alertId}/resolve`, { resolution }, {}, 'security')
   }
 
   /**
@@ -271,71 +443,187 @@ class SystemHealthService {
   }
 
   /**
-   * Get health timeline events for visualization
+   * Get health timeline events for visualization - NO SYNTHETIC DATA
    */
   async getHealthTimeline(
     timeRange: '1h' | '6h' | '24h' | '7d' = '24h'
-  ): Promise<ApiResponse<HealthTimelineEvent[]>> {
-    // Mock timeline events for now
-    return Promise.resolve({ success: true, data: [] })
+  ): Promise<ApiResponse<DataWithQuality<HealthTimelineEvent[]>>> {
+    try {
+      const response = await apiClient.get<HealthTimelineEvent[]>(
+        `/api/admin/system/timeline?timeRange=${timeRange}`,
+        {},
+        'security'
+      )
+      
+      if (response.success) {
+        return {
+          success: true,
+          data: {
+            value: response.data || [],
+            quality: 'good',
+            timestamp: new Date(),
+            isRealData: true,
+            source: 'api',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard Timeline API',
+              dataIntegrity: 'verified',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
+      } else {
+        return {
+          success: true,
+          data: {
+            value: [],
+            quality: 'unavailable',
+            timestamp: new Date(),
+            isRealData: false,
+            source: 'fallback',
+            warning: 'Health timeline data not available',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard Timeline API',
+              dataIntegrity: 'unavailable',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        error: { 
+          code: 'TIMELINE_UNAVAILABLE',
+          message: 'Health timeline data not available',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError 
+      }
+    }
   }
 
   /**
-   * Create a test alert (for testing purposes)
+   * Create a test alert (for testing purposes) - Uses real API
    */
   async createTestAlert(severity: 'low' | 'medium' | 'high' | 'critical' = 'medium'): Promise<ApiResponse<SystemAlert>> {
-    // Mock test alert creation
-    const testAlert: SystemAlert = {
-      id: Math.random().toString(36).substr(2, 9),
-      title: 'Test Alert',
-      description: 'This is a test alert for development purposes',
-      severity: severity,
-      status: 'active',
-      source: 'test',
-      timestamp: new Date(),
-      acknowledged: false,
-      resolved: false
-    }
-    
-    return Promise.resolve({ success: true, data: testAlert })
+    return apiClient.post<SystemAlert>(
+      `${this.alertsUrl}/test`,
+      { 
+        severity,
+        title: 'Test Alert',
+        description: 'Test alert generated from frontend for development purposes'
+      },
+      {},
+      'security'
+    )
   }
 
   /**
-   * Get system health statistics summary
+   * Get system health statistics summary from real API - NO SYNTHETIC DATA
    */
-  async getHealthStats(): Promise<ApiResponse<{
-    uptime: number
+  async getHealthStats(): Promise<ApiResponse<DataWithQuality<{
+    uptime: number | null
     totalServices: number
     healthyServices: number
     warningServices: number
     errorServices: number
     totalAlerts: number
     criticalAlerts: number
-    avgResponseTime: number
-  }>> {
-    // Mock stats for now
-    return Promise.resolve({
-      success: true,
-      data: {
-        uptime: Date.now() - 86400000, // 24 hours ago
-        totalServices: 3,
-        healthyServices: 3,
-        warningServices: 0,
-        errorServices: 0,
-        totalAlerts: 0,
-        criticalAlerts: 0,
-        avgResponseTime: 150
+    avgResponseTime: number | null
+  }>>> {
+    try {
+      const response = await apiClient.get<any>('/api/admin/system/stats', {}, 'security')
+      
+      if (response.success && response.data) {
+        return {
+          success: true,
+          data: {
+            value: response.data,
+            quality: 'good',
+            timestamp: new Date(),
+            isRealData: true,
+            source: 'api',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard Stats API',
+              dataIntegrity: 'verified',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
+      } else {
+        // Calculate basic stats from service status as fallback
+        const servicesResult = await this.getServiceStatuses()
+        const services = servicesResult.data || []
+        
+        const stats = {
+          uptime: null,
+          totalServices: services.length,
+          healthyServices: services.filter(s => s.status === 'healthy').length,
+          warningServices: services.filter(s => s.status === 'warning').length,
+          errorServices: services.filter(s => s.status === 'error').length,
+          totalAlerts: 0, // Cannot determine without alert API
+          criticalAlerts: 0, // Cannot determine without alert API
+          avgResponseTime: null
+        }
+        
+        return {
+          success: true,
+          data: {
+            value: stats,
+            quality: 'uncertain',
+            timestamp: new Date(),
+            isRealData: false,
+            source: 'estimated',
+            warning: 'Limited health statistics - calculated from basic service status only',
+            auditInfo: {
+              sourceSystem: 'Calculated from Service Status',
+              dataIntegrity: 'partial',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
       }
-    })
+    } catch (error) {
+      return { 
+        success: false, 
+        error: { 
+          code: 'HEALTH_STATS_UNAVAILABLE',
+          message: 'Health statistics not available',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError 
+      }
+    }
   }
 
   /**
    * Export health data for analysis
    */
   async exportHealthData(format: 'csv' | 'json' = 'json', timeRange: '1h' | '6h' | '24h' | '7d' = '24h'): Promise<ApiResponse<Blob>> {
-    // Mock export for now
-    const data = JSON.stringify({ message: 'Export not yet implemented' })
-    return Promise.resolve({ success: true, data: new Blob([data], { type: 'application/json' }) })
+    try {
+      const response = await apiClient.getPublicInstance('security').get(
+        `/api/admin/system/export?format=${format}&timeRange=${timeRange}`,
+        { responseType: 'blob' }
+      )
+      
+      return { success: true, data: response.data }
+    } catch (error) {
+      // Return error blob instead of synthetic data
+      const errorData = JSON.stringify({ 
+        error: 'Health data export not available', 
+        timestamp: new Date().toISOString(),
+        compliance: 'CFR21Part11 - No synthetic data generated'
+      })
+      return { 
+        success: false, 
+        error: { 
+          code: 'EXPORT_UNAVAILABLE',
+          message: 'Health data export not available',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError
+      }
+    }
   }
 
   /**
@@ -361,28 +649,71 @@ class SystemHealthService {
   }
 
   /**
-   * Get system resource utilization predictions
+   * Get system resource utilization predictions - NO SYNTHETIC DATA
    */
-  async getResourcePredictions(): Promise<ApiResponse<{
-    cpu: { next1h: number; next6h: number; next24h: number }
-    memory: { next1h: number; next6h: number; next24h: number }
-    disk: { next1h: number; next6h: number; next24h: number }
-  }>> {
-    // Mock predictions for now
-    return Promise.resolve({
-      success: true,
-      data: {
-        cpu: { next1h: 45, next6h: 50, next24h: 55 },
-        memory: { next1h: 60, next6h: 65, next24h: 70 },
-        disk: { next1h: 25, next6h: 25, next24h: 26 }
+  async getResourcePredictions(): Promise<ApiResponse<DataWithQuality<{
+    cpu: { next1h: number | null; next6h: number | null; next24h: number | null } | null
+    memory: { next1h: number | null; next6h: number | null; next24h: number | null } | null
+    disk: { next1h: number | null; next6h: number | null; next24h: number | null } | null
+  }>>> {
+    try {
+      const response = await apiClient.get<any>('/api/admin/system/predictions', {}, 'security')
+      
+      if (response.success && response.data) {
+        return {
+          success: true,
+          data: {
+            value: response.data,
+            quality: 'good',
+            timestamp: new Date(),
+            isRealData: true,
+            source: 'api',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard Predictions API',
+              dataIntegrity: 'verified',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
+      } else {
+        return {
+          success: true,
+          data: {
+            value: {
+              cpu: null,
+              memory: null,
+              disk: null
+            },
+            quality: 'unavailable',
+            timestamp: new Date(),
+            isRealData: false,
+            source: 'fallback',
+            warning: 'Resource prediction data not available - prediction service not implemented',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard Predictions API',
+              dataIntegrity: 'unavailable',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
       }
-    })
+    } catch (error) {
+      return { 
+        success: false, 
+        error: { 
+          code: 'PREDICTIONS_UNAVAILABLE',
+          message: 'Resource predictions not available',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError 
+      }
+    }
   }
 
   /**
-   * Get maintenance windows affecting system health
+   * Get maintenance windows affecting system health - NO SYNTHETIC DATA
    */
-  async getMaintenanceWindows(): Promise<ApiResponse<{
+  async getMaintenanceWindows(): Promise<ApiResponse<DataWithQuality<{
     id: string
     title: string
     description: string
@@ -390,32 +721,114 @@ class SystemHealthService {
     endTime: Date
     affectedServices: string[]
     status: 'scheduled' | 'active' | 'completed' | 'cancelled'
-  }[]>> {
-    // Mock maintenance windows for now
-    return Promise.resolve({ success: true, data: [] })
+  }[]>>> {
+    try {
+      const response = await apiClient.get<any>('/api/admin/system/maintenance', {}, 'security')
+      
+      if (response.success) {
+        return {
+          success: true,
+          data: {
+            value: response.data || [],
+            quality: 'good',
+            timestamp: new Date(),
+            isRealData: true,
+            source: 'api',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard Maintenance API',
+              dataIntegrity: 'verified',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
+      } else {
+        return {
+          success: true,
+          data: {
+            value: [],
+            quality: 'unavailable',
+            timestamp: new Date(),
+            isRealData: false,
+            source: 'fallback',
+            warning: 'Maintenance window data not available',
+            auditInfo: {
+              sourceSystem: 'Admin Dashboard Maintenance API',
+              dataIntegrity: 'unavailable',
+              complianceFlags: ['CFR21Part11']
+            }
+          }
+        }
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        error: { 
+          code: 'MAINTENANCE_UNAVAILABLE',
+          message: 'Maintenance window data not available',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError 
+      }
+    }
   }
 
   /**
-   * Test connectivity to all external dependencies
+   * Test connectivity to all external dependencies - REAL CONNECTIVITY ONLY
    */
-  async testConnectivity(): Promise<ApiResponse<{
-    database: { connected: boolean; responseTime: number }
-    externalApis: { name: string; connected: boolean; responseTime: number }[]
+  async testConnectivity(): Promise<ApiResponse<DataWithQuality<{
+    database: { connected: boolean; responseTime: number | null }
+    externalApis: { name: string; connected: boolean; responseTime: number | null }[]
     networkDrives: { name: string; accessible: boolean }[]
     timestamp: Date
-  }>> {
-    // Test actual database connectivity
-    const dbHealth = await this.getDatabaseHealth()
-    
-    return Promise.resolve({
-      success: true,
-      data: {
-        database: { connected: dbHealth.success, responseTime: 50 },
-        externalApis: [],
-        networkDrives: [],
+  }>>> {
+    try {
+      // Test real connectivity
+      const [dbResult, servicesResult] = await Promise.allSettled([
+        this.getDatabaseHealth(),
+        this.getServiceStatuses()
+      ])
+      
+      const dbHealth = dbResult.status === 'fulfilled' ? dbResult.value : null
+      const services = servicesResult.status === 'fulfilled' ? servicesResult.value.data || [] : []
+      
+      const connectivityData = {
+        database: {
+          connected: dbHealth?.success && dbHealth.data?.value?.connected === true,
+          responseTime: dbHealth?.data?.value?.responseTime || null
+        },
+        externalApis: services.map(service => ({
+          name: service.serviceName,
+          connected: service.status === 'healthy',
+          responseTime: service.responseTime || null
+        })),
+        networkDrives: [], // No network drives in current system
         timestamp: new Date()
       }
-    })
+      
+      return {
+        success: true,
+        data: {
+          value: connectivityData,
+          quality: 'good',
+          timestamp: new Date(),
+          auditInfo: {
+            sourceSystem: 'Real Connectivity Tests',
+            dataIntegrity: 'verified',
+            complianceLevel: 'CFR21Part11'
+          }
+        }
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        error: { 
+          code: 'CONNECTIVITY_TEST_FAILED',
+          message: 'Connectivity test failed',
+          timestamp: new Date(),
+          retryable: true
+        } as ApiError 
+      }
+    }
   }
 }
 

@@ -95,4 +95,40 @@ public class HealthUpdateService : IHealthUpdateService
             throw;
         }
     }
+
+    /// <inheritdoc />
+    public async Task SendHealthUpdateAsync(object healthData, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Sending health update to all connected clients");
+            
+            await _hubContext.Clients.All.SendAsync("HealthUpdate", healthData, cancellationToken);
+            
+            _logger.LogDebug("Health update sent successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send health update");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task SendSystemMetricsUpdateAsync(object metricsData, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Sending system metrics update to all connected clients");
+            
+            await _hubContext.Clients.All.SendAsync("SystemMetricsUpdate", metricsData, cancellationToken);
+            
+            _logger.LogDebug("System metrics update sent successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send system metrics update");
+            throw;
+        }
+    }
 }

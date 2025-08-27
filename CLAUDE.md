@@ -48,3 +48,56 @@ When fixing failing tests or debugging bugs, you **MUST** follow this process:
 - **Comments**: Comment on the *why*, not the *what*. Avoid obvious comments.
 - **Error Handling**: Use specific exception types and structured logging. Return meaningful error messages.
 - **Testing**: Follow the Arrange, Act, Assert pattern. Ensure tests are independent and have descriptive names.
+
+## 5. Data Integrity and 21 CFR Part 11 Compliance
+
+**CRITICAL REQUIREMENT**: Industrial systems must maintain absolute data integrity and transparency.
+
+### Data Display Requirements
+
+- **NEVER display interpolated, calculated, or fallback values without explicit user notification**
+- **ALWAYS clearly indicate when data is unavailable, estimated, or synthetic**
+- **NEVER present simulated data as real measurements**
+- **ALWAYS provide data quality indicators (Good, Uncertain, Bad, Unavailable)**
+
+### Implementation Standards
+
+- **ZERO TOLERANCE for synthetic data**: When real data is unavailable, display "Data Not Available" instead of generating fallback values
+- Use clear visual indicators for data status:
+  - ✅ **Real Data**: No special marking required
+  - ⚠️ **Estimated/Interpolated**: Yellow warning with "ESTIMATED" label
+  - ❌ **Unavailable**: Red indicator with "NO DATA" or "OFFLINE" label
+  - 🔧 **Simulated**: Clear "SIMULATED" or "TEST DATA" marking (for test environments only)
+- Include timestamps for all measurements
+- Log all data quality decisions for audit trails
+- Provide detailed tooltips explaining data status
+- **CRITICAL**: Never use Math.random(), fixed patterns, or interpolation to fill missing data
+
+### Code Examples
+
+```typescript
+// CORRECT - Clear indication of data status
+return {
+  value: realValue,
+  quality: 'good',
+  timestamp: new Date(),
+  isRealData: true
+}
+
+// CORRECT - Unavailable data handling
+return {
+  value: null,
+  quality: 'bad',
+  timestamp: new Date(),
+  error: 'Device offline',
+  isRealData: false
+}
+
+// INCORRECT - Synthetic data without indication
+return {
+  value: 42.5, // This is fake!
+  quality: 'good' // This is misleading!
+}
+```
+
+This principle applies to ALL industrial data: device readings, OEE calculations, system metrics, and dashboard displays.

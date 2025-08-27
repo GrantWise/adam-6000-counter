@@ -33,4 +33,18 @@ public interface IHealthUpdateService
     /// <param name="healthData">Health data to send</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task SendToGroupAsync(string groupName, object healthData, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Send health update to connected clients
+    /// </summary>
+    /// <param name="healthData">Health data to send</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task SendHealthUpdateAsync(object healthData, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Send system metrics update to connected clients
+    /// </summary>
+    /// <param name="metricsData">System metrics data to send</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task SendSystemMetricsUpdateAsync(object metricsData, CancellationToken cancellationToken = default);
 }

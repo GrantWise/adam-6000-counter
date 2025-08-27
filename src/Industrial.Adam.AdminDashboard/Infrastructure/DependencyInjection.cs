@@ -30,14 +30,6 @@ public static class DependencyInjection
 
         // Register SignalR services
         services.AddScoped<IHealthUpdateService, HealthUpdateService>();
-        
-        // Add SignalR
-        services.AddSignalR(options =>
-        {
-            options.EnableDetailedErrors = true;
-            options.KeepAliveInterval = TimeSpan.FromSeconds(30);
-            options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
-        });
 
         // Add background services for health monitoring
         services.AddHostedService<HealthMonitoringBackgroundService>();

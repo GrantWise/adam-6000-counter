@@ -170,8 +170,10 @@ This automatically sets up:
 After setup completes:
 - **Counter Frontend Dashboard**: http://localhost:3000
 - **OEE Analytics Interface**: http://localhost:3001  
+- **Logger API**: http://localhost:5000/health
+- **OEE API**: http://localhost:5001/health
 - **Grafana Monitoring**: http://localhost:3002 (admin/admin)
-- **TimescaleDB**: postgresql://localhost:5433 (adam_user/adam_password)
+- **TimescaleDB**: postgresql://localhost:5433 (industrial_system/IndustrialCounter2024!@#$)
 
 ### 🐳 Docker Infrastructure Only
 
@@ -200,8 +202,9 @@ docker-compose logs -f adam-logger
 curl http://localhost:3000/api/health
 curl http://localhost:3001/api/health
 
-# Test backend API
-curl http://localhost:8080/api/health  # If WebAPI is running
+# Test backend APIs
+curl http://localhost:5000/health  # Logger API
+curl http://localhost:5001/health  # OEE API
 ```
 
 ## 🏗️ Technology Stack
@@ -276,20 +279,39 @@ curl http://localhost:8080/api/health  # If WebAPI is running
 
 ## Configuration Management
 
-📖 **For detailed configuration, see [Configuration Guide](docs/configuration-guide.md)**
+📖 **For detailed configuration, see [Setup Troubleshooting Guide](docs/SETUP_TROUBLESHOOTING.md)**
 
 Each application uses JSON configuration with environment variable overrides:
 
-- **ADAM Logger**: `src/Industrial.Adam.Logger.Console/appsettings.json`
+- **ADAM Logger**: `src/Industrial.Adam.Logger.WebApi/appsettings.json`
+- **OEE API**: `src/Industrial.Adam.Oee/WebApi/appsettings.json`
 - **Counter Frontend**: Environment variables and `next.config.mjs`
 - **OEE Application**: Database configuration and environment variables
 - **Docker**: Centralized configuration in `docker/config/`
+
+### Required Environment Variables
+```bash
+TIMESCALEDB_USERNAME=industrial_system
+TIMESCALEDB_PASSWORD=IndustrialCounter2024!@#$
+JWT_SECRET_KEY=8f9e2a1b5c6d3e7f4g8h9i2j5k6l3m7n8o9p2q5r6s3t7u8v9w2x5y6z3a7b8c9d
+JWT_ISSUER=Industrial.Adam.System
+JWT_AUDIENCE=Industrial.Adam.APIs
+```
+
+### Service Ports
+- **Logger API**: Port 5000
+- **OEE API**: Port 5001 
+- **TimescaleDB**: Port 5433
+- **Counter Frontend**: Port 3000
+- **OEE Frontend**: Port 3001
+- **Grafana**: Port 3002
 
 Key configuration features:
 - **Hierarchical Settings**: Default values with environment-specific overrides
 - **Hot Reload**: Configuration changes applied without restarts (where supported)
 - **Validation**: Startup validation with helpful error messages
 - **Templates**: Ready-to-use configuration templates for different scenarios
+- **Security Requirements**: Complex passwords and JWT keys required for production
 
 ## Testing & Quality Assurance
 
@@ -322,6 +344,8 @@ cd oee-app/oee-interface && npm test
 - **[ONBOARDING.md](ONBOARDING.md)**: Comprehensive developer guide with week-by-week learning plan
 - **[QUICKSTART.md](QUICKSTART.md)**: Fast setup guide for immediate productivity
 - **[DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md)**: Advanced development environment configuration
+- **[Service Startup Guide](docs/SERVICE_STARTUP_GUIDE.md)**: Step-by-step service startup sequence
+- **[Setup Troubleshooting Guide](docs/SETUP_TROUBLESHOOTING.md)**: Common issues and working configurations
 - **[CLAUDE.md](CLAUDE.md)**: AI development guidelines and architectural principles
 
 ### 🏗️ Technical Documentation  

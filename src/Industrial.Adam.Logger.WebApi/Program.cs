@@ -4,9 +4,9 @@ using Industrial.Adam.Logger.Core.Extensions;
 using Industrial.Adam.Logger.Core.Models;
 using Industrial.Adam.Logger.Core.Services;
 using Industrial.Adam.Logger.Core.Storage;
-using Industrial.Adam.Security.Authentication;
-using Industrial.Adam.Security.Extensions;
-using Industrial.Adam.Security.Models;
+using Industrial.Adam.Security.Infrastructure.Services;
+using Industrial.Adam.Security.Infrastructure.Extensions;
+using Industrial.Adam.Security.Application.DTOs;
 using Microsoft.AspNetCore.Authorization;
 
 var builder = WebApplication.CreateBuilder(args);

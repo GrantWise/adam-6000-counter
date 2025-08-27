@@ -72,7 +72,9 @@ public class SystemHealthMetricRepository : ISystemHealthMetricRepository
                 ResponseTimeMs = result.response_time_ms,
                 ErrorCount = result.error_count,
                 RecordedAt = DateTime.SpecifyKind(result.recorded_at, DateTimeKind.Utc),
-                AdditionalData = result.additional_data
+                AdditionalData = result.additional_data,
+                CreatedBy = "SYSTEM",
+                ModifiedBy = "SYSTEM"
             };
         }
         catch (Exception ex)
@@ -109,7 +111,9 @@ public class SystemHealthMetricRepository : ISystemHealthMetricRepository
                 ResponseTimeMs = result.response_time_ms,
                 ErrorCount = result.error_count,
                 RecordedAt = DateTime.SpecifyKind(result.recorded_at, DateTimeKind.Utc),
-                AdditionalData = result.additional_data
+                AdditionalData = result.additional_data,
+                CreatedBy = "SYSTEM",
+                ModifiedBy = "SYSTEM"
             }).ToList();
 
             _logger.LogDebug("Retrieved latest health metrics for {ServiceCount} services", metrics.Count);
@@ -168,7 +172,9 @@ public class SystemHealthMetricRepository : ISystemHealthMetricRepository
                 ResponseTimeMs = result.response_time_ms,
                 ErrorCount = result.error_count,
                 RecordedAt = DateTime.SpecifyKind(result.recorded_at, DateTimeKind.Utc),
-                AdditionalData = result.additional_data
+                AdditionalData = result.additional_data,
+                CreatedBy = "SYSTEM",
+                ModifiedBy = "SYSTEM"
             }).ToList();
 
             _logger.LogDebug("Retrieved {MetricCount} health metrics for service {ServiceName} between {FromTime} and {ToTime}",
@@ -216,7 +222,9 @@ public class SystemHealthMetricRepository : ISystemHealthMetricRepository
                 ResponseTimeMs = result.response_time_ms,
                 ErrorCount = result.error_count,
                 RecordedAt = DateTime.SpecifyKind(result.recorded_at, DateTimeKind.Utc),
-                AdditionalData = result.additional_data
+                AdditionalData = result.additional_data,
+                CreatedBy = "SYSTEM",
+                ModifiedBy = "SYSTEM"
             }).ToList();
 
             _logger.LogDebug("Retrieved {ServiceCount} services with status {Status}", metrics.Count, status);

@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  adam-platform-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: adam-platform-frontend
+    ports:
+      - "3000:80"
+    environment:
+      # These will be built into the static files during build
+      - NODE_ENV=production
+    depends_on:
+      - industrial-adam-security
+      - industrial-adam-logger
+      - industrial-adam-oee
+      - industrial-adam-scheduling
+    networks:
+      - adam-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Backend service proxies (assuming they exist)
+  industrial-adam-security:
+    image: adam/security:latest
+    container_name: adam-security-service
+    ports:
+      - "5139:5139"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=adam_security;Username=adam;Password=adam123
+    networks:
+      - adam-network
+    restart: unless-stopped
+
+  industrial-adam-logger:
+    image: adam/logger:latest
+    container_name: adam-logger-service
+    ports:
+      - "5140:5139"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=timescaledb;Database=adam_logger;Username=adam;Password=adam123
+    networks:
+      - adam-network
+    restart: unless-stopped
+
+  industrial-adam-oee:
+    image: adam/oee:latest
+    container_name: adam-oee-service
+    ports:
+      - "5141:5140"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=adam_oee;Username=adam;Password=adam123
+    networks:
+      - adam-network
+    restart: unless-stopped
+
+  industrial-adam-scheduling:
+    image: adam/scheduling:latest
+    container_name: adam-scheduling-service
+    ports:
+      - "5142:5141"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=adam_scheduling;Username=adam;Password=adam123
+    networks:
+      - adam-network
+    restart: unless-stopped
+
+networks:
+  adam-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  timescaledb_data:

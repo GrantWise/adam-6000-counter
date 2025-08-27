@@ -1,9 +1,11 @@
-using Industrial.Adam.Security.Authorization;
-using Industrial.Adam.Security.Logging;
-using Industrial.Adam.Security.Models;
-using Industrial.Adam.Security.Monitoring;
+using Industrial.Adam.Security.Domain.Constants;
+using Industrial.Adam.Security.Infrastructure.Logging;
+using Industrial.Adam.Security.Domain.Entities;
+using Industrial.Adam.Security.Infrastructure.Services;
+using Industrial.Adam.Security.Application.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging;
 
 namespace Industrial.Adam.Security.Controllers;
@@ -14,6 +16,7 @@ namespace Industrial.Adam.Security.Controllers;
 [ApiController]
 [Route("api/security")]
 [Authorize(Policy = "RequireAdmin")]
+[EnableRateLimiting("ApiPolicy")]
 public class SecurityMonitoringController : ControllerBase
 {
     private readonly ILogger<SecurityMonitoringController> _logger;

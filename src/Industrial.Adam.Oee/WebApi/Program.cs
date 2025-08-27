@@ -4,9 +4,9 @@ using Industrial.Adam.Oee.Domain;
 using Industrial.Adam.Oee.Infrastructure;
 using Industrial.Adam.Oee.Infrastructure.SignalR;
 using Industrial.Adam.Oee.WebApi.Middleware;
-using Industrial.Adam.Security.Authentication;
-using Industrial.Adam.Security.Extensions;
-using Industrial.Adam.Security.Models;
+using Industrial.Adam.Security.Infrastructure.Services;
+using Industrial.Adam.Security.Infrastructure.Extensions;
+using Industrial.Adam.Security.Application.DTOs;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 

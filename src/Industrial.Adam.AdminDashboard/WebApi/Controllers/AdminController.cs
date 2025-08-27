@@ -1,7 +1,7 @@
 using Industrial.Adam.AdminDashboard.Application.Commands;
 using Industrial.Adam.AdminDashboard.Application.DTOs;
 using Industrial.Adam.AdminDashboard.Application.Queries;
-using Industrial.Adam.Security.Authorization;
+using Industrial.Adam.Security.Domain.Constants;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

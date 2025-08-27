@@ -4,9 +4,9 @@ using Industrial.Adam.EquipmentScheduling.Application;
 using Industrial.Adam.EquipmentScheduling.Domain;
 using Industrial.Adam.EquipmentScheduling.Infrastructure;
 using Industrial.Adam.EquipmentScheduling.Infrastructure.Configuration;
-using Industrial.Adam.Security.Authentication;
-using Industrial.Adam.Security.Extensions;
-using Industrial.Adam.Security.Models;
+using Industrial.Adam.Security.Infrastructure.Services;
+using Industrial.Adam.Security.Infrastructure.Extensions;
+using Industrial.Adam.Security.Application.DTOs;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 

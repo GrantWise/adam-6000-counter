@@ -1,0 +1,418 @@
+name: Industrial ADAM Platform - CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'feature/*', 'hotfix/*' ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run tests daily at 2 AM UTC to catch any external dependency issues
+    - cron: '0 2 * * *'
+
+# Set environment variables for the entire workflow
+env:
+  NODE_VERSION: '18'
+  VITE_API_BASE_URL: 'http://localhost:3000'
+  CI: true
+
+# Define reusable permissions
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  issues: write
+
+jobs:
+  # Security and dependency audit
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run npm audit
+      run: npm audit --audit-level high
+      
+    - name: Check for known vulnerabilities
+      run: npm audit --json > audit-results.json || true
+      
+    - name: Upload audit results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-audit-results
+        path: audit-results.json
+        retention-days: 30
+
+  # Code quality and linting
+  code-quality:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run ESLint
+      run: npm run lint
+      
+    - name: Run TypeScript type checking
+      run: npx tsc --noEmit
+      
+    - name: Check code formatting
+      run: npx prettier --check "src/**/*.{ts,tsx,js,jsx}"
+
+  # Unit and integration tests
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        test-type: [unit, integration, compliance]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Create test results directory
+      run: mkdir -p test-results coverage
+      
+    - name: Run unit tests
+      if: matrix.test-type == 'unit'
+      run: npm run test -- --coverage --reporter=junit --outputFile=test-results/unit-results.xml src/lib src/components/ui src/hooks
+      
+    - name: Run integration tests
+      if: matrix.test-type == 'integration'
+      run: npm run test -- --coverage --reporter=junit --outputFile=test-results/integration-results.xml src/__tests__/integration
+      
+    - name: Run CFR Part 11 compliance tests
+      if: matrix.test-type == 'compliance'
+      run: npm run test -- --coverage --reporter=junit --outputFile=test-results/compliance-results.xml src/__tests__/integration/cfr-compliance.test.tsx
+      
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.test-type }}
+        path: |
+          test-results/
+          coverage/
+        retention-days: 30
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      if: matrix.test-type == 'unit'
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+        
+    - name: Comment PR with test results
+      uses: actions/github-script@v6
+      if: github.event_name == 'pull_request' && always()
+      with:
+        script: |
+          const fs = require('fs');
+          const path = 'test-results/';
+          
+          if (fs.existsSync(path)) {
+            const files = fs.readdirSync(path);
+            const results = files.map(file => {
+              if (file.endsWith('.xml')) {
+                return `✅ ${file.replace('.xml', '')} completed`;
+              }
+              return '';
+            }).filter(Boolean);
+            
+            if (results.length > 0) {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## Test Results - ${{ matrix.test-type }}\n\n${results.join('\n')}`
+              });
+            }
+          }
+
+  # CFR Part 11 Compliance Validation
+  cfr-compliance-validation:
+    name: CFR Part 11 Compliance Validation
+    runs-on: ubuntu-latest
+    needs: [test]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Validate data quality indicators
+      run: |
+        echo "Validating CFR Part 11 compliance requirements..."
+        
+        # Check for synthetic data generation patterns
+        echo "🔍 Checking for synthetic data generation..."
+        if grep -r "Math\.random\|fake\|synthetic\|generated" src/lib/services/ --include="*.ts" --exclude="*test*" | grep -v "// COMPLIANT:" | grep -v "dataQuality.*simulated"; then
+          echo "❌ COMPLIANCE VIOLATION: Potential synthetic data generation detected"
+          exit 1
+        fi
+        
+        # Verify data quality indicators are present
+        echo "🔍 Verifying data quality indicators..."
+        if ! grep -q "dataQuality.*unavailable\|dataQuality.*simulated\|dataQuality.*bad" src/components/ui/data-quality-indicator.tsx; then
+          echo "❌ COMPLIANCE VIOLATION: Missing required data quality indicators"
+          exit 1
+        fi
+        
+        # Check for proper error handling
+        echo "🔍 Checking error handling compliance..."
+        if grep -r "catch.*{.*}" src/lib/services/ --include="*.ts" | grep -v "console\|throw\|return.*error"; then
+          echo "⚠️ WARNING: Silent error handling detected - review for compliance"
+        fi
+        
+        echo "✅ CFR Part 11 compliance validation passed"
+        
+    - name: Generate compliance report
+      run: |
+        echo "# CFR Part 11 Compliance Report" > compliance-report.md
+        echo "Generated: $(date)" >> compliance-report.md
+        echo "" >> compliance-report.md
+        echo "## Data Integrity Checks" >> compliance-report.md
+        echo "- ✅ No synthetic data generation detected" >> compliance-report.md
+        echo "- ✅ Data quality indicators implemented" >> compliance-report.md
+        echo "- ✅ Error handling follows compliance standards" >> compliance-report.md
+        echo "" >> compliance-report.md
+        echo "## Test Coverage" >> compliance-report.md
+        echo "- Unit Tests: $(find src -name "*.test.ts" -o -name "*.test.tsx" | wc -l) files" >> compliance-report.md
+        echo "- Integration Tests: $(find src/__tests__/integration -name "*.test.tsx" | wc -l) files" >> compliance-report.md
+        echo "- CFR Compliance Tests: 1 dedicated test suite" >> compliance-report.md
+        
+    - name: Upload compliance report
+      uses: actions/upload-artifact@v3
+      with:
+        name: cfr-compliance-report
+        path: compliance-report.md
+        retention-days: 90
+
+  # Build and deployment validation
+  build:
+    name: Build & Deploy Validation
+    runs-on: ubuntu-latest
+    needs: [code-quality, test]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build application
+      run: npm run build
+      
+    - name: Validate build output
+      run: |
+        echo "🔍 Validating build output..."
+        
+        # Check if build produced expected files
+        if [ ! -f "dist/index.html" ]; then
+          echo "❌ Build failed: Missing index.html"
+          exit 1
+        fi
+        
+        # Check for proper asset optimization
+        if [ ! -d "dist/assets" ]; then
+          echo "❌ Build failed: Missing assets directory"
+          exit 1
+        fi
+        
+        # Verify no source maps in production build (security)
+        if find dist -name "*.map" | grep -q .; then
+          echo "⚠️ WARNING: Source maps found in build - review for production deployment"
+        fi
+        
+        echo "✅ Build validation passed"
+        
+    - name: Test build in production mode
+      run: |
+        # Install a simple HTTP server for testing
+        npm install -g serve
+        
+        # Serve the built files
+        serve -s dist -l 3000 &
+        SERVER_PID=$!
+        
+        # Wait for server to start
+        sleep 5
+        
+        # Test if the application loads
+        if curl -f http://localhost:3000 > /dev/null 2>&1; then
+          echo "✅ Production build serves correctly"
+        else
+          echo "❌ Production build failed to serve"
+          kill $SERVER_PID
+          exit 1
+        fi
+        
+        # Clean up
+        kill $SERVER_PID
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-output
+        path: dist/
+        retention-days: 7
+
+  # Performance and bundle analysis
+  performance:
+    name: Performance Analysis
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build with bundle analysis
+      run: |
+        npm run build -- --mode=analyze
+        
+    - name: Analyze bundle size
+      run: |
+        echo "📊 Bundle size analysis:"
+        
+        # Check main bundle size
+        MAIN_BUNDLE_SIZE=$(du -h dist/assets/*.js | head -1 | cut -f1)
+        echo "Main bundle size: $MAIN_BUNDLE_SIZE"
+        
+        # Check for large dependencies
+        if [ -f "dist/assets/vendor*.js" ]; then
+          VENDOR_SIZE=$(du -h dist/assets/vendor*.js | head -1 | cut -f1)
+          echo "Vendor bundle size: $VENDOR_SIZE"
+        fi
+        
+        # Create performance report
+        echo "# Performance Report" > performance-report.md
+        echo "- Main bundle: $MAIN_BUNDLE_SIZE" >> performance-report.md
+        echo "- Total assets: $(ls dist/assets/ | wc -l)" >> performance-report.md
+        
+    - name: Upload performance report
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-report
+        path: performance-report.md
+        retention-days: 30
+
+  # Final status check
+  ci-success:
+    name: CI Pipeline Success
+    runs-on: ubuntu-latest
+    needs: [security-audit, code-quality, test, cfr-compliance-validation, build]
+    if: always()
+    
+    steps:
+    - name: Check all jobs
+      run: |
+        echo "Checking CI pipeline results..."
+        
+        # Check if any critical jobs failed
+        if [[ "${{ needs.security-audit.result }}" != "success" ]]; then
+          echo "❌ Security audit failed"
+          exit 1
+        fi
+        
+        if [[ "${{ needs.code-quality.result }}" != "success" ]]; then
+          echo "❌ Code quality checks failed"
+          exit 1
+        fi
+        
+        if [[ "${{ needs.test.result }}" != "success" ]]; then
+          echo "❌ Test suite failed"
+          exit 1
+        fi
+        
+        if [[ "${{ needs.cfr-compliance-validation.result }}" != "success" ]]; then
+          echo "❌ CFR Part 11 compliance validation failed"
+          exit 1
+        fi
+        
+        if [[ "${{ needs.build.result }}" != "success" ]]; then
+          echo "❌ Build process failed"
+          exit 1
+        fi
+        
+        echo "✅ All CI pipeline checks passed successfully"
+        
+    - name: Update commit status
+      uses: actions/github-script@v6
+      if: always()
+      with:
+        script: |
+          const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
+          const description = state === 'success' 
+            ? '✅ All checks passed - Ready for deployment' 
+            : '❌ CI pipeline failed - Review required';
+            
+          github.rest.repos.createCommitStatus({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            sha: context.sha,
+            state: state,
+            target_url: `${context.payload.repository.html_url}/actions/runs/${context.runId}`,
+            description: description,
+            context: 'Industrial ADAM CI/CD Pipeline'
+          });

@@ -14,13 +14,17 @@ class ApiClient {
     this.tokenStorage = new TokenStorage()
     this.instances = {}
     
-    // Initialize default instance
-    this.instances.default = this.createInstance('http://localhost:5139')
+    // Get configurable API endpoints
+    const config = this.getApiConfiguration()
+    
+    // Initialize default instance (use logger as default)
+    this.instances.default = this.createInstance(config.logger)
     
     // Initialize service-specific instances
-    this.instances.logger = this.createInstance('http://localhost:5139')
-    this.instances.oee = this.createInstance('http://localhost:5001')
-    this.instances.scheduling = this.createInstance('http://localhost:5141')
+    this.instances.logger = this.createInstance(config.logger)
+    this.instances.oee = this.createInstance(config.oee)
+    this.instances.security = this.createInstance(config.security)
+    this.instances.scheduling = this.createInstance(config.scheduling)
   }
 
   private createInstance(baseURL: string): AxiosInstance {
@@ -37,9 +41,53 @@ class ApiClient {
   }
 
   /**
+   * Get API configuration from environment variables
+   */
+  private getApiConfiguration() {
+    // Use environment variables or fallback to development defaults
+    const config = {
+      logger: this.buildApiUrl(
+        import.meta.env.VITE_LOGGER_API_HOST || 'localhost',
+        import.meta.env.VITE_LOGGER_API_PORT || '5139',
+        import.meta.env.VITE_LOGGER_API_HTTPS === 'true'
+      ),
+      oee: this.buildApiUrl(
+        import.meta.env.VITE_OEE_API_HOST || 'localhost',
+        import.meta.env.VITE_OEE_API_PORT || '5140',
+        import.meta.env.VITE_OEE_API_HTTPS === 'true'
+      ),
+      security: this.buildApiUrl(
+        import.meta.env.VITE_SECURITY_API_HOST || 'localhost',
+        import.meta.env.VITE_SECURITY_API_PORT || '5139',
+        import.meta.env.VITE_SECURITY_API_HTTPS === 'true'
+      ),
+      scheduling: this.buildApiUrl(
+        import.meta.env.VITE_SCHEDULING_API_HOST || 'localhost',
+        import.meta.env.VITE_SCHEDULING_API_PORT || '5141',
+        import.meta.env.VITE_SCHEDULING_API_HTTPS === 'true'
+      )
+    }
+
+    // Log configuration in development for debugging
+    if (import.meta.env.DEV) {
+      console.log('API Configuration:', config)
+    }
+
+    return config
+  }
+
+  /**
+   * Build API URL from components
+   */
+  private buildApiUrl(host: string, port: string, useHttps: boolean = false): string {
+    const protocol = useHttps ? 'https' : 'http'
+    return `${protocol}://${host}:${port}`
+  }
+
+  /**
    * Get the appropriate axios instance for a service
    */
-  private getInstance(service: 'logger' | 'oee' | 'scheduling' | 'default' = 'default'): AxiosInstance {
+  private getInstance(service: 'logger' | 'oee' | 'security' | 'scheduling' | 'default' = 'default'): AxiosInstance {
     return this.instances[service] || this.instances.default
   }
 
@@ -229,7 +277,7 @@ class ApiClient {
   }
   
   // Generic HTTP methods with proper typing and service selection
-  async get<T = any>(url: string, config?: any, service: 'logger' | 'oee' | 'scheduling' | 'default' = 'default'): Promise<ApiResponse<T>> {
+  async get<T = any>(url: string, config?: any, service: 'logger' | 'oee' | 'security' | 'scheduling' | 'default' = 'default'): Promise<ApiResponse<T>> {
     try {
       const response = await this.getInstance(service).get<T>(url, config)
       return {
@@ -244,7 +292,7 @@ class ApiClient {
     }
   }
 
-  async post<T = any>(url: string, data?: any, config?: any, service: 'logger' | 'oee' | 'scheduling' | 'default' = 'default'): Promise<ApiResponse<T>> {
+  async post<T = any>(url: string, data?: any, config?: any, service: 'logger' | 'oee' | 'security' | 'scheduling' | 'default' = 'default'): Promise<ApiResponse<T>> {
     try {
       const response = await this.getInstance(service).post<T>(url, data, config)
       return {
@@ -259,7 +307,7 @@ class ApiClient {
     }
   }
 
-  async put<T = any>(url: string, data?: any, config?: any, service: 'logger' | 'oee' | 'scheduling' | 'default' = 'default'): Promise<ApiResponse<T>> {
+  async put<T = any>(url: string, data?: any, config?: any, service: 'logger' | 'oee' | 'security' | 'scheduling' | 'default' = 'default'): Promise<ApiResponse<T>> {
     try {
       const response = await this.getInstance(service).put<T>(url, data, config)
       return {
@@ -274,7 +322,7 @@ class ApiClient {
     }
   }
 
-  async patch<T = any>(url: string, data?: any, config?: any, service: 'logger' | 'oee' | 'scheduling' | 'default' = 'default'): Promise<ApiResponse<T>> {
+  async patch<T = any>(url: string, data?: any, config?: any, service: 'logger' | 'oee' | 'security' | 'scheduling' | 'default' = 'default'): Promise<ApiResponse<T>> {
     try {
       const response = await this.getInstance(service).patch<T>(url, data, config)
       return {
@@ -289,7 +337,7 @@ class ApiClient {
     }
   }
 
-  async delete<T = any>(url: string, config?: any, service: 'logger' | 'oee' | 'scheduling' | 'default' = 'default'): Promise<ApiResponse<T>> {
+  async delete<T = any>(url: string, config?: any, service: 'logger' | 'oee' | 'security' | 'scheduling' | 'default' = 'default'): Promise<ApiResponse<T>> {
     try {
       const response = await this.getInstance(service).delete<T>(url, config)
       return {
@@ -305,7 +353,7 @@ class ApiClient {
   }
 
   // Raw axios instance access for advanced use cases
-  getPublicInstance(service: 'logger' | 'oee' | 'scheduling' | 'default' = 'default'): AxiosInstance {
+  getPublicInstance(service: 'logger' | 'oee' | 'security' | 'scheduling' | 'default' = 'default'): AxiosInstance {
     return this.getInstance(service)
   }
 }
